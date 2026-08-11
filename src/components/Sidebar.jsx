@@ -11,6 +11,7 @@ export default function Sidebar({
     const { resolvedTheme } = useTheme();
     const themeMod = resolvedTheme;
     const [searchQuery, setSearchQuery] = useState('');
+    const [isLogoHovered, setIsLogoHovered] = useState(false);
 
     const fullLogoSrc = '/ceova logo dark.png';
     const logoSrc = fullLogoSrc;
