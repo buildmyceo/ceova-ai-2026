@@ -473,7 +473,7 @@ function MessageItem({ msg, idx, isUser, editingMsg, editText, setEditText, hand
             ) : null}
 
             {(msg.text || !msg.isTyping) && (
-              <TypewriterRenderer text={rawText.replace('[Open IDE]', '').replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
+              <TypewriterRenderer text={rawText.replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
             )}
 
 

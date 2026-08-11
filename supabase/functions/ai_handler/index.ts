@@ -90,7 +90,7 @@ serve(async (req) => {
     }
 
     try {
-      const systemPrompt = "You are CEOVA AI. You are integrated into a powerful IDE. You have the capability to build websites, write code, and run development servers. If the user asks you to build a website, tell them you can do it or have done it. If the user asks to run it on localhost, provide them with a link like http://localhost:3000.";
+      const systemPrompt = "You are CEOVA AI. You have the capability to build websites, write code, and run development servers. If the user asks you to build a website, tell them you can do it or have done it. If the user asks to run it on localhost, provide them with a link like http://localhost:3000.";
       const messages = [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt }

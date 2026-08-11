@@ -296,7 +296,6 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
             case 'notifications': return 'Notifications';
             case 'advanced': return 'Advanced Settings';
             case 'about': return 'About';
-            case 'ide': return 'Ceova IDE';
             default: return 'Settings';
         }
     };
@@ -330,7 +329,6 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                 {view === 'tools' && 'Tools'}
                                 {view === 'about' && 'About'}
                                 {view === 'usage' && 'Usage & Billing'}
-                                {view === 'ide' && 'Open IDE'}
                             </h2>
                         </div>)}
                             {view === 'personalization' && (
@@ -368,10 +366,6 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                         </div>
                                         <div className="settings-row clickable" onClick={() => setView('tools')}>
                                             <div className="row-left"><Zap size={18} /> <span>Tools</span></div>
-                                            <ChevronRight size={14} className="chevron" />
-                                        </div>
-                                        <div className="settings-row clickable" onClick={() => setView('ide')}>
-                                            <div className="row-left"><Terminal size={18} /> <span>Open IDE</span></div>
                                             <ChevronRight size={14} className="chevron" />
                                         </div>
 
@@ -537,82 +531,6 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                             title="File Converter" 
                                             desc="Convert between PNG, JPG, WEBP, etc." 
                                         />
-                                    </div>
-                                </div>
-                            )}
-
-                            {view === 'ide' && (
-                                <div className="ide-view" style={{ padding: '0 20px 20px' }}>
-                                    <div style={{ textAlign: 'center', marginBottom: '24px', paddingTop: '10px' }}>
-                                        <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', margin: '0 auto 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            <Code size={32} color="white" />
-                                        </div>
-                                        <h3 style={{ margin: '0 0 8px' }}>Ceova AI IDE</h3>
-                                        <p style={{ color: 'var(--text-muted)', fontSize: '14px', margin: 0 }}>
-                                            Open a local workspace for an optimized AI coding experience.
-                                        </p>
-                                    </div>
-                                    <div className="settings-section">
-                                        <div className="settings-row clickable" onClick={async () => {
-                                            if (window.__TAURI_INTERNALS__) {
-                                                try {
-                                                    const { open } = await import('@tauri-apps/plugin-dialog');
-                                                    const { Command } = await import('@tauri-apps/plugin-shell');
-                                                    const selected = await open({ directory: true, multiple: false });
-                                                    if (selected) {
-                                                        // Attempt to open the selected folder in Ceova IDE directly
-                                                        await Command.create('run-open', ['-a', 'Ceova IDE', selected]).spawn().catch(async () => {
-                                                            await Command.create('run-open', ['-a', 'Ceova', selected]).spawn();
-                                                        });
-                                                    }
-                                                } catch(e) {
-                                                    console.error("Failed to launch native Ceova IDE, falling back to local source...", e);
-                                                    try {
-                                                        const { Command } = await import('@tauri-apps/plugin-shell');
-                                                        const { open: openUrl } = await import('@tauri-apps/plugin-shell');
-                                                        
-                                                        // Fallback: Start the local ceova_ide server directly from the source code
-                                                        // We set the current working directory to the selected workspace so the IDE opens it!
-                                                        const port = "3005";
-                                                        console.log("Starting local Ceova IDE on port", port);
-                                                        
-                                                        // Using the known absolute path for this dev environment, or we can use npm
-                                                        const serverPath = '/Users/chintukumar/AIAvatarApp/ceova_ide/server.js';
-                                                        
-                                                        Command.create('run-node', [serverPath], { 
-                                                            cwd: selected, 
-                                                            env: { PORT: port } 
-                                                        }).spawn();
-                                                        
-                                                        // Give it a second to start, then open the browser
-                                                        setTimeout(async () => {
-                                                            await openUrl(`http://localhost:${port}`);
-                                                        }, 2000);
-                                                        
-                                                    } catch (err) {
-                                                        console.error("Failed to start local IDE:", err);
-                                                        alert("Could not start local Ceova IDE.");
-                                                    }
-                                                }
-                                            } else {
-                                                document.getElementById('ide-folder-input')?.click();
-                                            }
-                                        }}>
-                                            <div className="row-left">
-                                                <FolderOpen size={18} />
-                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                    <span>Open IDE</span>
-                                                    <span style={{ fontSize: '10px', opacity: 0.5 }}>Select a local workspace to open in Ceova IDE</span>
-                                                </div>
-                                            </div>
-                                            <ChevronRight size={14} className="chevron" />
-                                        </div>
-                                        <input type="file" id="ide-folder-input" webkitdirectory="true" directory="true" style={{ display: 'none' }} onChange={(e) => {
-                                            if(e.target.files.length > 0) {
-                                                console.log("Folder selected via web input");
-                                                alert("Folder selected. IDE integration pending.");
-                                            }
-                                        }} />
                                     </div>
                                 </div>
                             )}
