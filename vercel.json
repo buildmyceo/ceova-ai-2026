@@ -1,0 +1,57 @@
+{
+  "version": 2,
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/api/chat",
+      "destination": "/api/chat.js"
+    },
+    {
+      "source": "/api/memories/:userId/:memoryId?",
+      "destination": "/api/chat.js?action=memories&userId=:userId&memoryId=:memoryId"
+    },
+    {
+      "source": "/api/tasks",
+      "destination": "/api/tasks.js"
+    },
+    {
+      "source": "/api/google/auth",
+      "destination": "/api/google.js?action=auth"
+    },
+    {
+      "source": "/api/google/callback",
+      "destination": "/api/google.js?action=callback"
+    },
+    {
+      "source": "/api/gmail/send",
+      "destination": "/api/google.js?action=gmail_send"
+    },
+    {
+      "source": "/api/calendar/create",
+      "destination": "/api/google.js?action=calendar_create"
+    },
+    {
+      "source": "/api/drive/list",
+      "destination": "/api/google.js?action=drive_list"
+    },
+    {
+      "source": "/api/telegram/connect",
+      "destination": "/api/telegram.js"
+    },
+    {
+      "source": "/api/send-email",
+      "destination": "/api/google.js?action=gmail_send"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "env": {
+    "PYTHON_VERSION": "3.11"
+  }
+}

@@ -1,0 +1,42 @@
+node_modules/
+venv/
+venv_test/
+# Ignore all .env files with secrets — .env.example is the only committed template
+.env
+.env.local
+.env.production
+.env.development
+.DS_Store
+dist/
+__pycache__/
+*.pyc
+
+# Tauri / Desktop Builds
+target/
+src-tauri/target/
+**/target/
+*.dmg
+*.app
+*.deb
+*.msi
+*.exe
+dist/
+build/
+node_modules/
+.vercel
+
+# Next.js build output
+ceova-studio/.next/
+ceova-studio/node_modules/
+
+# Scratch/helper scripts that shouldn't be deployed
+fix_*.py
+fix_*.js
+fix_*.sql
+check_*.js
+check_*.py
+update_*.py
+audit_*.js
+*.orig.jsx
+*.orig.tsx
+*.orig.ts

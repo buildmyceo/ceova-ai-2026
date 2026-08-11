@@ -1,0 +1,320 @@
+import { Tool, ToolContext, ToolResult } from "../types.ts";
+import { googleAuthService } from "../../services/google-auth.ts";
+import { Logger } from "../../services/logger.ts";
+
+export const GmailConnectorTool: Tool = {
+  metadata: {
+    id: "gmail_connector",
+    name: "Gmail Connector",
+    description: "Reads, searches, and sends emails via Gmail on behalf of the user.",
+    category: "Communication",
+    icon: "Mail",
+    requiresImage: false,
+    requiresAuth: true,
+    enabled: true,
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          description: "The Gmail action to perform",
+          enum: ["read_inbox", "search_emails", "read_email", "send_email", "draft_email", "reply_email", "list_labels"]
+        },
+        recipient: {
+          type: "string",
+          description: "The recipient's email address (for send_email, draft_email, reply_email)"
+        },
+        subject: {
+          type: "string",
+          description: "The email subject line (for send_email, draft_email, reply_email)"
+        },
+        body: {
+          type: "string",
+          description: "The email body content (for send_email, draft_email, reply_email)"
+        },
+        query: {
+          type: "string",
+          description: "The search query (for search_emails)"
+        },
+        message_id: {
+          type: "string",
+          description: "The message ID to read (for read_email)"
+        },
+        thread_id: {
+          type: "string",
+          description: "The thread ID to reply to (for reply_email)"
+        }
+      },
+      required: ["action"]
+    }
+  },
+  execute: async (context: ToolContext): Promise<ToolResult> => {
+    try {
+      context.onStatusUpdate?.("Authenticating with Gmail...");
+      const accessToken = await googleAuthService.getValidAccessToken(context.userId);
+
+      if (!accessToken) {
+        return {
+          success: false,
+          error: {
+            code: "AUTH_REQUIRED",
+            message: "You need to connect your Gmail account in Settings > Connectors."
+          }
+        };
+      }
+
+      const args = context.args || {};
+      
+      // Auto-detect action if not specified
+      let action = args.action;
+      if (!action) {
+        if (args.recipient || args.to || args.subject || args.body) {
+          action = "send_email";
+        } else if (args.query) {
+          action = "search_emails";
+        } else if (args.message_id) {
+          action = "read_email";
+        } else if (args.thread_id) {
+          action = "reply_email";
+        } else {
+          action = "read_inbox";
+        }
+      }
+
+      // Handle common parameter aliases
+      const recipient = args.recipient || args.to;
+      const subject = args.subject;
+      const body = args.body || args.message;
+
+      context.onStatusUpdate?.(`Executing ${action}...`);
+
+      switch (action) {
+        case "read_inbox":
+          return await readInbox(accessToken);
+        case "search_emails":
+          return await searchEmails(accessToken, args.query || "");
+        case "read_email":
+          return await readSpecificEmail(accessToken, args.message_id);
+        case "send_email":
+          return await sendEmail(accessToken, recipient, subject, body);
+        case "draft_email":
+          return await draftEmail(accessToken, recipient, subject, body);
+        case "reply_email":
+          return await replyEmail(accessToken, args.thread_id, recipient, subject, body);
+        case "list_labels":
+          return await listLabels(accessToken);
+        default:
+          return {
+            success: false,
+            error: { code: "INVALID_ACTION", message: `Unknown Gmail action: ${action}` }
+          };
+      }
+    } catch (e: any) {
+      Logger.ERROR(`Gmail connector error: ${e.message}`);
+      return { success: false, error: { code: "EXECUTION_ERROR", message: e.message } };
+    }
+  }
+};
+
+async function readInbox(token: string): Promise<ToolResult> {
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in:inbox&maxResults=5`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(await res.text());
+  
+  const data = await res.json();
+  if (!data.messages) return { success: true, data: { text: "Your inbox is empty." } };
+
+  const emails = await Promise.all(data.messages.map((m: any) => fetchEmailDetails(token, m.id)));
+  return { success: true, data: { text: formatEmailList(emails, "Inbox") } };
+}
+
+async function searchEmails(token: string, query: string): Promise<ToolResult> {
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=5`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(await res.text());
+  
+  const data = await res.json();
+  if (!data.messages) return { success: true, data: { text: `No emails found for query: "${query}"` } };
+
+  const emails = await Promise.all(data.messages.map((m: any) => fetchEmailDetails(token, m.id)));
+  return { success: true, data: { text: formatEmailList(emails, "Search Results") } };
+}
+
+async function readSpecificEmail(token: string, messageId: string): Promise<ToolResult> {
+  if (!messageId) throw new Error("message_id is required to read an email.");
+  const details = await fetchEmailDetails(token, messageId, true);
+  
+  const text = `**Subject:** ${details.subject}\n**From:** ${details.from}\n**Date:** ${details.date}\n\n**Body:**\n${details.body || "No text content."}`;
+  return { success: true, data: { text } };
+}
+
+async function sendEmail(token: string, to: string, subject: string, body: string): Promise<ToolResult> {
+  if (!to || !subject || !body) throw new Error("recipient, subject, and body are required to send an email.");
+  if (!to.includes("@")) {
+    return {
+      success: false,
+      error: { code: "INVALID_RECIPIENT", message: `Recipient must be a valid email address containing '@'. You passed: "${to}"` }
+    };
+  }
+  
+  const raw = createRawEmail(to, subject, body);
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ raw })
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    if (res.status === 403 && errorText.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT")) {
+      throw new Error("Missing permission to send emails. Please go to your CEOVA Library and click 'Connect / Sync Google Mail' to grant CEOVA permission to send emails on your behalf.");
+    }
+    throw new Error(errorText);
+  }
+  return { success: true, data: { text: `✅ Email successfully sent to ${to}.` } };
+}
+
+async function draftEmail(token: string, to: string, subject: string, body: string): Promise<ToolResult> {
+  if (!to || !subject || !body) throw new Error("recipient, subject, and body are required to draft an email.");
+  if (!to.includes("@")) {
+    return {
+      success: false,
+      error: { code: "INVALID_RECIPIENT", message: `Recipient must be a valid email address containing '@'. You passed: "${to}"` }
+    };
+  }
+  
+  const raw = createRawEmail(to, subject, body);
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/drafts`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ message: { raw } })
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    if (res.status === 403 && errorText.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT")) {
+      throw new Error("Missing permission to draft emails. Please go to your CEOVA Library and click 'Connect / Sync Google Mail' to grant CEOVA permission to manage your emails.");
+    }
+    throw new Error(errorText);
+  }
+  return { success: true, data: { text: `📝 Email draft to ${to} created successfully.` } };
+}
+
+async function replyEmail(token: string, threadId: string, to: string, subject: string, body: string): Promise<ToolResult> {
+  if (!threadId || !to || !subject || !body) throw new Error("thread_id, recipient, subject, and body are required to reply.");
+  if (!to.includes("@")) {
+    return {
+      success: false,
+      error: { code: "INVALID_RECIPIENT", message: `Recipient must be a valid email address containing '@'. You passed: "${to}"` }
+    };
+  }
+  
+  const raw = createRawEmail(to, subject, body, threadId);
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ raw, threadId })
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    if (res.status === 403 && errorText.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT")) {
+      throw new Error("Missing permission to reply to emails. Please go to your CEOVA Library and click 'Connect / Sync Google Mail' to grant CEOVA permission to send emails.");
+    }
+    throw new Error(errorText);
+  }
+  return { success: true, data: { text: `✅ Reply successfully sent on thread ${threadId}.` } };
+}
+
+async function listLabels(token: string): Promise<ToolResult> {
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/labels`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(await res.text());
+  
+  const data = await res.json();
+  const labels = data.labels.map((l: any) => l.name).join(", ");
+  return { success: true, data: { text: `Available Gmail labels: ${labels}` } };
+}
+
+// Helpers
+
+async function fetchEmailDetails(token: string, id: string, fullBody = false) {
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`Failed to fetch email ${id}`);
+  
+  const data = await res.json();
+  
+  const headers = data.payload.headers || [];
+  const getHeader = (name: string) => headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
+  
+  let body = "";
+  if (fullBody) {
+    body = decodeBody(data.payload);
+  } else {
+    body = data.snippet;
+  }
+  
+  return {
+    id: data.id,
+    threadId: data.threadId,
+    subject: getHeader("subject"),
+    from: getHeader("from"),
+    date: getHeader("date"),
+    body
+  };
+}
+
+function decodeBody(payload: any): string {
+  let body = "";
+  if (payload.parts) {
+    for (const part of payload.parts) {
+      if (part.mimeType === "text/plain") {
+        body += base64UrlDecode(part.body.data);
+      } else if (part.parts) {
+        body += decodeBody(part);
+      }
+    }
+  } else if (payload.body && payload.body.data) {
+    body = base64UrlDecode(payload.body.data);
+  }
+  return body;
+}
+
+function base64UrlDecode(str: string) {
+  if (!str) return "";
+  let base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  while (base64.length % 4) base64 += "=";
+  return decodeURIComponent(escape(atob(base64)));
+}
+
+function createRawEmail(to: string, subject: string, body: string, threadId?: string) {
+  const utf8Subject = `=?utf-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=`;
+  let message = [
+    `To: ${to}`,
+    `Subject: ${utf8Subject}`,
+    "Content-Type: text/html; charset=utf-8",
+    "MIME-Version: 1.0",
+  ];
+  
+  if (threadId) {
+    message.push(`In-Reply-To: ${threadId}`);
+    message.push(`References: ${threadId}`);
+  }
+  
+  message.push("", body.replace(/\n/g, "<br>"));
+  
+  const raw = message.join("\r\n");
+  return btoa(unescape(encodeURIComponent(raw))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function formatEmailList(emails: any[], title: string): string {
+  let text = `**${title}**\n\n`;
+  for (const email of emails) {
+    text += `- **Subject**: ${email.subject}\n  **From**: ${email.from}\n  **ID**: \`${email.id}\`\n  **Snippet**: ${email.body}\n\n`;
+  }
+  return text;
+}

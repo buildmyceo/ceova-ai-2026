@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+try {
+  fetch("https://invalid_url::////").catch(e => console.log(e.name, e.message));
+} catch(e) {
+  console.log(e.name, e.message);
+}
+</script>
+</body>
+</html>
