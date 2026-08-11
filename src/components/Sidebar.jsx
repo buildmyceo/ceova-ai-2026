@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { LogOut, Plus, Search, Settings, HelpCircle, Archive, X, Clock, Pin, PinOff, SquareCheck, Glasses, Code2, PanelLeft, PanelLeftClose, Edit, BookOpen } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
-import { useWorkspace } from '../contexts/WorkspaceProvider';
 
 export default function Sidebar({ 
     chats, chatMetadata = {}, currentChatId, switchChat, createNewChat, createTemporaryChat, 
@@ -11,11 +10,7 @@ export default function Sidebar({
     const userName = userMetadata?.full_name || (userEmail ? userEmail.split('@')[0] : "User");
     const { resolvedTheme } = useTheme();
     const themeMod = resolvedTheme;
-    const { workspaces, activeWorkspace, switchWorkspace } = useWorkspace();
     const [searchQuery, setSearchQuery] = useState('');
-    const [isLogoHovered, setIsLogoHovered] = useState(false);
-    const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
     const fullLogoSrc = '/ceova logo dark.png';
     const logoSrc = fullLogoSrc;

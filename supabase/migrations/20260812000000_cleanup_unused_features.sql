@@ -20,3 +20,8 @@ DELETE FROM storage.buckets WHERE id = 'workspaces';
 -- Telegram columns
 ALTER TABLE public.user_tokens DROP COLUMN IF EXISTS telegram_chat_id CASCADE;
 ALTER TABLE public.user_tokens DROP COLUMN IF EXISTS telegram_link_code CASCADE;
+
+-- Workspace tables
+DROP TABLE IF EXISTS public.workspace_permissions CASCADE;
+DROP TABLE IF EXISTS public.workspace_members CASCADE;
+DROP TABLE IF EXISTS public.workspaces CASCADE;

@@ -12,7 +12,7 @@ const COMMON_EMOJIS = [
 
 export default function InputBox({ 
     input, setInput, handleSend, isLoading, handleStop, isHome,
-    permissions, activeWorkspace, localDirectoryHandle, setLocalDirectoryHandle
+    localDirectoryHandle, setLocalDirectoryHandle
 }) {
     const textareaRef = useRef(null);
     const fileInputRef = useRef(null);
@@ -189,27 +189,12 @@ export default function InputBox({
     const handleDrop = (e) => {
         e.preventDefault();
         setIsDragging(false);
-        if (!permissions?.canUploadFiles()) return;
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             onFilesSelected(Array.from(e.dataTransfer.files));
             e.dataTransfer.clearData();
         }
     };
 
-    if (permissions && !permissions.canCreateChat()) {
-        return (
-            <motion.div 
-                className={`input-container ${isHome ? 'is-home' : 'is-chat'}`}
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.3 }}
-            >
-                <div className="input-wrapper" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    Your role in {activeWorkspace?.name || 'this workspace'} does not permit creating AI chats.
-                </div>
-            </motion.div>
-        );
-    }
 
     return (
         <motion.div 
@@ -278,24 +263,20 @@ export default function InputBox({
                                 <Paperclip size={18} />
                             </button>
 
-                            {isPlusOpen && !isToolsSubmenuOpen && !isConnectorsSubmenuOpen && (
+                                {isPlusOpen && !isToolsSubmenuOpen && !isConnectorsSubmenuOpen && (
                                 <div className="plus-dropdown-menu">
-                                    {permissions?.canUseApps() && (
-                                        <button onClick={(e) => {
+                                    <button onClick={(e) => {
                                             e.stopPropagation();
                                             setIsConnectorsSubmenuOpen(true);
                                         }}>
                                             <Link size={18} /> Connectors
                                         </button>
-                                    )}
-                                    {permissions?.canUploadFiles() && (
-                                        <button onClick={() => { 
+                                    <button onClick={() => { 
                                             setIsPlusOpen(false); 
                                             fileInputRef.current?.click(); 
                                         }}>
                                             <Plus size={18} /> Upload files
                                         </button>
-                                    )}
                                     <button onClick={handleConnectFolder}>
                                         <Folder size={18} /> {localDirectoryHandle ? "Change Workspace" : "Connect Workspace"}
                                     </button>

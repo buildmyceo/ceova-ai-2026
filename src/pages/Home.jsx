@@ -11,7 +11,6 @@ import { Search, MoreVertical, Menu, Share2, Check, Camera, BarChart3, Zap, Brai
 import { motion, AnimatePresence } from 'framer-motion';
 import Login from './Login';
 import { buildSystemPrompt } from '../lib/systemPromptBuilder';
-import { useWorkspace } from '../contexts/WorkspaceProvider';
 
 const CURRENT_CHAT_KEY = "chat_id";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -23,7 +22,6 @@ function assertStringUuid(name, value) {
 }
 
 export default function Home({ session }) {
-    const { permissions, activeWorkspace } = useWorkspace();
     const [chats, setChats] = useState({});
     const [chatMetadata, setChatMetadata] = useState({}); // Stores { is_pinned, is_archived, title }
     const [currentChatId, setCurrentChatId] = useState(() => localStorage.getItem(CURRENT_CHAT_KEY) || null);
@@ -1260,8 +1258,6 @@ export default function Home({ session }) {
                         isLoading={isLoading}
                         handleStop={handleStop}
                         isHome={(chats[currentChatId] || []).length === 0}
-                        permissions={permissions}
-                        activeWorkspace={activeWorkspace}
                         localDirectoryHandle={localDirectoryHandle}
                         setLocalDirectoryHandle={setLocalDirectoryHandle}
                     />

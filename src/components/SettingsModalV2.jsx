@@ -12,9 +12,6 @@ import {
 import { supabase } from '../services/supabase';
 import UsageSection from './UsageSection';
 import { useTheme } from '../contexts/ThemeContext';
-import { useWorkspace } from '../contexts/WorkspaceProvider';
-
-import PermissionsSettingsView from './PermissionsSettingsView';
 
 export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange }) {
     const { themePref, setThemePref } = useTheme();
@@ -48,8 +45,6 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
     const [isAdvancedAppsEnabled, setIsAdvancedAppsEnabled] = useState(false);
     const [showAdvancedOnboarding, setShowAdvancedOnboarding] = useState(false);
     
-    const { workspaces, activeWorkspace, switchWorkspace } = useWorkspace();
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
     useEffect(() => {
         if (userId) {
@@ -299,7 +294,6 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
             case 'memories': return 'Ceova Memory';
             case 'personalization': return 'Personalization';
             case 'notifications': return 'Notifications';
-            case 'workspaces': return 'Workspaces';
             case 'advanced': return 'Advanced Settings';
             case 'about': return 'About';
             case 'ide': return 'Ceova IDE';
@@ -331,8 +325,6 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                 {view === 'memories' && 'Memory'}
                                 {view === 'personalization' && 'Personalization'}
                                 {view === 'notifications' && 'Notifications'}
-                                {view === 'workspaces' && 'Workspaces'}
-                                {view === 'permissions' && 'Workspace Permissions'}
                                 {view === 'advanced' && 'Advanced Settings'}
                                 {view === 'connectors' && 'Connectors'}
                                 {view === 'tools' && 'Tools'}
@@ -489,10 +481,6 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                     </div>
                                     <p className="data-disclaimer">Archive all chats moves them to the Archive Vault. Delete account is permanent and cannot be undone.</p>
                                 </div>
-                            )}
-
-                            {view === 'permissions' && (
-                                <PermissionsSettingsView activeWorkspace={activeWorkspace} />
                             )}
 
                             {view === 'tools' && (
