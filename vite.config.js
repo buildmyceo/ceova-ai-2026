@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { VitePWA } from 'vite-plugin-pwa'
 import os from 'os'
 
 function getLocalLANIP() {
@@ -42,64 +41,6 @@ export default defineConfig({
   plugins: [
     react(),
     ceovaDevServerBannerPlugin(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      injectRegister: 'auto',
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp}'],
-        maximumFileSizeToCacheInBytes: 5000000,
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // <== 365 days
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'gstatic-fonts-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // <== 365 days
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          }
-        ]
-      },
-      manifest: {
-        name: 'CEOVA - AI Executive Assistant',
-        short_name: 'CEOVA',
-        description: 'Your AI Executive Assistant',
-        theme_color: '#000000',
-        background_color: '#000000',
-        display: 'standalone',
-        icons: [
-          {
-            src: '/ceova logo dark.png',
-            sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: '/ceova logo dark.png',
-            sizes: '512x512',
-            type: 'image/png'
-          }
-        ]
-      }
-    })
   ],
   envPrefix: ['VITE_', 'NEXT_PUBLIC_', 'TAURI_'],
   clearScreen: false,
