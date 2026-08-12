@@ -23,10 +23,10 @@ def verify_supabase_jwt(token):
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.handle_request()
+        self._process()
 
     def do_POST(self):
-        self.handle_request()
+        self._process()
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -35,7 +35,7 @@ class handler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Authorization, Content-Type')
         self.end_headers()
         
-    def handle_request(self):
+    def _process(self):
         path = self.path
         parsed_path = urllib.parse.urlparse(path)
         query = urllib.parse.parse_qs(parsed_path.query)
