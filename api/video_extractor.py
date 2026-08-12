@@ -27,6 +27,13 @@ class handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         self.handle_request()
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Authorization, Content-Type')
+        self.end_headers()
         
     def handle_request(self):
         path = self.path
@@ -93,6 +100,7 @@ class handler(BaseHTTPRequestHandler):
                 
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 self.wfile.write(json.dumps(response_data).encode())
                 
@@ -113,24 +121,50 @@ class handler(BaseHTTPRequestHandler):
             return
             
         format_id = query.get('format', ['best'])[0]
+        output_format = query.get('output_format', ['mp4'])[0].lower()  # 'mp4' or 'mp3'
+        is_audio_only = output_format == 'mp3'
         
         import uuid
         import time
         file_id = str(uuid.uuid4())
         timestamp = int(time.time())
-        filename = f"{timestamp}-{file_id}.mp4"
+        ext = 'mp3' if is_audio_only else 'mp4'
+        filename = f"{timestamp}-{file_id}.{ext}"
         filepath = f"/tmp/{filename}"
         
-        ydl_opts = {
-            'format': format_id,
-            'outtmpl': filepath,
-            'quiet': True,
-        }
+        if is_audio_only:
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': filepath,
+                'quiet': True,
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
+            }
+        else:
+            ydl_opts = {
+                'format': format_id if format_id != 'best' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                'outtmpl': filepath,
+                'quiet': True,
+                'merge_output_format': 'mp4',
+            }
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
                 ydl.download([url])
+                
+            # Find the actual downloaded file (yt-dlp may change extension)
+            actual_path = filepath
+            if not os.path.exists(actual_path):
+                for candidate in [f"/tmp/{timestamp}-{file_id}.mp3", f"/tmp/{timestamp}-{file_id}.mp4",
+                                   f"/tmp/{timestamp}-{file_id}.webm", f"/tmp/{timestamp}-{file_id}.m4a"]:
+                    if os.path.exists(candidate):
+                        actual_path = candidate
+                        filename = os.path.basename(candidate)
+                        break
                 
             # Upload to Supabase Storage
             supabase_url = os.environ.get("VITE_SUPABASE_URL", "")
@@ -139,14 +173,15 @@ class handler(BaseHTTPRequestHandler):
             if not supabase_url or not service_key:
                 raise Exception("Server misconfiguration: Missing Supabase credentials")
                 
+            mime = "audio/mpeg" if is_audio_only else "video/mp4"
             storage_url = f"{supabase_url}/storage/v1/object/temp_videos/{user_id}/{filename}"
             
-            with open(filepath, 'rb') as f:
+            with open(actual_path, 'rb') as f:
                 upload_resp = requests.post(
                     storage_url,
                     headers={
                         "Authorization": f"Bearer {service_key}",
-                        "Content-Type": "video/mp4"
+                        "Content-Type": mime
                     },
                     data=f
                 )
@@ -168,6 +203,7 @@ class handler(BaseHTTPRequestHandler):
             # Create library entry in public.files
             import datetime
             expires_at = (datetime.datetime.utcnow() + datetime.timedelta(minutes=20)).isoformat() + "Z"
+            title = info.get("title", "Download")
             
             db_resp = requests.post(
                 f"{supabase_url}/rest/v1/files",
@@ -180,9 +216,9 @@ class handler(BaseHTTPRequestHandler):
                 json={
                     "user_id": user_id,
                     "storage_source": "video_downloader",
-                    "name": info.get("title", filename) + f".{format_id}",
-                    "mime_type": "video/mp4",
-                    "category": "videos",
+                    "name": f"{title}.{ext}",
+                    "mime_type": mime,
+                    "category": "audio" if is_audio_only else "videos",
                     "storage_path": f"{user_id}/{filename}",
                     "is_temporary": True,
                     "expires_at": expires_at
@@ -191,16 +227,18 @@ class handler(BaseHTTPRequestHandler):
             
             library_item_id = None
             if db_resp.status_code < 300:
-                library_item_id = db_resp.json()[0].get("id")
+                items = db_resp.json()
+                if items:
+                    library_item_id = items[0].get("id")
             
             # Cleanup local file
-            if os.path.exists(filepath):
-                os.remove(filepath)
+            if os.path.exists(actual_path):
+                os.remove(actual_path)
                 
-            # Return final payload
             response_data = {
                 "success": True,
-                "title": info.get("title", "Video"),
+                "title": title,
+                "format": ext,
                 "thumbnail": info.get("thumbnail"),
                 "libraryItemId": library_item_id,
                 "signedUrl": signed_url,
@@ -209,6 +247,7 @@ class handler(BaseHTTPRequestHandler):
             
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(response_data).encode())
             

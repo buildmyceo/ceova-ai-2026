@@ -85,8 +85,14 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "video",
-    description: "Extract and download videos from public URLs (YouTube, Instagram, etc). Downloads are temporary (20 mins). Do NOT download private/copyrighted material without permission.",
-    keywords: ["video", "download video", "youtube", "instagram", "mp4", "extract video", "save video", "yt-dlp", "download youtube"],
+    description: "Extract and download videos or audio from public URLs (YouTube, Instagram, TikTok, Vimeo, Twitter/X, MP4 links, etc). Downloads are temporary (20 mins). Do NOT download private/copyrighted material without permission.",
+    keywords: [
+      "download", "download video", "download audio", "download mp4", "download mp3",
+      "youtube", "youtu.be", "instagram", "tiktok", "vimeo", "twitter video", "x.com video",
+      "save video", "save audio", "extract video", "get video", "grab video",
+      "mp4 link", "video link", "audio from video", "rip audio", "yt-dlp",
+      "download this", "save this video", "get this video", "download reel",
+    ],
     toolIds: ["download_video"],
     memoryCategories: ["preferences"],
   }

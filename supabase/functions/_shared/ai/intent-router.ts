@@ -35,6 +35,22 @@ const CASUAL_PATTERNS = [
   /^[\s!?.]{0,5}$/,  // Empty or just punctuation
 ];
 
+// Video URL patterns — auto-trigger video capability when pasted
+const VIDEO_URL_PATTERNS = [
+  /youtube\.com\/watch/i,
+  /youtu\.be\//i,
+  /youtube\.com\/shorts/i,
+  /instagram\.com\/(p|reel|tv)\//i,
+  /\.mp4(\?|$)/i,
+  /\.webm(\?|$)/i,
+  /\.m3u8(\?|$)/i,
+  /twitter\.com\/.*\/status/i,
+  /x\.com\/.*\/status/i,
+  /tiktok\.com\/@.*\/video/i,
+  /vimeo\.com\/\d+/i,
+  /dailymotion\.com\/video/i,
+];
+
 // Known client-side tools (executed on frontend, not server-side)
 const CLIENT_SIDE_TOOLS = ["write_local_files", "run_terminal_command", "read_local_files", "list_local_files"];
 
@@ -142,6 +158,12 @@ export function routeIntent(
   if (hasImage) {
     const imageCap = CAPABILITIES.find(c => c.id === "image");
     if (imageCap) matchedCapabilities.push(imageCap);
+  }
+
+  // ── Video URL auto-detection: trigger video capability when URL is pasted ──────
+  if (VIDEO_URL_PATTERNS.some(p => p.test(message))) {
+    const videoCap = CAPABILITIES.find(c => c.id === "video");
+    if (videoCap && !matchedCapabilities.includes(videoCap)) matchedCapabilities.push(videoCap);
   }
 
   // ── Keyword matching across all capabilities ─────────────────────────────────
