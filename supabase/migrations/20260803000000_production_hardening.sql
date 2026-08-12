@@ -43,14 +43,14 @@ CREATE INDEX IF NOT EXISTS idx_user_subscriptions_status
   ON user_subscriptions (status);
 
 -- ─────────────────────────────────────────────────────────────
--- 4. Critical Indexes — api_request_logs
+-- 4. Critical Indexes — ai_router_logs
 --    Written on every AI request; currently no index
 -- ─────────────────────────────────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_api_request_logs_user_id
-  ON api_request_logs (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_router_logs_user_id
+  ON ai_router_logs (user_id, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_api_request_logs_created_at
-  ON api_request_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_router_logs_created_at
+  ON ai_router_logs (created_at DESC);
 
 -- ─────────────────────────────────────────────────────────────
 -- 5. Indexes — email_logs
@@ -76,19 +76,19 @@ CREATE INDEX IF NOT EXISTS idx_gmail_tokens_user_id
   ON gmail_tokens (user_id);
 
 -- ─────────────────────────────────────────────────────────────
--- 8. RLS — api_request_logs (was missing entirely)
+-- 8. RLS — ai_router_logs (was missing entirely)
 --    Users should only see their own logs; admin sees all.
 -- ─────────────────────────────────────────────────────────────
-ALTER TABLE api_request_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_router_logs ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "api_request_logs_user_own" ON api_request_logs;
-CREATE POLICY "api_request_logs_user_own"
-  ON api_request_logs FOR SELECT
+DROP POLICY IF EXISTS "ai_router_logs_user_own" ON ai_router_logs;
+CREATE POLICY "ai_router_logs_user_own"
+  ON ai_router_logs FOR SELECT
   USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "api_request_logs_service_insert" ON api_request_logs;
-CREATE POLICY "api_request_logs_service_insert"
-  ON api_request_logs FOR INSERT
+DROP POLICY IF EXISTS "ai_router_logs_service_insert" ON ai_router_logs;
+CREATE POLICY "ai_router_logs_service_insert"
+  ON ai_router_logs FOR INSERT
   WITH CHECK (true); -- Service role inserts; users cannot write
 
 -- ─────────────────────────────────────────────────────────────
@@ -136,5 +136,5 @@ END $$;
 -- ─────────────────────────────────────────────────────────────
 ANALYZE user_memory_longterm;
 ANALYZE user_subscriptions;
-ANALYZE api_request_logs;
+ANALYZE ai_router_logs;
 ANALYZE user_ai_usage;
