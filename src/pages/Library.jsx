@@ -10,7 +10,6 @@ import {
 import { supabase } from '../services/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { syncGoogleDrive, connectGoogleDrive } from '../services/gdriveSyncEngine';
-import { syncDropbox, connectDropbox } from '../services/dropboxSyncEngine';
 import { fetchGoogleEmails } from '../services/gmailSyncEngine';
 import { fetchGoogleCalendarEvents } from '../services/gcalendarSyncEngine';
 import { summarizeDocument, performOCR } from '../services/libraryAIService';
@@ -260,11 +259,7 @@ function ImageCard({ item, onClick, onPreview, onDownload, onVisit }) {
           <Cloud size={10} /> Drive
         </div>
       )}
-      {item.source === 'dropbox' && (
-        <div className="lib-card-badge" style={{ background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.35)', color: '#60a5fa' }}>
-          <Cloud size={10} /> Dropbox
-        </div>
-      )}
+
     </div>
   );
 }
@@ -320,11 +315,7 @@ function FileCard({ item, onPreview, onDownload, onVisit, onSummarize, onOCR }) 
           <Cloud size={10} /> Drive
         </div>
       )}
-      {item.source === 'dropbox' && (
-        <div className="lib-card-badge" style={{ background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.35)', color: '#60a5fa' }}>
-          <Cloud size={10} /> Dropbox
-        </div>
-      )}
+
     </div>
   );
 }
@@ -402,7 +393,7 @@ export default function Library({ session, onBack, switchChat }) {
   // Raw items
   const [allItems, setAllItems] = useState([]);
 
-  // ── Trigger Storage Services Sync (Google Drive & Dropbox) ─────────────────
+  // ── Trigger Storage Services Sync (Google Drive) ─────────────────
   const handleSyncDrive = async () => {
     if (!session?.user?.id) return;
     const userId = session.user.id;
@@ -432,12 +423,7 @@ export default function Library({ session, onBack, switchChat }) {
         console.warn('Google Mail/Calendar sync error:', e);
       }
 
-      // 3. Sync Dropbox
-      try {
-        await syncDropbox(session.user.id);
-      } catch (dbErr) {
-        console.warn('Dropbox background sync error:', dbErr);
-      }
+
 
       setSyncNotice('Cloud services synced.');
       await fetchLibraryData();
@@ -761,7 +747,7 @@ export default function Library({ session, onBack, switchChat }) {
     const isAiItem = it.source === 'ai' || it.source === 'ai_generated' || it.category === 'ai_generated' || it.category === 'action';
     if (topTab === 'ceova') return it.source !== 'gdrive' && it.source !== 'dropbox' && it.source !== 'gmail' && it.source !== 'gcalendar' && !isAiItem;
     if (topTab === 'gdrive') return it.source === 'gdrive';
-    if (topTab === 'dropbox') return it.source === 'dropbox';
+
     if (topTab === 'gmail') return it.source === 'gmail';
     if (topTab === 'gcalendar') return it.source === 'gcalendar';
     if (topTab === 'ai') return isAiItem;
@@ -860,9 +846,7 @@ export default function Library({ session, onBack, switchChat }) {
   const actions = filtered.filter(i => i.kind === 'action');
 
   // Top Tab Counts
-  const countCEOVA   = allItems.filter(i => i.source !== 'gdrive' && i.source !== 'dropbox' && i.source !== 'gmail' && i.source !== 'gcalendar').length;
-  const countGDrive  = allItems.filter(i => i.source === 'gdrive').length;
-  const countDropbox = allItems.filter(i => i.source === 'dropbox').length;
+  const countCEOVA   = allItems.filter(i => i.source !== 'gdrive' && i.source !== 'gmail' && i.source !== 'gcalendar').length;
   const countGmail   = allItems.filter(i => i.source === 'gmail').length;
   const countGCal    = allItems.filter(i => i.source === 'gcalendar').length;
   const countAI      = allItems.filter(i => i.source === 'ai').length;
@@ -870,7 +854,7 @@ export default function Library({ session, onBack, switchChat }) {
   const TOP_TABS = [
     { id: 'ceova',     label: 'CEOVA Drive',     count: countCEOVA },
     { id: 'gdrive',    label: 'Google Drive',    count: countGDrive },
-    { id: 'dropbox',   label: 'Dropbox',         count: countDropbox },
+
     { id: 'gmail',     label: 'Google Mail',     count: countGmail },
     { id: 'gcalendar', label: 'Google Calendar', count: countGCal },
     { id: 'ai',        label: 'AI Generated',    count: countAI },

@@ -8,7 +8,6 @@ import { getGoogleAccessToken } from './gdriveSyncEngine';
  * Natural Language Search, and RAG Chat over user library files.
  */
 
-import { fetchDropboxFileContent } from './dropboxSyncEngine';
 
 /**
  * Ephemeral On-Demand Storage Provider File Content Reader
@@ -17,9 +16,6 @@ import { fetchDropboxFileContent } from './dropboxSyncEngine';
 export async function fetchDriveFileContent(userId, driveId, mimeType = '', storageSource = 'gdrive') {
   if (!userId || !driveId) return null;
 
-  if (storageSource === 'dropbox') {
-    return await fetchDropboxFileContent(userId, driveId, mimeType);
-  }
 
   const accessToken = await getGoogleAccessToken(userId);
   if (!accessToken) {

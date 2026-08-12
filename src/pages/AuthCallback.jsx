@@ -50,13 +50,8 @@ export default function AuthCallback() {
           const providerName = storedProvider || session.user.app_metadata?.provider || "google";
           if (storedProvider) localStorage.removeItem('oauth_provider');
 
-          const isDropbox = providerName === 'dropbox';
-          const tableName = isDropbox ? "user_dropbox_tokens" : "user_google_tokens";
-          if (isDropbox) {
-            localStorage.setItem('dropbox_provider_token', provider_token);
-          } else {
-            localStorage.setItem('google_provider_token', provider_token);
-          }
+          const tableName = "user_google_tokens";
+          localStorage.setItem('google_provider_token', provider_token);
 
           const { error: dbError } = await supabase
             .from(tableName)

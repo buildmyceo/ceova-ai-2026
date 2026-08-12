@@ -1,5 +1,4 @@
 import { syncGoogleDrive, connectGoogleDrive, getGoogleAccessToken } from './gdriveSyncEngine';
-import { syncDropbox, connectDropbox, getDropboxAccessToken, fetchDropboxFileContent, getDropboxTemporaryLink, categorizeDropboxMimeType } from './dropboxSyncEngine';
 
 /**
  * CEOVA Shared Storage Manager Architecture
@@ -22,16 +21,7 @@ class StorageManager {
         sync: syncGoogleDrive,
         getToken: getGoogleAccessToken,
       },
-      dropbox: {
-        id: 'dropbox',
-        name: 'Dropbox',
-        connect: connectDropbox,
-        sync: syncDropbox,
-        getToken: getDropboxAccessToken,
-        fetchContent: fetchDropboxFileContent,
-        getTempLink: getDropboxTemporaryLink,
-        categorize: categorizeDropboxMimeType
-      }
+
     };
   }
 
@@ -82,10 +72,7 @@ class StorageManager {
     if (!file) return null;
     const source = file.storage_source || 'gdrive';
 
-    if (source === 'dropbox') {
-      const pathOrId = file.drive_id || file.id;
-      return await fetchDropboxFileContent(userId, pathOrId, file.mime_type);
-    }
+
 
     // Default to Google Drive
     const { fetchDriveFileContent } = await import('./libraryAIService');
@@ -99,10 +86,7 @@ class StorageManager {
     if (!file) return null;
     const source = file.storage_source || 'gdrive';
 
-    if (source === 'dropbox') {
-      const tempLink = await getDropboxTemporaryLink(userId, file.drive_id || file.id);
-      if (tempLink) return tempLink;
-    }
+
 
     return file.web_view_link || file.url || null;
   }
