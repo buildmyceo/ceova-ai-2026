@@ -43,6 +43,10 @@
       "destination": "/api/google.js?action=gmail_send"
     },
     {
+      "source": "/api/video_extractor",
+      "destination": "/api/video_extractor.py"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.py"
     },
