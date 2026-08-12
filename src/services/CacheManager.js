@@ -85,6 +85,14 @@ class CacheManager {
         await tx.done;
     }
 
+    async clearChats() {
+        const db = await this.dbPromise;
+        const tx = db.transaction(['chats', 'messages'], 'readwrite');
+        await tx.objectStore('chats').clear();
+        await tx.objectStore('messages').clear();
+        await tx.done;
+    }
+
     // --- Messages ---
     async getMessages(chatId) {
         const db = await this.dbPromise;

@@ -908,6 +908,9 @@ export default function Home({ session }) {
         setChats(prev => ({ ...prev, [idToUse]: prev[idToUse] || [] }));
         if (!skipSwitch) {
             switchChat(idToUse);
+            if (!specificId || typeof specificId !== 'string') {
+                localStorage.removeItem(CURRENT_CHAT_KEY);
+            }
         }
     };
 
@@ -968,6 +971,8 @@ export default function Home({ session }) {
         try {
             const { error: chatErr } = await supabase.rpc('force_bulk_delete_chats');
             if (chatErr) throw chatErr;
+            
+            try { await cacheManager.clearChats(); } catch(e) {}
             
             setChats({});
             setChatMetadata({});
