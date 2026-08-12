@@ -6,19 +6,24 @@ import yt_dlp
 import requests
 
 def verify_supabase_jwt(token):
-    # In a full production app, verify the JWT properly.
-    # For now, we will use the Supabase REST API to get the user context.
-    supabase_url = os.environ.get("SUPABASE_DB_URL", "").replace("postgresql://", "https://").split(":")[0] 
-    if not supabase_url:
-        supabase_url = os.environ.get("VITE_SUPABASE_URL", "")
-    
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "apikey": os.environ.get("VITE_SUPABASE_ANON_KEY", "")
-    }
-    resp = requests.get(f"{supabase_url}/auth/v1/user", headers=headers)
-    if resp.status_code == 200:
-        return resp.json().get("id")
+    try:
+        supabase_url = os.environ.get("SUPABASE_DB_URL", "").replace("postgresql://", "https://").split(":")[0] 
+        if not supabase_url:
+            supabase_url = os.environ.get("VITE_SUPABASE_URL", "")
+        
+        if not supabase_url:
+            print("Warning: Missing Supabase URL in environment variables")
+            return None
+            
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "apikey": os.environ.get("VITE_SUPABASE_ANON_KEY", "")
+        }
+        resp = requests.get(f"{supabase_url}/auth/v1/user", headers=headers, timeout=5)
+        if resp.status_code == 200:
+            return resp.json().get("id")
+    except Exception as e:
+        print(f"JWT Verification failed: {e}")
     return None
 
 class handler(BaseHTTPRequestHandler):
