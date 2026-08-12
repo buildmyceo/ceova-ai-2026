@@ -255,13 +255,6 @@ export default function InputBox({
                                 <Plus size={18} />
                             </button>
 
-                            <button
-                                className="toolbar-btn"
-                                onClick={() => fileInputRef.current?.click()}
-                                title="Choose File"
-                            >
-                                <Paperclip size={18} />
-                            </button>
 
                                 {isPlusOpen && !isToolsSubmenuOpen && !isConnectorsSubmenuOpen && (
                                 <div className="plus-dropdown-menu">
@@ -277,9 +270,7 @@ export default function InputBox({
                                         }}>
                                             <Plus size={18} /> Upload files
                                         </button>
-                                    <button onClick={handleConnectFolder}>
-                                        <Folder size={18} /> {localDirectoryHandle ? "Change Workspace" : "Connect Workspace"}
-                                    </button>
+
                                 </div>
                             )}
                             {isPlusOpen && isToolsSubmenuOpen && (
