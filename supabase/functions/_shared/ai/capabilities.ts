@@ -85,7 +85,7 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "video",
-    description: "Extract and download videos or audio from public URLs (YouTube, Instagram, TikTok, Vimeo, Twitter/X, MP4 links, etc). Downloads are temporary (20 mins). Do NOT download private/copyrighted material without permission.",
+    description: "Prepare and download direct video files (.mp4, .webm, .mov) from public URLs. Files are saved temporarily (20 mins). NOTE: YouTube, Instagram, and TikTok downloads are NOT supported in the web version and require the CEOVA Desktop App.",
     keywords: [
       "download", "download video", "download audio", "download mp4", "download mp3",
       "youtube", "youtu.be", "instagram", "tiktok", "vimeo", "twitter video", "x.com video",
@@ -93,7 +93,7 @@ export const CAPABILITIES: Capability[] = [
       "mp4 link", "video link", "audio from video", "rip audio", "yt-dlp",
       "download this", "save this video", "get this video", "download reel",
     ],
-    toolIds: ["download_video"],
+    toolIds: ["prepare_video_download"],
     memoryCategories: ["preferences"],
   }
 ];
