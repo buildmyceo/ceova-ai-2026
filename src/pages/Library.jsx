@@ -71,6 +71,37 @@ function Lightbox({ src, caption, onClose }) {
   );
 }
 
+// ─── Countdown Badge ──────────────────────────────────────────────────────────
+function CountdownBadge({ expiresAt }) {
+  const [timeLeft, setTimeLeft] = useState('');
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    const update = () => {
+      const diff = new Date(expiresAt).getTime() - Date.now();
+      if (diff <= 0) {
+        setTimeLeft('Expired');
+      } else {
+        const m = Math.floor(diff / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        setTimeLeft(`${m}m ${s}s`);
+      }
+    };
+    update();
+    const int = setInterval(update, 1000);
+    return () => clearInterval(int);
+  }, [expiresAt]);
+
+  if (!timeLeft) return null;
+  const isExpired = timeLeft === 'Expired';
+
+  return (
+    <div className="lib-card-badge" style={{ background: isExpired ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)', border: `1px solid ${isExpired ? 'rgba(239, 68, 68, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`, color: isExpired ? '#fca5a5' : '#fcd34d' }}>
+      ⏱ {timeLeft}
+    </div>
+  );
+}
+
 // ─── Event Card (Google Calendar) ─────────────────────────────────────────────
 function CalendarCard({ item, onPreview, onVisit, onSummarize }) {
   return (
@@ -315,7 +346,9 @@ function FileCard({ item, onPreview, onDownload, onVisit, onSummarize, onOCR }) 
           <Cloud size={10} /> Drive
         </div>
       )}
-
+      {item.is_temporary && (
+        <CountdownBadge expiresAt={item.expires_at} />
+      )}
     </div>
   );
 }
@@ -620,6 +653,8 @@ export default function Library({ session, onBack, switchChat }) {
           source: isAiSource ? 'ai' : (df.storage_source || 'gdrive'),
           summary: df.summary,
           ocr_text: df.ocr_text,
+          is_temporary: df.is_temporary,
+          expires_at: df.expires_at,
         });
       });
 

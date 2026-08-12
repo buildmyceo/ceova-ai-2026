@@ -83,6 +83,13 @@ export const CAPABILITIES: Capability[] = [
     toolIds: ["qr_barcode", "invoice_generator", "color_toolkit", "password_hash"],
     memoryCategories: [],
   },
+  {
+    id: "video",
+    description: "Extract and download videos from public URLs (YouTube, Instagram, etc). Downloads are temporary (20 mins). Do NOT download private/copyrighted material without permission.",
+    keywords: ["video", "download video", "youtube", "instagram", "mp4", "extract video", "save video", "yt-dlp", "download youtube"],
+    toolIds: ["download_video"],
+    memoryCategories: ["preferences"],
+  }
 ];
 
 /**
