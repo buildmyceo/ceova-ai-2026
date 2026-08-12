@@ -61,68 +61,116 @@ class handler(BaseHTTPRequestHandler):
             self.send_error_response(400, "Invalid action")
 
     def extract_metadata(self, url):
+        # Try yt-dlp first, fall back to YouTube oEmbed for YouTube URLs
+        try:
+            self._extract_with_ytdlp(url)
+        except Exception as e:
+            error_str = str(e)
+            # YouTube bot detection — use oEmbed fallback
+            if 'youtube' in url.lower() or 'youtu.be' in url.lower():
+                self._youtube_oembed_fallback(url, error_str)
+            else:
+                self.send_error_response(500, error_str)
+
+    def _youtube_oembed_fallback(self, url, original_error):
+        """Use YouTube oEmbed API to get basic metadata without bot detection."""
+        try:
+            import urllib.request
+            oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(url)}&format=json"
+            req = urllib.request.Request(oembed_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                oembed = json.loads(resp.read().decode())
+
+            # Extract video ID for thumbnail
+            video_id = None
+            if 'youtu.be/' in url:
+                video_id = url.split('youtu.be/')[1].split('?')[0]
+            elif 'v=' in url:
+                video_id = url.split('v=')[1].split('&')[0]
+
+            thumbnail = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg" if video_id else oembed.get('thumbnail_url')
+
+            # Return standard quality list for YouTube (yt-dlp will handle actual format selection)
+            qualities = [
+                {'id': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]', 'label': '1080p', 'ext': 'mp4'},
+                {'id': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]', 'label': '720p', 'ext': 'mp4'},
+                {'id': 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]', 'label': '480p', 'ext': 'mp4'},
+                {'id': 'bestaudio/best', 'label': 'Audio Only', 'ext': 'm4a'},
+            ]
+
+            response_data = {
+                "success": True,
+                "title": oembed.get('title', 'YouTube Video'),
+                "thumbnail": thumbnail,
+                "duration": None,
+                "provider": "YouTube",
+                "qualities": qualities,
+                "note": "Quality list is estimated (YouTube bot protection active)"
+            }
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode())
+
+        except Exception as e2:
+            self.send_error_response(500, f"yt-dlp: {original_error} | oEmbed: {str(e2)}")
+
+    def _extract_with_ytdlp(self, url):
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
             'skip_download': True,
             'socket_timeout': 15,
         }
-        
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                
-                formats = info.get('formats', [])
-                
-                # Collect video qualities
-                seen_heights = set()
-                video_qualities = []
-                audio_quality = None
-                
-                for f in sorted(formats, key=lambda x: x.get('height') or 0, reverse=True):
-                    h = f.get('height')
-                    has_video = f.get('vcodec', 'none') != 'none'
-                    has_audio = f.get('acodec', 'none') != 'none'
-                    
-                    # Best audio-only track
-                    if not has_video and has_audio and audio_quality is None:
-                        audio_quality = {'id': f['format_id'], 'label': 'Audio Only', 'ext': f.get('ext', 'm4a')}
-                    
-                    # Video qualities: 1080p, 720p, 480p, 360p
-                    if has_video and h in [1080, 720, 480, 360] and h not in seen_heights:
-                        seen_heights.add(h)
-                        video_qualities.append({'id': f['format_id'], 'label': f'{h}p', 'ext': f.get('ext', 'mp4')})
-                
-                # Fallback: if no standard heights found, add best available
-                if not video_qualities and formats:
-                    best = next((f for f in reversed(formats) if f.get('vcodec', 'none') != 'none'), None)
-                    if best:
-                        h = best.get('height') or 0
-                        video_qualities.append({'id': best['format_id'], 'label': f'{h}p' if h else 'Best', 'ext': best.get('ext', 'mp4')})
-                
-                # Always add audio option
-                if audio_quality:
-                    video_qualities.append(audio_quality)
-                elif not audio_quality:
-                    video_qualities.append({'id': 'bestaudio', 'label': 'Audio Only', 'ext': 'm4a'})
-                
-                response_data = {
-                    "success": True,
-                    "title": info.get('title', 'Unknown Title'),
-                    "thumbnail": info.get('thumbnail'),
-                    "duration": info.get('duration'),
-                    "provider": info.get('extractor_key', 'Video'),
-                    "qualities": video_qualities
-                }
-                
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(json.dumps(response_data).encode())
-                
-        except Exception as e:
-            self.send_error_response(500, str(e))
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+            formats = info.get('formats', [])
+
+            seen_heights = set()
+            video_qualities = []
+            audio_quality = None
+
+            for f in sorted(formats, key=lambda x: x.get('height') or 0, reverse=True):
+                h = f.get('height')
+                has_video = f.get('vcodec', 'none') != 'none'
+                has_audio = f.get('acodec', 'none') != 'none'
+
+                if not has_video and has_audio and audio_quality is None:
+                    audio_quality = {'id': f['format_id'], 'label': 'Audio Only', 'ext': f.get('ext', 'm4a')}
+
+                if has_video and h in [1080, 720, 480, 360] and h not in seen_heights:
+                    seen_heights.add(h)
+                    video_qualities.append({'id': f['format_id'], 'label': f'{h}p', 'ext': f.get('ext', 'mp4')})
+
+            if not video_qualities and formats:
+                best = next((f for f in reversed(formats) if f.get('vcodec', 'none') != 'none'), None)
+                if best:
+                    h = best.get('height') or 0
+                    video_qualities.append({'id': best['format_id'], 'label': f'{h}p' if h else 'Best', 'ext': best.get('ext', 'mp4')})
+
+            if audio_quality:
+                video_qualities.append(audio_quality)
+            else:
+                video_qualities.append({'id': 'bestaudio', 'label': 'Audio Only', 'ext': 'm4a'})
+
+            response_data = {
+                "success": True,
+                "title": info.get('title', 'Unknown Title'),
+                "thumbnail": info.get('thumbnail'),
+                "duration": info.get('duration'),
+                "provider": info.get('extractor_key', 'Video'),
+                "qualities": video_qualities
+            }
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode())
 
     def download_video(self, url, query):
         auth_header = self.headers.get('Authorization')
