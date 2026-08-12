@@ -137,12 +137,13 @@ const CLIENT_TOOL_SCHEMAS: Record<string, any> = {
 export function routeIntent(
   message: string,
   hasImage: boolean = false,
+  hasDocument: boolean = false,
   hasLocalFolder: boolean = true
 ): IntentRouterResult {
   const lower = message.toLowerCase().trim();
 
   // ── Casual chat check — load nothing ────────────────────────────────────────
-  if (!hasImage && CASUAL_PATTERNS.some(p => p.test(lower))) {
+  if (!hasImage && !hasDocument && CASUAL_PATTERNS.some(p => p.test(lower))) {
     return {
       toolIds: [],
       toolSchemas: [],
@@ -158,6 +159,12 @@ export function routeIntent(
   if (hasImage) {
     const imageCap = CAPABILITIES.find(c => c.id === "image");
     if (imageCap) matchedCapabilities.push(imageCap);
+  }
+
+  // ── Document always needs document tools ───────────────────────────────────
+  if (hasDocument) {
+    const pdfCap = CAPABILITIES.find(c => c.id === "pdf");
+    if (pdfCap && !matchedCapabilities.includes(pdfCap)) matchedCapabilities.push(pdfCap);
   }
 
   // ── Video URL auto-detection: trigger video capability when URL is pasted ──────
