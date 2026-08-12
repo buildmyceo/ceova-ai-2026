@@ -82,7 +82,14 @@ export default function ClientVideoDownloaderWidget({ meta }) {
 
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text.startsWith('<') ? 'Download service unavailable' : (JSON.parse(text)?.error || 'Download failed'));
+        let errMsg = 'Download failed';
+        try {
+          const parsed = JSON.parse(text);
+          errMsg = parsed.error || errMsg;
+        } catch (err) {
+          errMsg = text.startsWith('<') ? 'Download service unavailable' : text.slice(0, 100);
+        }
+        throw new Error(errMsg);
       }
 
       const data = await res.json();

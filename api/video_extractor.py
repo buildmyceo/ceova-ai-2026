@@ -185,6 +185,11 @@ class handler(BaseHTTPRequestHandler):
             self.send_error_response(401, "Unauthorized")
             return
             
+        # YouTube downloads are disabled on Vercel Hobby due to 10s timeout & bot detection
+        if 'youtube.com' in url.lower() or 'youtu.be' in url.lower():
+            self.send_error_response(400, "YouTube downloads are temporarily disabled. Cloud servers are blocked by YouTube bot protection, and large videos exceed the 10-second serverless timeout limit. Try Instagram or TikTok videos instead.")
+            return
+
         format_id = query.get('format', ['best'])[0]
         output_format = query.get('output_format', ['mp4'])[0].lower()  # 'mp4' or 'mp3'
         is_audio_only = output_format == 'mp3'
