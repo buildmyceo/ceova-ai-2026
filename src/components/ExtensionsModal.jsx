@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
     X, ArrowLeft, Scissors, Eye, Minimize2, RefreshCw, Scan, FileText, 
     Key, Palette, Calculator, Receipt, Film, Link, Zap, Calendar, HardDrive, Mail,
-    Check, LogIn, CircleDashed, ExternalLink, Sparkles, ShieldCheck, Trash2
+    Check, LogIn, CircleDashed, ExternalLink, Sparkles, ShieldCheck, Trash2, Video
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { connectGoogleDrive } from '../services/gdriveSyncEngine';
@@ -210,6 +210,12 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                     title="Media Converter" 
                                     desc="Convert audio/video and compress media." 
                                     onClick={() => handleToolSelect('/media_converter')} 
+                                />
+                                <ExtensionCard 
+                                    icon={<Video size={22} color="#ef4444" />} 
+                                    title="Video Downloader" 
+                                    desc="Download temporary videos from URLs." 
+                                    onClick={() => handleToolSelect('/download_video')} 
                                 />
                                 <ExtensionCard 
                                     icon={<Minimize2 size={22} color="#818cf8" />} 
