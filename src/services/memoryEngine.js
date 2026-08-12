@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClient'; // Adjust path if needed
+import { supabase } from './supabase';
 
 /**
  * Pluggable Embedding Provider Interface
@@ -22,7 +22,7 @@ export class EmbeddingProvider {
 export class MemoryEngine {
   constructor() {
     this.embeddingProvider = new EmbeddingProvider('none');
-    
+
     // Layer 1: Session Memory (Client-side only)
     this.sessionMemory = {
       messages: [],
@@ -34,7 +34,7 @@ export class MemoryEngine {
   // ==========================================
   // Layer 1: Session Memory Methods
   // ==========================================
-  
+
   addSessionMessage(msg) {
     this.sessionMemory.messages.push(msg);
   }
@@ -69,29 +69,23 @@ export class MemoryEngine {
 
   async saveMemory(category, title, value, confidence = 1.0) {
     const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) throw new Error("Unauthorized");
+    if (!user?.user) throw new Error('Unauthorized');
 
     // Check memory quota
     const { data: usageData, error: usageError } = await supabase.rpc('get_usage_and_limits', { p_user_id: user.user.id });
     if (!usageError && usageData) {
       if (usageData.usage.memory_used >= usageData.limits.memory_limit) {
-        const error = new Error("Memory limit reached. Delete old memories or upgrade to continue saving new ones.");
-        error.code = "QuotaExceeded";
+        const error = new Error('Memory limit reached. Delete old memories or upgrade to continue saving new ones.');
+        error.code = 'QuotaExceeded';
         throw error;
       }
     }
 
     const { data, error } = await supabase
       .from('user_memory_longterm')
-      .insert([{
-        user_id: user.user.id,
-        category,
-        title,
-        value,
-        confidence
-      }])
+      .insert([{ user_id: user.user.id, category, title, value, confidence }])
       .select();
-      
+
     if (error) throw error;
     return data;
   }
@@ -102,7 +96,7 @@ export class MemoryEngine {
       .update({ value, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select();
-      
+
     if (error) throw error;
     return data;
   }
@@ -112,7 +106,7 @@ export class MemoryEngine {
       .from('user_memory_longterm')
       .delete()
       .eq('id', id);
-      
+
     if (error) throw error;
     return true;
   }
@@ -136,9 +130,54 @@ export class MemoryEngine {
       .from('user_memory_longterm')
       .select('*')
       .order('created_at', { ascending: false });
-      
+
     if (error) throw error;
     return data;
+  }
+
+  // ==========================================
+  // Layer 2b: Memory Summary Methods (ChatGPT-style)
+  // ==========================================
+
+  /**
+   * Fetch AI-generated category summaries from memory_summaries table.
+   * Returns an array sorted by updated_at descending.
+   */
+  async getMemorySummary() {
+    const { data: user } = await supabase.auth.getUser();
+    if (!user?.user) return [];
+
+    const { data, error } = await supabase
+      .from('memory_summaries')
+      .select('category, summary, updated_at')
+      .eq('user_id', user.user.id)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  /**
+   * Manually trigger summary regeneration by calling the edge function.
+   * Fire-and-forget — resolves immediately; the function runs async.
+   */
+  async triggerSummaryGeneration() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      fetch(`${supabaseUrl}/functions/v1/generate-memory-summary`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      }).catch(e => console.warn('[memoryEngine] Summary generation trigger failed:', e.message));
+    } catch (e) {
+      console.warn('[memoryEngine] triggerSummaryGeneration error:', e.message);
+    }
   }
 
   // ==========================================
@@ -147,20 +186,15 @@ export class MemoryEngine {
 
   async addKnowledge(content, metadata = {}) {
     const { data: user } = await supabase.auth.getUser();
-    if (!user?.user) throw new Error("Unauthorized");
+    if (!user?.user) throw new Error('Unauthorized');
 
     const embedding = await this.embeddingProvider.generateEmbedding(content);
 
     const { data, error } = await supabase
       .from('knowledge_memory')
-      .insert([{
-        user_id: user.user.id,
-        content,
-        metadata,
-        embedding // Will be null for V1
-      }])
+      .insert([{ user_id: user.user.id, content, metadata, embedding }])
       .select();
-      
+
     if (error) throw error;
     return data;
   }
@@ -170,7 +204,7 @@ export class MemoryEngine {
       .from('knowledge_memory')
       .delete()
       .eq('id', id);
-      
+
     if (error) throw error;
     return true;
   }

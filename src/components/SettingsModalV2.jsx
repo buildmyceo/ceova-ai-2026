@@ -31,11 +31,14 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
     const [prefsSaved, setPrefsSaved] = useState(false);
 
     const [memories, setMemories] = useState([]);
+    const [summarySections, setSummarySections] = useState([]);  // ChatGPT-style summaries
+    const [summaryUpdatedAt, setSummaryUpdatedAt] = useState(null);
     const [editingMemoryId, setEditingMemoryId] = useState(null);
     const [editContent, setEditContent] = useState("");
     const [newMemoryInput, setNewMemoryInput] = useState("");
     const [isLoadingMemories, setIsLoadingMemories] = useState(false);
     const [isAddingMemory, setIsAddingMemory] = useState(false);
+    const [showRawMemories, setShowRawMemories] = useState(false); // toggle between summary and raw list
     const navigate = useNavigate();
     const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
     const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
@@ -192,16 +195,28 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
     const fetchMemories = async () => {
         setIsLoadingMemories(true);
         try {
+            // Fetch raw memories
             const { data, error } = await supabase
                 .from('user_memory_longterm')
                 .select('*')
                 .eq('user_id', userId)
                 .order('created_at', { ascending: false });
-            
             if (error) throw error;
             setMemories(data || []);
-        } catch (e) { 
-            console.error("Memory Fetch Error:", e); 
+
+            // Fetch AI-generated summaries
+            const { data: summaryData } = await supabase
+                .from('memory_summaries')
+                .select('category, summary, updated_at')
+                .eq('user_id', userId)
+                .order('updated_at', { ascending: false });
+
+            setSummarySections(summaryData || []);
+            if (summaryData && summaryData.length > 0) {
+                setSummaryUpdatedAt(summaryData[0].updated_at);
+            }
+        } catch (e) {
+            console.error('Memory Fetch Error:', e);
         } finally {
             setIsLoadingMemories(false);
         }
@@ -250,7 +265,18 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                 .eq('user_id', userId);
             if (error) throw error;
             fetchMemories();
-        } catch (e) { console.error("Delete Memory Error:", e); }
+        } catch (e) { console.error('Delete Memory Error:', e); }
+    };
+
+    const handleClearAllMemories = async () => {
+        if (!window.confirm('This will delete ALL your saved memories. Ceova will start fresh. Continue?')) return;
+        try {
+            await supabase.from('user_memory_longterm').delete().eq('user_id', userId);
+            await supabase.from('memory_summaries').delete().eq('user_id', userId);
+            setMemories([]);
+            setSummarySections([]);
+            setSummaryUpdatedAt(null);
+        } catch (e) { console.error('Clear All Error:', e); }
     };
 
     const handleUpdateMemory = async (id) => {
@@ -261,10 +287,9 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                 .eq('id', id)
                 .eq('user_id', userId);
             if (error) throw error;
-            
             setEditingMemoryId(null);
             fetchMemories();
-        } catch (e) { console.error("Update Memory Error:", e); }
+        } catch (e) { console.error('Update Memory Error:', e); }
     };
 
     const handleExport = async () => {
@@ -634,14 +659,117 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
 
                             {view === 'memories' && (
                                 <div className="memories-view">
-                                    <div className="settings-section">
-                                        {isLoadingMemories ? (
-                                            <div className="empty-memories">
-                                                <CircleDashed size={32} className="spinning" />
-                                                <p>Fetching memories...</p>
+                                    {isLoadingMemories ? (
+                                        <div className="empty-memories">
+                                            <CircleDashed size={32} className="spinning" />
+                                            <p>Fetching memories...</p>
+                                        </div>
+                                    ) : !showRawMemories ? (
+                                        // ── ChatGPT-style Summary View ────────────────────────────────
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                                            {/* Header */}
+                                            <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                                                    <div>
+                                                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f3f4f6' }}>
+                                                            Memory Summary
+                                                        </h3>
+                                                        <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#6b7280' }}>
+                                                            {summaryUpdatedAt
+                                                                ? `Updated ${new Date(summaryUpdatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                                                                : 'Updated automatically after each conversation'}
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        onClick={handleClearAllMemories}
+                                                        title="Clear all memories"
+                                                        style={{
+                                                            background: 'none', border: 'none', cursor: 'pointer',
+                                                            color: '#6b7280', padding: '4px', borderRadius: '6px',
+                                                            display: 'flex', alignItems: 'center', gap: '4px',
+                                                            fontSize: '0.72rem', transition: 'color 0.15s'
+                                                        }}
+                                                        onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                                                        onMouseLeave={e => e.currentTarget.style.color = '#6b7280'}
+                                                    >
+                                                        <Trash2 size={13} /> Clear all
+                                                    </button>
+                                                </div>
                                             </div>
-                                        ) : memories.length > 0 ? (
-                                            memories.map(mem => (
+
+                                            {/* Summary sections */}
+                                            {summarySections.length > 0 ? (
+                                                <div style={{ padding: '4px 0 8px' }}>
+                                                    {summarySections.map(sec => {
+                                                        const LABELS = {
+                                                            overview: 'Overview',
+                                                            current_projects: 'Current Projects',
+                                                            design_preferences: 'Design Preferences',
+                                                            development_tools: 'Development Tools',
+                                                            learning_goals: 'Learning Goals',
+                                                            business_context: 'Business Context',
+                                                        };
+                                                        const label = LABELS[sec.category] || sec.category;
+                                                        return (
+                                                            <div key={sec.category} style={{
+                                                                padding: '14px 20px',
+                                                                borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                                            }}>
+                                                                <p style={{ margin: '0 0 5px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#6b7280' }}>
+                                                                    {label}
+                                                                </p>
+                                                                <p style={{ margin: 0, fontSize: '0.88rem', color: '#d1d5db', lineHeight: 1.6 }}>
+                                                                    {sec.summary}
+                                                                </p>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            ) : memories.length > 0 ? (
+                                                // Summaries not generated yet but raw memories exist
+                                                <div style={{ padding: '24px 20px', textAlign: 'center' }}>
+                                                    <CircleDashed size={28} style={{ color: '#6b7280', marginBottom: '8px' }} />
+                                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#9ca3af' }}>
+                                                        Summary is being generated...
+                                                    </p>
+                                                    <p style={{ margin: '4px 0 0', fontSize: '0.76rem', color: '#6b7280' }}>
+                                                        It will appear here after your next conversation.
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <div className="empty-memories">
+                                                    <div className="empty-icon-stack">
+                                                        <Sparkles size={32} />
+                                                        <Wand2 size={16} className="sparkle-mini" />
+                                                    </div>
+                                                    <p>No memories yet. Chat with Ceova and it will automatically remember important things about you.</p>
+                                                </div>
+                                            )}
+
+                                            {/* Footer toggle to raw list */}
+                                            {memories.length > 0 && (
+                                                <div style={{ padding: '10px 20px', borderTop: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}>
+                                                    <button
+                                                        onClick={() => setShowRawMemories(true)}
+                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60a5fa', fontSize: '0.78rem' }}
+                                                    >
+                                                        View all {memories.length} raw entries →
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        // ── Raw memory card list (legacy) ─────────────────────────────
+                                        <div className="settings-section">
+                                            <div style={{ padding: '10px 20px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <button
+                                                    onClick={() => setShowRawMemories(false)}
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60a5fa', fontSize: '0.78rem' }}
+                                                >
+                                                    ← Back to summary
+                                                </button>
+                                            </div>
+                                            {memories.map(mem => (
                                                 <div key={mem.id} className="memory-item">
                                                     <div className="memory-text" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -654,26 +782,14 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                                         </span>
                                                     </div>
                                                     <div className="memory-actions">
-                                                        <button 
-                                                            className="del-btn" 
-                                                            onClick={() => handleDeleteMemory(mem.id)}
-                                                            title="Delete memory"
-                                                        >
+                                                        <button className="del-btn" onClick={() => handleDeleteMemory(mem.id)} title="Delete memory">
                                                             <Trash2 size={16} />
                                                         </button>
                                                     </div>
                                                 </div>
-                                            ))
-                                        ) : (
-                                            <div className="empty-memories">
-                                                <div className="empty-icon-stack">
-                                                    <Sparkles size={32} />
-                                                    <Wand2 size={16} className="sparkle-mini" />
-                                                </div>
-                                                <p>No long-term memories stored yet.</p>
-                                            </div>
-                                        )}
-                                    </div>
+                                            ))}
+                                        </div>
+                                    )}
                                     <div className="memory-footer-note">
                                         Ceova automatically remembers important details to serve you better.
                                     </div>

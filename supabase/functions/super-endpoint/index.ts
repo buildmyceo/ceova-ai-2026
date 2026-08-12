@@ -8,9 +8,9 @@ import { getCapabilitySummary } from '../_shared/ai/capabilities.ts';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MAX_HISTORY_MESSAGES  = 15;  // Reduced from 20 to cut token usage
-const MAX_HISTORY_COMPLEX   = 20;  // Extended limit for IDE/coding tasks
+const MAX_HISTORY_COMPLEX   = 20;  // Extended limit for coding tasks
 const MAX_MESSAGE_CHARS     = 8000;
-const MAX_MEMORY_ITEMS      = 5;   // Reduced from 30 — relevant categories only
+const MAX_MEMORY_TOKENS     = 1200; // Hard cap on injected memory block
 const CAPABILITY_SUMMARY    = getCapabilitySummary(); // Computed once at startup
 
 
@@ -210,48 +210,70 @@ serve(async (req) => {
                     const intent = routeIntent(message || '', hasImage, has_local_folder);
 
                     // ── Selective memory fetch: only load categories the intent router chose ──
-                    let longTermMemories: any[] = [];
-                    let knowledgeMemories: any[] = [];
-
-                    // Only fetch memories for non-casual messages (saves DB calls + tokens)
+                    // ── Fetch memory summary from memory_summaries table ─────────────────────
+                    let memoryContext = '';
                     if (!intent.isCasualChat) {
                         try {
-                            let memQuery = supabase
-                                .from('user_memory_longterm')
-                                .select('category, title, value')
+                            const { data: summaryRows } = await supabase
+                                .from('memory_summaries')
+                                .select('category, summary')
                                 .eq('user_id', user.id)
-                                .order('created_at', { ascending: false })
-                                .limit(MAX_MEMORY_ITEMS);
+                                .order('updated_at', { ascending: false });
 
-                            // Filter by relevant categories when the router detected them
-                            if (intent.memoryCategories.length > 0) {
-                                memQuery = memQuery.in('category', intent.memoryCategories);
+                            if (summaryRows && summaryRows.length > 0) {
+                                // Category display labels
+                                const LABELS: Record<string, string> = {
+                                    overview: 'Overview',
+                                    current_projects: 'Current Projects',
+                                    design_preferences: 'Design Preferences',
+                                    development_tools: 'Development Tools',
+                                    learning_goals: 'Learning Goals',
+                                    business_context: 'Business Context',
+                                };
+
+                                let summaryBlock = 'USER MEMORY SUMMARY (use only if directly relevant to the question):\n';
+                                let tokenCount = estimateTokens(summaryBlock);
+
+                                for (const row of summaryRows) {
+                                    const label = LABELS[row.category] || row.category;
+                                    const line = `${label}: ${row.summary}\n`;
+                                    const lineTokens = estimateTokens(line);
+                                    if (tokenCount + lineTokens > MAX_MEMORY_TOKENS) break;
+                                    summaryBlock += line;
+                                    tokenCount += lineTokens;
+                                }
+
+                                memoryContext = `\n\n${summaryBlock}`;
+                            } else {
+                                // Fallback: fetch raw memories if no summaries exist yet
+                                const { data: rawMems } = await supabase
+                                    .from('user_memory_longterm')
+                                    .select('category, title, value')
+                                    .eq('user_id', user.id)
+                                    .order('created_at', { ascending: false })
+                                    .limit(8);
+
+                                if (rawMems && rawMems.length > 0) {
+                                    memoryContext = `\n\nBACKGROUND FACTS ABOUT THE USER:\n${rawMems.map((m: any) => `- [${m.category}] ${m.title}: ${m.value}`).join('\n')}\n`;
+                                }
                             }
 
-                            const { data } = await memQuery;
-                            longTermMemories = data || [];
+                            // Also fetch relevant knowledge docs
+                            try {
+                                const { data: knowledgeMems } = await supabase.rpc('search_knowledge_memory_fts', {
+                                    search_query: message || "",
+                                    user_id_filter: user.id,
+                                    max_results: 3
+                                });
+                                if (knowledgeMems && knowledgeMems.length > 0) {
+                                    memoryContext += `\n\nRELEVANT KNOWLEDGE DOCS:\n${knowledgeMems.map((m: any) => `- ${m.content}`).join('\n')}\n`;
+                                }
+                            } catch (knowledgeErr: any) {
+                                console.error('Knowledge memory fetch failed (non-fatal):', knowledgeErr.message);
+                            }
                         } catch (memErr: any) {
-                            console.error("Long-term memory fetch failed (non-fatal):", memErr.message);
+                            console.error('Memory summary fetch failed (non-fatal):', memErr.message);
                         }
-
-                        try {
-                            const { data } = await supabase.rpc('search_knowledge_memory_fts', {
-                                search_query: message || "",
-                                user_id_filter: user.id,
-                                max_results: 3
-                            });
-                            knowledgeMemories = data || [];
-                        } catch (memErr: any) {
-                            console.error("Knowledge memory fetch failed (non-fatal):", memErr.message);
-                        }
-                    }
-
-                    let memoryContext = '';
-                    if (longTermMemories.length > 0) {
-                        memoryContext += `\n\nBACKGROUND FACTS ABOUT THE USER:\n${longTermMemories.map((m: any) => `- [${m.category}] ${m.title}: ${m.value}`).join('\n')}\n`;
-                    }
-                    if (knowledgeMemories.length > 0) {
-                        memoryContext += `\n\nRELEVANT KNOWLEDGE DOCS:\n${knowledgeMemories.map((m: any) => `- ${m.content}`).join('\n')}\n`;
                     }
 
                     // ── Build slim, intent-driven system prompt ───────────────────────────────

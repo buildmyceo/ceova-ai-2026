@@ -211,6 +211,20 @@ If no facts are present, return []. Respond with ONLY valid JSON, no markdown.`;
         memoriesSaved++;
       }
 
+      // ── Fire-and-forget: regenerate the summary after saving new memories ──
+      if (memoriesSaved > 0) {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        fetch(`${supabaseUrl}/functions/v1/generate-memory-summary`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ user_id: user.id }),
+        }).catch((e: any) => console.error('[memory-engine] Summary trigger failed:', e.message));
+      }
+
       return new Response(JSON.stringify({ success: true, memoriesExtracted: memoriesSaved }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
