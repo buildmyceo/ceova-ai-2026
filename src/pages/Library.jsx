@@ -847,6 +847,7 @@ export default function Library({ session, onBack, switchChat }) {
 
   // Top Tab Counts
   const countCEOVA   = allItems.filter(i => i.source !== 'gdrive' && i.source !== 'gmail' && i.source !== 'gcalendar').length;
+  const countGDrive  = allItems.filter(i => i.source === 'gdrive').length;
   const countGmail   = allItems.filter(i => i.source === 'gmail').length;
   const countGCal    = allItems.filter(i => i.source === 'gcalendar').length;
   const countAI      = allItems.filter(i => i.source === 'ai').length;
