@@ -65,37 +65,54 @@ class handler(BaseHTTPRequestHandler):
             'quiet': True,
             'no_warnings': True,
             'skip_download': True,
+            'socket_timeout': 15,
         }
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
                 
-                # Filter formats to meaningful ones (audio, 480p, 720p, 1080p)
-                available_qualities = []
                 formats = info.get('formats', [])
                 
-                for f in formats:
-                    if f.get('vcodec') == 'none' and f.get('acodec') != 'none':
-                        available_qualities.append({'id': f['format_id'], 'label': 'Audio Only', 'ext': f.get('ext')})
-                    elif f.get('height') in [480, 720, 1080] and f.get('vcodec') != 'none':
-                        available_qualities.append({'id': f['format_id'], 'label': f"{f['height']}p", 'ext': f.get('ext')})
+                # Collect video qualities
+                seen_heights = set()
+                video_qualities = []
+                audio_quality = None
                 
-                # Deduplicate formats
-                seen = set()
-                deduped = []
-                for q in available_qualities:
-                    if q['label'] not in seen:
-                        seen.add(q['label'])
-                        deduped.append(q)
+                for f in sorted(formats, key=lambda x: x.get('height') or 0, reverse=True):
+                    h = f.get('height')
+                    has_video = f.get('vcodec', 'none') != 'none'
+                    has_audio = f.get('acodec', 'none') != 'none'
+                    
+                    # Best audio-only track
+                    if not has_video and has_audio and audio_quality is None:
+                        audio_quality = {'id': f['format_id'], 'label': 'Audio Only', 'ext': f.get('ext', 'm4a')}
+                    
+                    # Video qualities: 1080p, 720p, 480p, 360p
+                    if has_video and h in [1080, 720, 480, 360] and h not in seen_heights:
+                        seen_heights.add(h)
+                        video_qualities.append({'id': f['format_id'], 'label': f'{h}p', 'ext': f.get('ext', 'mp4')})
+                
+                # Fallback: if no standard heights found, add best available
+                if not video_qualities and formats:
+                    best = next((f for f in reversed(formats) if f.get('vcodec', 'none') != 'none'), None)
+                    if best:
+                        h = best.get('height') or 0
+                        video_qualities.append({'id': best['format_id'], 'label': f'{h}p' if h else 'Best', 'ext': best.get('ext', 'mp4')})
+                
+                # Always add audio option
+                if audio_quality:
+                    video_qualities.append(audio_quality)
+                elif not audio_quality:
+                    video_qualities.append({'id': 'bestaudio', 'label': 'Audio Only', 'ext': 'm4a'})
                 
                 response_data = {
                     "success": True,
                     "title": info.get('title', 'Unknown Title'),
                     "thumbnail": info.get('thumbnail'),
                     "duration": info.get('duration'),
-                    "provider": info.get('extractor_key'),
-                    "qualities": deduped
+                    "provider": info.get('extractor_key', 'Video'),
+                    "qualities": video_qualities
                 }
                 
                 self.send_response(200)
