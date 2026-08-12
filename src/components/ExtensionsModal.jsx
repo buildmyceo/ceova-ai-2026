@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { connectGoogleDrive } from '../services/gdriveSyncEngine';
-import { connectDropbox } from '../services/dropboxSyncEngine';
 
 export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools', onSelectTool }) {
     const [view, setView] = useState(initialTab); // 'tools' or 'connectors'
@@ -16,7 +15,6 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
     // Connection statuses for apps
     const [connections, setConnections] = useState({
         google: false, // Google Drive, Gmail, Google Calendar
-        dropbox: false,
         checking: false
     });
 
@@ -34,7 +32,6 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
             const user = session?.user;
             
             let hasGoogle = false;
-            let hasDropbox = false;
 
             // 1. Check Google Connection
             const cachedGoogleToken = typeof window !== 'undefined' ? localStorage.getItem('google_provider_token') : null;
@@ -52,25 +49,8 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                 }
             }
 
-            // 2. Check Dropbox Connection
-            const cachedDropboxToken = typeof window !== 'undefined' ? localStorage.getItem('dropbox_provider_token') : null;
-            if (cachedDropboxToken) {
-                hasDropbox = true;
-            } else if (user?.id) {
-                const { data: dropboxTokenData } = await supabase
-                    .from('user_dropbox_tokens')
-                    .select('access_token, expiry_date')
-                    .eq('user_id', user.id)
-                    .maybeSingle();
-
-                if (dropboxTokenData?.access_token) {
-                    hasDropbox = true;
-                }
-            }
-
             setConnections({
                 google: hasGoogle,
-                dropbox: hasDropbox,
                 checking: false
             });
         } catch (err) {
@@ -88,14 +68,6 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
         }
     };
 
-    const handleDropboxConnect = async () => {
-        try {
-            await connectDropbox();
-        } catch (err) {
-            console.error("Failed to connect Dropbox account:", err);
-            alert("Could not start Dropbox sign in.");
-        }
-    };
 
     const handleGoogleDisconnect = async () => {
         if (!confirm("Are you sure you want to disconnect Google Services? This will remove synced files, emails, and events.")) return;
@@ -114,20 +86,6 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
         }
     };
 
-    const handleDropboxDisconnect = async () => {
-        if (!confirm("Are you sure you want to disconnect Dropbox? This will remove synced files.")) return;
-        try {
-            localStorage.removeItem('dropbox_provider_token');
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user?.id) {
-                await supabase.from('user_dropbox_tokens').delete().eq('user_id', session.user.id);
-                await supabase.from('files').delete().eq('user_id', session.user.id).eq('storage_source', 'dropbox');
-            }
-            checkConnectionStatuses();
-        } catch (e) {
-            console.error(e);
-        }
-    };
 
     const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
 
@@ -287,23 +245,7 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                     }}
                                     onDisconnect={handleGoogleDisconnect}
                                 />
-                                <ExtensionCard 
-                                    type="connector"
-                                    icon={<HardDrive size={24} color="#60a5fa" />} 
-                                    title="Dropbox" 
-                                    desc="Sync and search your Dropbox files." 
-                                    isConnected={connections.dropbox}
-                                    isChecking={connections.checking}
-                                    onConnect={handleDropboxConnect}
-                                    onClick={() => {
-                                        if (connections.dropbox) {
-                                            handleToolSelect('/dropbox');
-                                        } else {
-                                            handleDropboxConnect();
-                                        }
-                                    }}
-                                    onDisconnect={handleDropboxDisconnect}
-                                />
+
                                 <ExtensionCard 
                                     type="connector"
                                     icon={<img src="/gmail.png" alt="Gmail" width="24" height="24" style={{ objectFit: 'contain' }} />} 
