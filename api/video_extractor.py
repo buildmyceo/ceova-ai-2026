@@ -322,5 +322,6 @@ class handler(BaseHTTPRequestHandler):
     def send_error_response(self, code, message):
         self.send_response(code)
         self.send_header('Content-type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(json.dumps({"success": False, "error": message}).encode())
