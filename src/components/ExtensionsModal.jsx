@@ -131,7 +131,14 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                     className="settings-card extensions-modal-card"
                     {...(isMobile ? mobileAnimation : desktopAnimation)}
                     transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                    style={!isMobile ? { top: "50%", left: "50%", position: "fixed" } : { bottom: 0, left: 0, position: "fixed" }}
+                    style={{
+                        ...(!isMobile ? { top: "50%", left: "50%", position: "fixed" } : { bottom: 0, left: 0, position: "fixed", width: '100%', height: '85vh', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }),
+                        background: 'rgba(10, 15, 25, 0.65)',
+                        backdropFilter: 'blur(24px)',
+                        WebkitBackdropFilter: 'blur(24px)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        boxShadow: '0 24px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1)',
+                    }}
                 >
                     <header className="settings-header">
                         <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
@@ -328,43 +335,46 @@ function ExtensionCard({
             onMouseLeave={() => setIsHovered(false)}
             style={{ 
                 background: disabled 
-                    ? 'rgba(255,255,255,0.02)' 
+                    ? 'rgba(255,255,255,0.01)' 
                     : isConnected 
-                        ? (isHovered ? 'rgba(34, 197, 94, 0.08)' : 'rgba(255,255,255,0.035)') 
-                        : (isHovered ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.03)'), 
+                        ? (isHovered ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.04)') 
+                        : (isHovered ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)'), 
                 border: disabled 
-                    ? '1px solid rgba(255,255,255,0.05)' 
+                    ? '1px solid rgba(255,255,255,0.03)' 
                     : isConnected 
-                        ? (isHovered ? '1px solid rgba(34, 197, 94, 0.35)' : '1px solid rgba(34, 197, 94, 0.22)') 
-                        : (isHovered ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(255,255,255,0.08)'), 
-                borderRadius: '14px', 
-                padding: '16px', 
+                        ? (isHovered ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(34, 197, 94, 0.2)') 
+                        : (isHovered ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.06)'), 
+                borderRadius: '16px', 
+                padding: '18px', 
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
-                gap: '12px',
-                transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-                opacity: disabled ? 0.45 : 1,
+                gap: '14px',
+                transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                opacity: disabled ? 0.4 : 1,
                 position: 'relative',
-                backdropFilter: 'blur(10px)',
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
                 boxShadow: isHovered && !disabled 
-                    ? (isConnected ? '0 10px 25px -5px rgba(34, 197, 94, 0.15)' : '0 10px 25px -5px rgba(0, 0, 0, 0.3)')
+                    ? (isConnected ? '0 12px 30px -5px rgba(34, 197, 94, 0.2)' : '0 12px 30px -5px rgba(0, 0, 0, 0.4)')
                     : 'none',
-                transform: isHovered && !disabled ? 'translateY(-2px)' : 'none',
+                transform: isHovered && !disabled ? 'translateY(-3px)' : 'none',
             }}
         >
             {/* Top Row: Icon + Status Badge */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                 <div style={{ 
-                    width: '42px', 
-                    height: '42px', 
+                    width: '44px', 
+                    height: '44px', 
                     borderRadius: '12px', 
                     display: 'flex', 
                     alignItems: 'center', 
                     justifyContent: 'center',
-                    background: isConnected ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255,255,255,0.05)',
-                    border: isConnected ? '1px solid rgba(34, 197, 94, 0.2)' : '1px solid rgba(255,255,255,0.08)'
+                    background: isConnected ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255,255,255,0.06)',
+                    border: isConnected ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(255,255,255,0.1)',
+                    boxShadow: isHovered ? (isConnected ? '0 0 15px rgba(34, 197, 94, 0.3)' : '0 0 15px rgba(255,255,255,0.15)') : 'none',
+                    transition: 'all 0.3s ease'
                 }}>
                     {icon}
                 </div>
@@ -472,10 +482,10 @@ function ExtensionCard({
                 )}
             </div>
 
-            {/* Title & Description */}
-            <div>
-                <h4 style={{ margin: '0 0 4px 0', fontSize: '0.98rem', color: '#f3f4f6', fontWeight: 600 }}>{title}</h4>
-                <p style={{ margin: 0, fontSize: '0.82rem', color: '#a1a1aa', lineHeight: 1.45 }}>{desc}</p>
+            {/* Bottom Row: Title + Description */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <span style={{ fontSize: '1.05rem', fontWeight: 600, color: disabled ? '#71717a' : '#ffffff', letterSpacing: '-0.01em' }}>{title}</span>
+                <span style={{ fontSize: '0.82rem', color: disabled ? '#52525b' : '#a1a1aa', lineHeight: '1.45', fontWeight: 400 }}>{desc}</span>
             </div>
 
             {/* Connector Footer Action Status */}
