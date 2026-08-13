@@ -44,16 +44,9 @@ export default async function handler(req, res) {
 
     const lowerUrl = url.toLowerCase();
 
-    // 3. YouTube / Instagram / TikTok Fallback
-    if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be') || lowerUrl.includes('instagram.com') || lowerUrl.includes('tiktok.com')) {
-      return res.status(200).json({
-        success: false,
-        provider: 'youtube',
-        message: 'CEOVA Web currently supports only direct video URLs. Downloads from YouTube, Instagram, and TikTok require the CEOVA Desktop App because cloud-hosted serverless environments cannot reliably process those platforms.'
-      });
-    }
-
-    // 4. URL Validation (must be direct video)
+    // 3. URL Validation (must be direct video link)
+    // Note: YouTube/Instagram/TikTok are handled client-side via cobalt.tools.
+    // This endpoint only processes direct .mp4 / .webm / .mov URLs.
     if (!lowerUrl.includes('.mp4') && !lowerUrl.includes('.webm') && !lowerUrl.includes('.mov')) {
       return res.status(400).json({ success: false, error: 'Unsupported URL format. Must be a direct link to .mp4, .webm, or .mov' });
     }
