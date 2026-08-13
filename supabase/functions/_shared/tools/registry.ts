@@ -41,7 +41,7 @@ class ToolRegistry {
     this.registerTool(new InvoiceGeneratorTool());
     this.registerTool(new MediaConverterTool());
     this.registerTool(new RunTerminalCommandTool());
-    this.registerTool(new PrepareVideoDownloadTool());
+    this.registerTool(new DownloadVideoTool());
   }
 
   registerTool(tool: Tool) {

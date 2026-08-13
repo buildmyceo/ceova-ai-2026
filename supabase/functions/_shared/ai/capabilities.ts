@@ -85,7 +85,7 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "video",
-    description: "Prepare and download direct video files (.mp4, .webm, .mov) from public URLs. Files are saved temporarily (20 mins). NOTE: YouTube, Instagram, and TikTok downloads are NOT supported in the web version and require the CEOVA Desktop App.",
+    description: "Download videos from YouTube, Instagram, TikTok, X/Twitter, Reddit, and Twitch using cobalt.tools (free, open-source). Also supports saving direct .mp4/.webm/.mov files to CEOVA Drive.",
     keywords: [
       "download", "download video", "download audio", "download mp4", "download mp3",
       "youtube", "youtu.be", "instagram", "tiktok", "vimeo", "twitter video", "x.com video",
