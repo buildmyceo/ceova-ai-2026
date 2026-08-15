@@ -138,12 +138,34 @@ export function routeIntent(
   message: string,
   hasImage: boolean = false,
   hasDocument: boolean = false,
-  hasLocalFolder: boolean = true
+  hasLocalFolder: boolean = true,
+  history: any[] = []
 ): IntentRouterResult {
-  const lower = message.toLowerCase().trim();
+  // Use recent conversation context so a simple "yes" doesn't drop the tool schemas
+  // If the assistant just asked "Would you like me to send this email?", we want to match "email".
+  let contextText = message;
+  const lastAssistantMsg = history.slice().reverse().find(m => m.role === 'assistant');
+  if (lastAssistantMsg && typeof lastAssistantMsg.content === 'string') {
+    contextText = lastAssistantMsg.content + " " + message;
+  }
+
+  // We only use the contextText for casual pattern testing if the user's message itself is casual.
+  // Wait, if the user's message is "yes", we don't want to just return casual chat.
+  // We want to evaluate the whole context.
+  const lowerMessage = message.toLowerCase().trim();
+  const lowerContext = contextText.toLowerCase().trim();
 
   // ── Casual chat check — load nothing ────────────────────────────────────────
-  if (!hasImage && !hasDocument && CASUAL_PATTERNS.some(p => p.test(lower))) {
+  // We only treat it as casual if BOTH the message AND the recent context are casual.
+  // Or rather, if the user says "yes" but the assistant was asking about an "email", it's NOT casual.
+  let isCasual = false;
+  if (!hasImage && !hasDocument && CASUAL_PATTERNS.some(p => p.test(lowerMessage))) {
+    // User sent a casual message. Let's see if the context suggests a tool.
+    // If context contains keywords for tools, we should NOT treat it as casual.
+    isCasual = CASUAL_PATTERNS.some(p => p.test(lowerContext));
+    
+    // If even with context it's casual, return casual.
+    if (isCasual) {
     return {
       toolIds: [],
       toolSchemas: [],
@@ -176,7 +198,8 @@ export function routeIntent(
   // ── Keyword matching across all capabilities ─────────────────────────────────
   for (const cap of CAPABILITIES) {
     if (matchedCapabilities.includes(cap)) continue; // already added
-    const matched = cap.keywords.some(kw => lower.includes(kw.toLowerCase()));
+    // Match against the combined context (last assistant message + user message)
+    const matched = cap.keywords.some(kw => lowerContext.includes(kw.toLowerCase()));
     if (matched) {
       matchedCapabilities.push(cap);
     }

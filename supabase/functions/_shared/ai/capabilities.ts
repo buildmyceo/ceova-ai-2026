@@ -83,19 +83,6 @@ export const CAPABILITIES: Capability[] = [
     toolIds: ["qr_barcode", "invoice_generator", "color_toolkit", "password_hash"],
     memoryCategories: [],
   },
-  {
-    id: "video",
-    description: "Download videos from YouTube, Instagram, TikTok, X/Twitter, Reddit, and Twitch using cobalt.tools (free, open-source). Also supports saving direct .mp4/.webm/.mov files to CEOVA Drive.",
-    keywords: [
-      "download", "download video", "download audio", "download mp4", "download mp3",
-      "youtube", "youtu.be", "instagram", "tiktok", "vimeo", "twitter video", "x.com video",
-      "save video", "save audio", "extract video", "get video", "grab video",
-      "mp4 link", "video link", "audio from video", "rip audio", "yt-dlp",
-      "download this", "save this video", "get this video", "download reel",
-    ],
-    toolIds: ["prepare_video_download"],
-    memoryCategories: ["preferences"],
-  }
 ];
 
 /**

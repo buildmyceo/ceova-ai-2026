@@ -208,7 +208,7 @@ serve(async (req) => {
                     const hasDocument = attachments.some((a: any) => a.type && (a.type.includes('pdf') || a.type.includes('document') || a.type.includes('text/')));
                     
                     // ── Intent Router: decide tools + memory categories before calling GPT ──
-                    const intent = routeIntent(message || '', hasImage, hasDocument, has_local_folder);
+                    const intent = routeIntent(message || '', hasImage, hasDocument, has_local_folder, history);
 
                     // ── Selective memory fetch: only load categories the intent router chose ──
                     // ── Fetch memory summary from memory_summaries table ─────────────────────
