@@ -45,7 +45,9 @@ export default function GoogleConnectModal({ isOpen, onClose, onProceed }) {
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
-                            fontFamily: 'system-ui, -apple-system, sans-serif'
+                            fontFamily: 'system-ui, -apple-system, sans-serif',
+                            maxHeight: isMobile ? '90vh' : '90vh',
+                            overflowY: 'auto'
                         }}
                     >
                         {/* Close Button */}
