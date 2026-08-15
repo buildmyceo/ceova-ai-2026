@@ -586,6 +586,30 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                             <div className="row-right"><ChevronRight size={14} className="chevron" /></div>
                                         </div>
 
+                                        <div className="settings-row clickable" style={{ opacity: 0.6 }}>
+                                            <div className="row-left">
+                                                <div style={{ 
+                                                    background: '#fff', 
+                                                    borderRadius: '50%', 
+                                                    width: '18px', 
+                                                    height: '18px', 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'center'
+                                                }}>
+                                                    <img src="/telegram.png" alt="Telegram" style={{ width: '10px', height: '10px', objectFit: 'contain' }} />
+                                                </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                    <span>Connect Telegram</span>
+                                                    <span style={{ fontSize: '10px', opacity: 0.5 }}>Manage your Telegram messages and chats.</span>
+                                                </div>
+                                            </div>
+                                            <div className="row-right">
+                                                <span style={{ fontSize: '10px', color: '#a1a1aa', marginRight: '8px' }}>Coming Soon</span>
+                                                <ChevronRight size={14} className="chevron" />
+                                            </div>
+                                        </div>
+
                                     </div>
                                 </div>
                             )}

@@ -301,6 +301,25 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                     desc="Connect your workspaces." 
                                     disabled={true}
                                 />
+                                <ExtensionCard 
+                                    type="connector"
+                                    icon={
+                                        <div style={{ 
+                                            background: '#fff', 
+                                            borderRadius: '50%', 
+                                            width: '20px', 
+                                            height: '20px', 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center'
+                                        }}>
+                                            <img src="/telegram.png" alt="Telegram" style={{ width: '12px', height: '12px', objectFit: 'contain' }} />
+                                        </div>
+                                    } 
+                                    title="Telegram" 
+                                    desc="Connect your Telegram chats." 
+                                    disabled={true}
+                                />
                             </div>
                         )}
 
