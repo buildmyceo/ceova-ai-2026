@@ -17,7 +17,6 @@ import { ListLocalFilesTool } from './tools/list-local-files.ts';
 import { InvoiceGeneratorTool } from './tools/invoice-generator.ts';
 import { MediaConverterTool } from './tools/media-converter.ts';
 import { RunTerminalCommandTool } from './tools/run-terminal-command.ts';
-import { DownloadVideoTool } from './tools/download-video.ts';
 
 class ToolRegistry {
   private tools: Map<string, Tool> = new Map();
@@ -41,7 +40,6 @@ class ToolRegistry {
     this.registerTool(new InvoiceGeneratorTool());
     this.registerTool(new MediaConverterTool());
     this.registerTool(new RunTerminalCommandTool());
-    this.registerTool(new DownloadVideoTool());
   }
 
   registerTool(tool: Tool) {

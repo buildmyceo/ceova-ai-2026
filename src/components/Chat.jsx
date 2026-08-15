@@ -11,7 +11,6 @@ import ClientSecureGeneratorWidget from './ClientSecureGeneratorWidget';
 import ClientColorWidget from './ClientColorWidget';
 import ClientInvoiceWidget from './ClientInvoiceWidget';
 import ClientMediaConverterWidget from './ClientMediaConverterWidget';
-import ClientVideoDownloaderWidget from './ClientVideoDownloaderWidget';
 async function forceDownloadImage(url, filename = 'ceova-image.png') {
   try {
     const res = await fetch(url, { mode: 'cors' });
@@ -556,9 +555,6 @@ function MessageItem({ msg, idx, isUser, editingMsg, editText, setEditText, hand
                 )}
                 {actionMeta && actionMeta.type === 'client_media_converter' && (
                   <ClientMediaConverterWidget meta={actionMeta} />
-                )}
-                {actionMeta && actionMeta.type === 'client_video_downloader' && (
-                  <ClientVideoDownloaderWidget meta={actionMeta} />
                 )}
                 <div className={`message-actions ${showActions ? 'visible' : ''}`}>
                   <button onClick={(e) => { e.stopPropagation(); handleCopy(rawText, msg.id || msg.tempId); }} title="Copy message">

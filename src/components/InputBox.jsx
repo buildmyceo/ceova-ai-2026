@@ -306,7 +306,7 @@ export default function InputBox({
                                         setIsToolsSubmenuOpen(false);
                                         setExtensionsModalTab('tools');
                                         setIsExtensionsModalOpen(true);
-                                    }} style={{ color: '#3b82f6' }}>
+                                    }} style={{ color: '#a1a1aa' }}>
                                         <LayoutGrid size={18} /> More Tools...
                                     </button>
                                 </div>
@@ -476,7 +476,7 @@ export default function InputBox({
                                         setIsConnectorsSubmenuOpen(false);
                                         setExtensionsModalTab('connectors');
                                         setIsExtensionsModalOpen(true);
-                                    }} style={{ color: '#3b82f6' }}>
+                                    }} style={{ color: '#a1a1aa' }}>
                                         <LayoutGrid size={18} /> More Connectors...
                                     </button>
                                 </div>

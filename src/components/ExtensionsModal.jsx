@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
     X, ArrowLeft, Scissors, Eye, Minimize2, RefreshCw, Scan, FileText, 
     Key, Palette, Calculator, Receipt, Film, Link, Zap, Calendar, HardDrive, Mail,
-    Check, LogIn, CircleDashed, ExternalLink, Sparkles, ShieldCheck, Trash2, Video, Plus
+    Check, LogIn, CircleDashed, ExternalLink, Sparkles, ShieldCheck, Trash2, Plus
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { connectGoogleDrive } from '../services/gdriveSyncEngine';
@@ -166,14 +166,14 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                 <button 
                                     className={`tab-btn ${view === 'tools' ? 'active' : ''}`} 
                                     onClick={() => setView('tools')}
-                                    style={{ background: 'none', border: 'none', color: view === 'tools' ? '#fff' : '#a1a1aa', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer', paddingBottom: '4px', borderBottom: view === 'tools' ? '2px solid #3b82f6' : '2px solid transparent' }}
+                                    style={{ background: 'none', border: 'none', color: view === 'tools' ? '#fff' : '#a1a1aa', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer', paddingBottom: '4px', borderBottom: view === 'tools' ? '2px solid #555555' : '2px solid transparent' }}
                                 >
                                     Tools
                                 </button>
                                 <button 
                                     className={`tab-btn ${view === 'connectors' ? 'active' : ''}`} 
                                     onClick={() => setView('connectors')}
-                                    style={{ background: 'none', border: 'none', color: view === 'connectors' ? '#fff' : '#a1a1aa', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer', paddingBottom: '4px', borderBottom: view === 'connectors' ? '2px solid #3b82f6' : '2px solid transparent' }}
+                                    style={{ background: 'none', border: 'none', color: view === 'connectors' ? '#fff' : '#a1a1aa', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer', paddingBottom: '4px', borderBottom: view === 'connectors' ? '2px solid #555555' : '2px solid transparent' }}
                                 >
                                     Connectors
                                 </button>
@@ -238,12 +238,7 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                     desc="Convert audio/video and compress media." 
                                     onClick={() => handleToolSelect('/media_converter')} 
                                 />
-                                <ExtensionCard 
-                                    icon={<Video size={22} color="#ef4444" />} 
-                                    title="Video Downloader" 
-                                    desc="Download temporary videos from URLs." 
-                                    onClick={() => handleToolSelect('/download_video')} 
-                                />
+
                                 <ExtensionCard 
                                     icon={<Minimize2 size={22} color="#818cf8" />} 
                                     title="Reduce File Size" 
