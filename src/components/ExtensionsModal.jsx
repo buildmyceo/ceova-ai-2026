@@ -37,7 +37,11 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
 
             // 1. Check Google Connection
             const cachedGoogleToken = typeof window !== 'undefined' ? localStorage.getItem('google_provider_token') : null;
-            if (session?.provider_token || cachedGoogleToken) {
+            const isDisconnected = typeof window !== 'undefined' ? localStorage.getItem('google_disconnected') === 'true' : false;
+            
+            if (cachedGoogleToken) {
+                hasGoogle = true;
+            } else if (session?.provider_token && !isDisconnected) {
                 hasGoogle = true;
             } else if (user?.id) {
                 const { data: googleTokenData } = await supabase
@@ -67,6 +71,9 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
 
     const handleGoogleConnect = async () => {
         try {
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('google_disconnected');
+            }
             await connectGoogleDrive();
         } catch (err) {
             console.error("Failed to connect Google account:", err);
@@ -78,7 +85,10 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
     const handleGoogleDisconnect = async () => {
         if (!confirm("Are you sure you want to disconnect Google Services? This will remove synced files, emails, and events.")) return;
         try {
-            localStorage.removeItem('google_provider_token');
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('google_provider_token');
+                localStorage.setItem('google_disconnected', 'true');
+            }
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user?.id) {
                 await supabase.from('user_google_tokens').delete().eq('user_id', session.user.id);
@@ -284,13 +294,6 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                         }
                                     }}
                                     onDisconnect={handleGoogleDisconnect}
-                                />
-                                <ExtensionCard 
-                                    type="connector"
-                                    icon={<Zap size={22} color="#71717a" />} 
-                                    title="Notion" 
-                                    desc="Connect your workspaces." 
-                                    disabled={true}
                                 />
                                 <ExtensionCard 
                                     type="connector"
