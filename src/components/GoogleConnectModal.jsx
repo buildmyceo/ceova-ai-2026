@@ -65,12 +65,11 @@ export default function GoogleConnectModal({ isOpen, onClose, onProceed }) {
                             display: 'flex', 
                             alignItems: 'center', 
                             justifyContent: 'center',
-                            fontSize: '1.5rem',
-                            fontWeight: 'bold',
-                            color: '#ea4335',
                             marginBottom: '16px',
                             marginTop: '8px'
-                        }}>G</div>
+                        }}>
+                            <img src="/google-logo.png" alt="Google" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
+                        </div>
 
                         {/* Title & Description */}
                         <h2 style={{ margin: '0 0 8px 0', fontSize: '1.25rem', fontWeight: 600, color: '#fff' }}>Google</h2>

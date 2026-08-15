@@ -267,15 +267,14 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                         <div style={{ 
                                             background: '#fff', 
                                             borderRadius: '50%', 
-                                            width: '24px', 
-                                            height: '24px', 
+                                            width: '20px', 
+                                            height: '20px', 
                                             display: 'flex', 
                                             alignItems: 'center', 
-                                            justifyContent: 'center',
-                                            fontSize: '1rem',
-                                            fontWeight: 'bold',
-                                            color: '#ea4335'
-                                        }}>G</div>
+                                            justifyContent: 'center'
+                                        }}>
+                                            <img src="/google-logo.png" alt="Google" style={{ width: '12px', height: '12px', objectFit: 'contain' }} />
+                                        </div>
                                     } 
                                     title="Google" 
                                     desc="Gmail, Drive & Calendar" 

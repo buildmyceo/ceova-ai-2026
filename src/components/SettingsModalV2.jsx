@@ -574,11 +574,10 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                                     height: '18px', 
                                                     display: 'flex', 
                                                     alignItems: 'center', 
-                                                    justifyContent: 'center',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: 'bold',
-                                                    color: '#ea4335'
-                                                }}>G</div>
+                                                    justifyContent: 'center'
+                                                }}>
+                                                    <img src="/google-logo.png" alt="Google" style={{ width: '10px', height: '10px', objectFit: 'contain' }} />
+                                                </div>
                                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                                                     <span>Connect Google</span>
                                                     <span style={{ fontSize: '10px', opacity: 0.5 }}>Connect Gmail, Drive, and Calendar for a unified experience.</span>
