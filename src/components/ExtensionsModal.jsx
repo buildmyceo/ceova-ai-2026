@@ -8,13 +8,15 @@ import {
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { connectGoogleDrive } from '../services/gdriveSyncEngine';
+import GoogleConnectModal from './GoogleConnectModal';
 
 export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools', onSelectTool }) {
     const [view, setView] = useState(initialTab); // 'tools' or 'connectors'
+    const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
     
-    // Connection statuses for apps
     const [connections, setConnections] = useState({
         google: false, // Google Drive, Gmail, Google Calendar
+        googleEmail: null,
         checking: false
     });
 
@@ -49,8 +51,12 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                 }
             }
 
+            const googleIdentity = user?.identities?.find(i => i.provider === 'google');
+            const googleEmail = googleIdentity?.identity_data?.email || null;
+
             setConnections({
                 google: hasGoogle,
+                googleEmail: googleEmail,
                 checking: false
             });
         } catch (err) {
@@ -107,6 +113,7 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
     };
 
     const modalContent = (
+        <>
         <AnimatePresence>
             {isOpen && (
                 <>
@@ -256,52 +263,34 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                             <div className="extensions-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
                                 <ExtensionCard 
                                     type="connector"
-                                    icon={<img src="/drive.png" alt="Google Drive" width="24" height="24" style={{ objectFit: 'contain' }} />} 
-                                    title="Google Drive" 
-                                    desc="Access and manage your Drive files." 
+                                    icon={
+                                        <div style={{ 
+                                            background: '#fff', 
+                                            borderRadius: '50%', 
+                                            width: '24px', 
+                                            height: '24px', 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center',
+                                            fontSize: '1rem',
+                                            fontWeight: 'bold',
+                                            color: '#ea4335'
+                                        }}>G</div>
+                                    } 
+                                    title="Google" 
+                                    desc="Gmail, Drive & Calendar" 
+                                    email={connections.googleEmail}
                                     isConnected={connections.google}
                                     isChecking={connections.checking}
-                                    onConnect={handleGoogleConnect}
+                                    onConnect={() => setIsGoogleModalOpen(true)}
                                     onClick={() => {
                                         if (connections.google) {
-                                            handleToolSelect('/gdrive');
+                                            // Optional: Handle action if already connected. 
+                                            // Wait, where do they go? They used to go to `/gdrive` or `/gmail`. 
+                                            // If they click the card, maybe we just alert them they can use tools, or open settings.
+                                            alert("Google is connected. Use the tools above to interact with Gmail, Drive, or Calendar.");
                                         } else {
-                                            handleGoogleConnect();
-                                        }
-                                    }}
-                                    onDisconnect={handleGoogleDisconnect}
-                                />
-
-                                <ExtensionCard 
-                                    type="connector"
-                                    icon={<img src="/gmail.png" alt="Gmail" width="24" height="24" style={{ objectFit: 'contain' }} />} 
-                                    title="Gmail" 
-                                    desc="Read and draft emails directly from chat." 
-                                    isConnected={connections.google}
-                                    isChecking={connections.checking}
-                                    onConnect={handleGoogleConnect}
-                                    onClick={() => {
-                                        if (connections.google) {
-                                            handleToolSelect('/gmail');
-                                        } else {
-                                            handleGoogleConnect();
-                                        }
-                                    }}
-                                    onDisconnect={handleGoogleDisconnect}
-                                />
-                                <ExtensionCard 
-                                    type="connector"
-                                    icon={<img src="/google_calendar.png" alt="Google Calendar" width="24" height="24" style={{ objectFit: 'contain' }} />} 
-                                    title="Google Calendar" 
-                                    desc="Manage your schedule and events." 
-                                    isConnected={connections.google}
-                                    isChecking={connections.checking}
-                                    onConnect={handleGoogleConnect}
-                                    onClick={() => {
-                                        if (connections.google) {
-                                            handleToolSelect('/google_calendar');
-                                        } else {
-                                            handleGoogleConnect();
+                                            setIsGoogleModalOpen(true);
                                         }
                                     }}
                                     onDisconnect={handleGoogleDisconnect}
@@ -321,6 +310,15 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                 </>
             )}
         </AnimatePresence>
+        <GoogleConnectModal 
+            isOpen={isGoogleModalOpen} 
+            onClose={() => setIsGoogleModalOpen(false)} 
+            onProceed={() => {
+                setIsGoogleModalOpen(false);
+                handleGoogleConnect();
+            }} 
+        />
+    </>
     );
 
     return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : null;
@@ -330,6 +328,7 @@ function ExtensionCard({
     icon, 
     title, 
     desc, 
+    email,
     onClick, 
     onConnect,
     disabled = false, 
@@ -508,29 +507,40 @@ function ExtensionCard({
                     paddingTop: '8px', 
                     borderTop: '1px solid rgba(255,255,255,0.05)',
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    fontSize: '0.74rem'
+                    flexDirection: 'column',
+                    gap: '4px'
                 }}>
-                    {isConnected ? (
-                        <>
-                            <span style={{ color: '#4ade80', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <ShieldCheck size={12} /> Account Connected
-                            </span>
-                            <span style={{ color: isHovered ? '#93c5fd' : '#60a5fa', fontWeight: 500 }}>
-                                Tap to chat →
-                            </span>
-                        </>
-                    ) : (
-                        <>
-                            <span style={{ color: '#9ca3af' }}>
-                                Not signed in
-                            </span>
-                            <span style={{ color: '#60a5fa', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                Sign in to connect →
-                            </span>
-                        </>
+                    {isConnected && email && (
+                        <div style={{ fontSize: '0.74rem', color: '#a1a1aa' }}>
+                            {email}
+                        </div>
                     )}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '0.74rem'
+                    }}>
+                        {isConnected ? (
+                            <>
+                                <span style={{ color: '#4ade80', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <ShieldCheck size={12} /> Account Connected
+                                </span>
+                                <span style={{ color: isHovered ? '#93c5fd' : '#60a5fa', fontWeight: 500 }}>
+                                    Manage Access →
+                                </span>
+                            </>
+                        ) : (
+                            <>
+                                <span style={{ color: '#9ca3af' }}>
+                                    Not signed in
+                                </span>
+                                <span style={{ color: '#60a5fa', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    Sign in to connect →
+                                </span>
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

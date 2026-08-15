@@ -12,6 +12,7 @@ import {
 import { supabase } from '../services/supabase';
 import UsageSection from './UsageSection';
 import { useTheme } from '../contexts/ThemeContext';
+import GoogleConnectModal from './GoogleConnectModal';
 
 export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange }) {
     const { themePref, setThemePref } = useTheme();
@@ -24,6 +25,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
     });
     const [isUploadingImage, setIsUploadingImage] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
     
     // Email Preferences state
     const [emailPrefs, setEmailPrefs] = useState({ marketing_emails: true, educational_emails: true });
@@ -563,91 +565,23 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                             {view === 'connectors' && (
                                 <div className="connectors-view">
                                     <div className="settings-section">
-                                        <div className="settings-row clickable" onClick={async () => {
-                                            try {
-                                                localStorage.setItem('oauth_provider', 'google');
-                                                const { error } = await supabase.auth.signInWithOAuth({
-                                                    provider: 'google',
-                                                    options: {
-                                                        redirectTo: `${window.location.origin}/auth/callback`,
-                                                        scopes: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive',
-                                                        queryParams: {
-                                                            access_type: 'offline',
-                                                            prompt: 'consent'
-                                                        }
-                                                    }
-                                                });
-                                                if (error) throw error;
-                                            } catch (e) {
-                                                console.error("Failed to connect Gmail:", e);
-                                                alert("Failed to connect Gmail: " + e.message);
-                                            }
-                                        }}>
+                                        <div className="settings-row clickable" onClick={() => setIsGoogleModalOpen(true)}>
                                             <div className="row-left">
-                                                <img src="https://upload.wikimedia.org/wikipedia/commons/7/7e/Gmail_icon_%282020%29.svg" alt="Gmail" style={{ width: 18, height: 18 }} />
+                                                <div style={{ 
+                                                    background: '#fff', 
+                                                    borderRadius: '50%', 
+                                                    width: '18px', 
+                                                    height: '18px', 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'center',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: 'bold',
+                                                    color: '#ea4335'
+                                                }}>G</div>
                                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                    <span>Connect Gmail</span>
-                                                    <span style={{ fontSize: '10px', opacity: 0.5 }}>Allows Ceova to read, send, and manage your emails.</span>
-                                                </div>
-                                            </div>
-                                            <div className="row-right"><ChevronRight size={14} className="chevron" /></div>
-                                        </div>
-
-                                        <div className="settings-row clickable" onClick={async () => {
-                                            try {
-                                                localStorage.setItem('oauth_provider', 'google');
-                                                const { error } = await supabase.auth.signInWithOAuth({
-                                                    provider: 'google',
-                                                    options: {
-                                                        redirectTo: `${window.location.origin}/auth/callback`,
-                                                        scopes: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive',
-                                                        queryParams: {
-                                                            access_type: 'offline',
-                                                            prompt: 'consent'
-                                                        }
-                                                    }
-                                                });
-                                                if (error) throw error;
-                                            } catch (e) {
-                                                console.error("Failed to connect Calendar:", e);
-                                                alert("Failed to connect Calendar: " + e.message);
-                                            }
-                                        }}>
-                                            <div className="row-left">
-                                                <Calendar size={18} />
-                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                    <span>Connect Calendar</span>
-                                                    <span style={{ fontSize: '10px', opacity: 0.5 }}>Allows Ceova to manage your calendar events.</span>
-                                                </div>
-                                            </div>
-                                            <div className="row-right"><ChevronRight size={14} className="chevron" /></div>
-                                        </div>
-
-                                        <div className="settings-row clickable" onClick={async () => {
-                                            try {
-                                                localStorage.setItem('oauth_provider', 'google');
-                                                const { error } = await supabase.auth.signInWithOAuth({
-                                                    provider: 'google',
-                                                    options: {
-                                                        redirectTo: `${window.location.origin}/auth/callback`,
-                                                        scopes: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive',
-                                                        queryParams: {
-                                                            access_type: 'offline',
-                                                            prompt: 'consent'
-                                                        }
-                                                    }
-                                                });
-                                                if (error) throw error;
-                                            } catch (e) {
-                                                console.error("Failed to connect Drive:", e);
-                                                alert("Failed to connect Drive: " + e.message);
-                                            }
-                                        }}>
-                                            <div className="row-left">
-                                                <HardDrive size={18} />
-                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                    <span>Connect Google Drive</span>
-                                                    <span style={{ fontSize: '10px', opacity: 0.5 }}>Allows Ceova to manage your drive files.</span>
+                                                    <span>Connect Google</span>
+                                                    <span style={{ fontSize: '10px', opacity: 0.5 }}>Connect Gmail, Drive, and Calendar for a unified experience.</span>
                                                 </div>
                                             </div>
                                             <div className="row-right"><ChevronRight size={14} className="chevron" /></div>
@@ -1130,6 +1064,31 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                 </>
             )}
         </AnimatePresence>
+        <GoogleConnectModal 
+            isOpen={isGoogleModalOpen} 
+            onClose={() => setIsGoogleModalOpen(false)} 
+            onProceed={async () => {
+                setIsGoogleModalOpen(false);
+                try {
+                    localStorage.setItem('oauth_provider', 'google');
+                    const { error } = await supabase.auth.signInWithOAuth({
+                        provider: 'google',
+                        options: {
+                            redirectTo: `${window.location.origin}/auth/callback`,
+                            scopes: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive',
+                            queryParams: {
+                                access_type: 'offline',
+                                prompt: 'consent'
+                            }
+                        }
+                    });
+                    if (error) throw error;
+                } catch (e) {
+                    console.error("Failed to connect Google:", e);
+                    alert("Failed to connect Google: " + e.message);
+                }
+            }} 
+        />
             <AnimatePresence>
                 {showAdvancedOnboarding && (
                     <>
