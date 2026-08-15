@@ -166,13 +166,14 @@ export function routeIntent(
     
     // If even with context it's casual, return casual.
     if (isCasual) {
-    return {
-      toolIds: [],
-      toolSchemas: [],
-      memoryCategories: [],
-      isComplexTask: false,
-      isCasualChat: true,
-    };
+      return {
+        toolIds: [],
+        toolSchemas: [],
+        memoryCategories: [],
+        isComplexTask: false,
+        isCasualChat: true,
+      };
+    }
   }
 
   // ── Image always needs image tools ───────────────────────────────────────────
