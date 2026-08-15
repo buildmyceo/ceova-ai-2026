@@ -32,11 +32,11 @@ CALENDAR_CONNECTOR RULES:
         },
         start_time: {
           type: "string",
-          description: "Start time in ISO 8601 format (e.g., 2023-10-01T15:00:00Z)"
+          description: "Start time in ISO 8601 format WITH timezone (e.g., 2023-10-01T15:00:00+05:30 or Z). CRITICAL: MUST INCLUDE TIMEZONE OFFSET."
         },
         end_time: {
           type: "string",
-          description: "End time in ISO 8601 format (e.g., 2023-10-01T16:00:00Z)"
+          description: "End time in ISO 8601 format WITH timezone (e.g., 2023-10-01T16:00:00+05:30 or Z). CRITICAL: MUST INCLUDE TIMEZONE OFFSET."
         },
         query: {
           type: "string",
@@ -212,6 +212,11 @@ async function createEvent(token: string, title: string, startTime: string, endT
     }
   }
 
+  // Ensure timezones
+  const formatTime = (t: string) => (t.includes('Z') || t.match(/[+-]\d\d:\d\d$/)) ? t : `${t}Z`;
+  const formattedStartTime = formatTime(startTime);
+  const formattedEndTime = formatTime(finalEndTime);
+
   // Conflict detection
   if (!forceCreate) {
     const conflictRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(startTime)}&timeMax=${encodeURIComponent(finalEndTime)}&singleEvents=true`, {
@@ -243,8 +248,8 @@ async function createEvent(token: string, title: string, startTime: string, endT
     },
     body: JSON.stringify({
       summary: title,
-      start: { dateTime: startTime },
-      end: { dateTime: finalEndTime }
+      start: { dateTime: formattedStartTime },
+      end: { dateTime: formattedEndTime }
     })
   });
 
@@ -271,11 +276,13 @@ async function updateEvent(token: string, eventId: string, title?: string, start
   
   const existingEvent = await getRes.json();
   
+  const formatTime = (t: string) => (t.includes('Z') || t.match(/[+-]\d\d:\d\d$/)) ? t : `${t}Z`;
+
   const updatedEvent = {
     ...existingEvent,
     summary: title || existingEvent.summary,
-    start: startTime ? { dateTime: startTime } : existingEvent.start,
-    end: endTime ? { dateTime: endTime } : existingEvent.end
+    start: startTime ? { dateTime: formatTime(startTime) } : existingEvent.start,
+    end: endTime ? { dateTime: formatTime(endTime) } : existingEvent.end
   };
 
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
