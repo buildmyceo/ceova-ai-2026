@@ -238,14 +238,28 @@ async function executeFullSync(userId, accessToken) {
 
       // Upsert into Supabase DB page by page to avoid payload limits
       if (syncedFolders.length > 0) {
-        const { error: fErr } = await supabase.from('folders').upsert(syncedFolders, { onConflict: 'drive_id' });
-        if (fErr) console.error('[GDriveSyncEngine] Folder upsert error:', fErr);
+        // Deduplicate to prevent Postgres ON CONFLICT errors within the same batch
+        const dedupedFolders = Array.from(new Map(syncedFolders.map(f => [f.drive_id, f])).values());
+        const { error: fErr } = await supabase.from('folders').upsert(dedupedFolders, { onConflict: 'drive_id' });
+        if (fErr) {
+          console.error('[GDriveSyncEngine] Folder batch upsert error, falling back to individual:', fErr);
+          for (const folder of dedupedFolders) {
+            await supabase.from('folders').upsert([folder], { onConflict: 'drive_id' });
+          }
+        }
         syncedFolders.length = 0; // Clear array after upsert
       }
 
       if (syncedFiles.length > 0) {
-        const { error: fErr } = await supabase.from('files').upsert(syncedFiles, { onConflict: 'drive_id' });
-        if (fErr) console.error('[GDriveSyncEngine] File upsert error:', fErr);
+        // Deduplicate files
+        const dedupedFiles = Array.from(new Map(syncedFiles.map(f => [f.drive_id, f])).values());
+        const { error: fErr } = await supabase.from('files').upsert(dedupedFiles, { onConflict: 'drive_id' });
+        if (fErr) {
+          console.error('[GDriveSyncEngine] File batch upsert error, falling back to individual:', fErr);
+          for (const file of dedupedFiles) {
+            await supabase.from('files').upsert([file], { onConflict: 'drive_id' });
+          }
+        }
         syncedFiles.length = 0; // Clear array after upsert
       }
 
