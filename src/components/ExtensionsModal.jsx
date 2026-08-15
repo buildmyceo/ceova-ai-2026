@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
     X, ArrowLeft, Scissors, Eye, Minimize2, RefreshCw, Scan, FileText, 
     Key, Palette, Calculator, Receipt, Film, Link, Zap, Calendar, HardDrive, Mail,
-    Check, LogIn, CircleDashed, ExternalLink, Sparkles, ShieldCheck, Trash2, Video
+    Check, LogIn, CircleDashed, ExternalLink, Sparkles, ShieldCheck, Trash2, Video, Plus
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { connectGoogleDrive } from '../services/gdriveSyncEngine';
@@ -187,7 +187,7 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                     <div className="settings-body" style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
                         
                         {view === 'tools' && (
-                            <div className="extensions-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+                            <div className="extensions-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
                                 
                                 <ExtensionCard 
                                     icon={<Scissors size={22} color="#60a5fa" />} 
@@ -260,22 +260,11 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                         )}
 
                         {view === 'connectors' && (
-                            <div className="extensions-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+                            <div className="extensions-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
                                 <ExtensionCard 
                                     type="connector"
-                                    icon={
-                                        <div style={{ 
-                                            background: '#fff', 
-                                            borderRadius: '50%', 
-                                            width: '20px', 
-                                            height: '20px', 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'center'
-                                        }}>
-                                            <img src="/google-logo.png" alt="Google" style={{ width: '12px', height: '12px', objectFit: 'contain' }} />
-                                        </div>
-                                    } 
+                                    icon={<img src="/google-logo.png" alt="Google" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />} 
+
                                     title="Google" 
                                     desc="Gmail, Drive & Calendar" 
                                     email={connections.googleEmail}
@@ -296,26 +285,14 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                 />
                                 <ExtensionCard 
                                     type="connector"
-                                    icon={<Zap size={24} color="#71717a" />} 
+                                    icon={<Zap size={22} color="#71717a" />} 
                                     title="Notion" 
                                     desc="Connect your workspaces." 
                                     disabled={true}
                                 />
                                 <ExtensionCard 
                                     type="connector"
-                                    icon={
-                                        <div style={{ 
-                                            background: '#fff', 
-                                            borderRadius: '50%', 
-                                            width: '20px', 
-                                            height: '20px', 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'center'
-                                        }}>
-                                            <img src="/telegram.png" alt="Telegram" style={{ width: '12px', height: '12px', objectFit: 'contain' }} />
-                                        </div>
-                                    } 
+                                    icon={<img src="/telegram.png" alt="Telegram" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />} 
                                     title="Telegram" 
                                     desc="Connect your Telegram chats." 
                                     disabled={true}
@@ -366,201 +343,109 @@ function ExtensionCard({
             style={{ 
                 background: disabled 
                     ? 'rgba(255,255,255,0.01)' 
-                    : isConnected 
-                        ? (isHovered ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.04)') 
-                        : (isHovered ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)'), 
+                    : (isHovered ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.015)'), 
                 border: disabled 
                     ? '1px solid rgba(255,255,255,0.03)' 
-                    : isConnected 
-                        ? (isHovered ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(34, 197, 94, 0.2)') 
-                        : (isHovered ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.06)'), 
-                borderRadius: '16px', 
-                padding: '18px', 
+                    : (isHovered ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.04)'), 
+                borderRadius: '12px', 
+                padding: '16px', 
                 cursor: disabled ? 'not-allowed' : 'pointer',
                 display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                gap: '14px',
-                transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-                opacity: disabled ? 0.4 : 1,
-                position: 'relative',
-                backdropFilter: 'blur(16px)',
-                WebkitBackdropFilter: 'blur(16px)',
-                boxShadow: isHovered && !disabled 
-                    ? (isConnected ? '0 12px 30px -5px rgba(34, 197, 94, 0.2)' : '0 12px 30px -5px rgba(0, 0, 0, 0.4)')
-                    : 'none',
-                transform: isHovered && !disabled ? 'translateY(-3px)' : 'none',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: '16px',
+                transition: 'all 0.2s',
+                opacity: disabled ? 0.6 : 1,
+                position: 'relative'
             }}
         >
-            {/* Top Row: Icon + Status Badge */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                <div style={{ 
-                    width: '44px', 
-                    height: '44px', 
-                    borderRadius: '12px', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    background: isConnected ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255,255,255,0.06)',
-                    border: isConnected ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(255,255,255,0.1)',
-                    boxShadow: isHovered ? (isConnected ? '0 0 15px rgba(34, 197, 94, 0.3)' : '0 0 15px rgba(255,255,255,0.15)') : 'none',
-                    transition: 'all 0.3s ease'
-                }}>
-                    {icon}
-                </div>
+            {/* Icon */}
+            <div style={{ 
+                width: '42px', 
+                height: '42px', 
+                borderRadius: '10px', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                flexShrink: 0
+            }}>
+                {icon}
+            </div>
 
-                {type === 'connector' && (
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                        {disabled ? (
-                            <span style={{
-                                padding: '3px 9px',
-                                borderRadius: '9999px',
-                                fontSize: '0.7rem',
-                                fontWeight: 500,
-                                background: 'rgba(255, 255, 255, 0.05)',
-                                color: '#71717a',
-                                border: '1px solid rgba(255, 255, 255, 0.08)'
-                            }}>
-                                Coming Soon
-                            </span>
-                        ) : isChecking ? (
-                            <span style={{
-                                padding: '3px 9px',
-                                borderRadius: '9999px',
-                                fontSize: '0.7rem',
+            {/* Title & Description */}
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', justifyContent: 'center' }}>
+                <span style={{ fontSize: '0.92rem', fontWeight: 500, color: '#ffffff', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {title}
+                </span>
+                <span style={{ fontSize: '0.75rem', color: '#a1a1aa', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {desc}
+                </span>
+            </div>
+
+            {/* Right Action */}
+            <div style={{ flexShrink: 0, marginLeft: '8px', display: 'flex', alignItems: 'center' }}>
+                {type === 'connector' ? (
+                    isConnected ? (
+                        <div title="Connected" style={{ color: '#52525b' }}>
+                            <Check size={18} />
+                        </div>
+                    ) : disabled ? (
+                        <div style={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '26px',
+                            height: '26px',
+                            borderRadius: '8px',
+                            background: 'rgba(255,255,255,0.03)',
+                            color: '#52525b',
+                        }}>
+                            <Plus size={14} />
+                        </div>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (onConnect) onConnect();
+                                else if (onClick) onClick();
+                            }}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: '26px',
+                                height: '26px',
+                                borderRadius: '8px',
+                                background: isHovered ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.06)',
                                 color: '#a1a1aa',
-                                background: 'rgba(255, 255, 255, 0.05)'
-                            }}>
-                                Checking...
-                            </span>
-                        ) : isConnected ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <div 
-                                    title="Connected & Authorized"
-                                    style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '5px',
-                                        padding: '3px 10px',
-                                        borderRadius: '9999px',
-                                        fontSize: '0.72rem',
-                                        fontWeight: 600,
-                                        background: 'rgba(34, 197, 94, 0.14)',
-                                        color: '#4ade80',
-                                        border: '1px solid rgba(34, 197, 94, 0.3)',
-                                        boxShadow: '0 0 10px rgba(34, 197, 94, 0.15)',
-                                        letterSpacing: '0.01em'
-                                    }}
-                                >
-                                    <span className="connector-live-dot" />
-                                    <Check size={12} strokeWidth={2.5} />
-                                    Connected
-                                </div>
-                                {onDisconnect && (
-                                    <button 
-                                        className="disconnect-btn"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onDisconnect();
-                                        }}
-                                        style={{
-                                            background: 'rgba(239, 68, 68, 0.1)',
-                                            border: '1px solid rgba(239, 68, 68, 0.2)',
-                                            color: '#ef4444',
-                                            borderRadius: '6px',
-                                            padding: '4px',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center'
-                                        }}
-                                        title="Disconnect"
-                                    >
-                                        <Trash2 size={14} />
-                                    </button>
-                                )}
-                            </div>
-                        ) : (
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (onConnect) onConnect();
-                                    else if (onClick) onClick();
-                                }}
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '4px 11px',
-                                    borderRadius: '9999px',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 600,
-                                    background: isHovered ? '#2563eb' : 'rgba(59, 130, 246, 0.14)',
-                                    color: isHovered ? '#ffffff' : '#60a5fa',
-                                    border: '1px solid rgba(59, 130, 246, 0.35)',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s ease',
-                                    boxShadow: isHovered ? '0 0 12px rgba(59, 130, 246, 0.4)' : 'none'
-                                }}
-                            >
-                                <LogIn size={12} />
-                                Sign in
-                            </button>
-                        )}
+                                border: '1px solid rgba(255,255,255,0.05)',
+                                cursor: 'pointer',
+                                transition: 'background 0.2s'
+                            }}
+                        >
+                            <Plus size={14} />
+                        </button>
+                    )
+                ) : (
+                    <div style={{ 
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '26px',
+                        height: '26px',
+                        borderRadius: '8px',
+                        background: 'rgba(255,255,255,0.03)',
+                        color: '#52525b',
+                        opacity: isHovered ? 1 : 0.5,
+                        transition: 'opacity 0.2s'
+                    }}>
+                        <Plus size={14} />
                     </div>
                 )}
             </div>
-
-            {/* Bottom Row: Title + Description */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span style={{ fontSize: '1.05rem', fontWeight: 600, color: disabled ? '#71717a' : '#ffffff', letterSpacing: '-0.01em' }}>{title}</span>
-                <span style={{ fontSize: '0.82rem', color: disabled ? '#52525b' : '#a1a1aa', lineHeight: '1.45', fontWeight: 400 }}>{desc}</span>
-            </div>
-
-            {/* Connector Footer Action Status */}
-            {type === 'connector' && !disabled && (
-                <div style={{ 
-                    marginTop: '4px', 
-                    paddingTop: '8px', 
-                    borderTop: '1px solid rgba(255,255,255,0.05)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px'
-                }}>
-                    {isConnected && email && (
-                        <div style={{ fontSize: '0.74rem', color: '#a1a1aa' }}>
-                            {email}
-                        </div>
-                    )}
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        fontSize: '0.74rem'
-                    }}>
-                        {isConnected ? (
-                            <>
-                                <span style={{ color: '#4ade80', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <ShieldCheck size={12} /> Account Connected
-                                </span>
-                                <span style={{ color: isHovered ? '#93c5fd' : '#60a5fa', fontWeight: 500 }}>
-                                    Manage Access →
-                                </span>
-                            </>
-                        ) : (
-                            <>
-                                <span style={{ color: '#9ca3af' }}>
-                                    Not signed in
-                                </span>
-                                <span style={{ color: '#60a5fa', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                    Sign in to connect →
-                                </span>
-                            </>
-                        )}
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
