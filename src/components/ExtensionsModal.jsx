@@ -141,7 +141,7 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                         transform: 'translate(-50%, -50%)',
                         width: '70vw',
                         height: '70vh',
-                        background: 'radial-gradient(circle, rgba(59,130,246,0.15) 0%, rgba(168,85,247,0.1) 50%, rgba(0,0,0,0) 70%)',
+                        background: 'radial-gradient(circle, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 50%, rgba(0,0,0,0) 70%)',
                         filter: 'blur(80px)',
                         pointerEvents: 'none',
                     }} />
@@ -166,14 +166,14 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                 <button 
                                     className={`tab-btn ${view === 'tools' ? 'active' : ''}`} 
                                     onClick={() => setView('tools')}
-                                    style={{ background: 'none', border: 'none', color: view === 'tools' ? '#fff' : '#a1a1aa', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer', paddingBottom: '4px', borderBottom: view === 'tools' ? '2px solid #555555' : '2px solid transparent' }}
+                                    style={{ background: 'none', border: 'none', color: view === 'tools' ? '#fff' : '#a1a1aa', fontSize: '0.95rem', fontWeight: 500, cursor: 'pointer', paddingBottom: '8px', borderBottom: view === 'tools' ? '2px solid #fff' : '2px solid transparent', transition: 'all 0.2s' }}
                                 >
                                     Tools
                                 </button>
                                 <button 
                                     className={`tab-btn ${view === 'connectors' ? 'active' : ''}`} 
                                     onClick={() => setView('connectors')}
-                                    style={{ background: 'none', border: 'none', color: view === 'connectors' ? '#fff' : '#a1a1aa', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer', paddingBottom: '4px', borderBottom: view === 'connectors' ? '2px solid #555555' : '2px solid transparent' }}
+                                    style={{ background: 'none', border: 'none', color: view === 'connectors' ? '#fff' : '#a1a1aa', fontSize: '0.95rem', fontWeight: 500, cursor: 'pointer', paddingBottom: '8px', borderBottom: view === 'connectors' ? '2px solid #fff' : '2px solid transparent', transition: 'all 0.2s' }}
                                 >
                                     Connectors
                                 </button>
@@ -389,48 +389,40 @@ function ExtensionCard({
             {/* Right Action */}
             <div style={{ flexShrink: 0, marginLeft: '8px', display: 'flex', alignItems: 'center' }}>
                 {type === 'connector' ? (
-                    isConnected ? (
-                        <div title="Connected" style={{ color: '#52525b' }}>
-                            <Check size={18} />
-                        </div>
-                    ) : disabled ? (
-                        <div style={{ 
+                    <div 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (disabled) return;
+                            if (isConnected) {
+                                if (onDisconnect) onDisconnect();
+                            } else {
+                                if (onConnect) onConnect();
+                            }
+                        }}
+                        style={{
+                            width: '36px',
+                            height: '20px',
+                            backgroundColor: isConnected ? '#fff' : 'rgba(255,255,255,0.1)',
+                            borderRadius: '10px',
+                            position: 'relative',
+                            cursor: disabled ? 'not-allowed' : 'pointer',
+                            transition: 'background-color 0.2s',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '26px',
-                            height: '26px',
-                            borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.03)',
-                            color: '#52525b',
-                        }}>
-                            <Plus size={14} />
-                        </div>
-                    ) : (
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                if (onConnect) onConnect();
-                                else if (onClick) onClick();
-                            }}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                width: '26px',
-                                height: '26px',
-                                borderRadius: '8px',
-                                background: isHovered ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.06)',
-                                color: '#a1a1aa',
-                                border: '1px solid rgba(255,255,255,0.05)',
-                                cursor: 'pointer',
-                                transition: 'background 0.2s'
-                            }}
-                        >
-                            <Plus size={14} />
-                        </button>
-                    )
+                            opacity: disabled ? 0.5 : 1
+                        }}
+                    >
+                        <div style={{
+                            width: '16px',
+                            height: '16px',
+                            backgroundColor: isConnected ? '#000' : '#a1a1aa',
+                            borderRadius: '50%',
+                            position: 'absolute',
+                            left: isConnected ? '18px' : '2px',
+                            transition: 'all 0.2s',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }} />
+                    </div>
                 ) : (
                     <div style={{ 
                         display: 'flex',
