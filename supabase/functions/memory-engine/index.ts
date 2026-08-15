@@ -16,7 +16,7 @@ const corsHeaders = {
 const MEMORY_PATTERNS = [
   { regex: /(?:my name(?:\s+is)?|i'm|i am|call me)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i, category: 'Profile', title: 'User Name', extract: (m: RegExpMatchArray) => m[1].trim() },
   { regex: /(?:i live in|i'm from|i am from|i'm based in|i am based in|my city is|my location is|i'm in|i am in)\s+(.+)/i, category: 'Profile', title: 'Location', extract: (m: RegExpMatchArray) => m[1].trim().replace(/[.!?]+$/, '') },
-  { regex: /(?:i'm|i am)\s+(\d{1,3})\s*(?:years?\s*old|yr)/i, category: 'Profile', title: 'Age', extract: (m: RegExpMatchArray) => m[1] },
+  { regex: /(?:i'm|i am|my age is)\s+(\d{1,3})\s*(?:years?\s*old|years?|yr)?/i, category: 'Profile', title: 'Age', extract: (m: RegExpMatchArray) => m[1] },
   { regex: /my (?:birth ?day|dob|date of birth) is\s+(.+)/i, category: 'Profile', title: 'Birthday', extract: (m: RegExpMatchArray) => m[1].trim().replace(/[.!?]+$/, '') },
   { regex: /(?:i work (?:at|for|in)|my (?:company|job|work|employer) is|i'm (?:a|an|the)|i am (?:a|an|the))\s+(.+)/i, category: 'Profile', title: 'Profession/Work', extract: (m: RegExpMatchArray) => m[1].trim().replace(/[.!?]+$/, '') },
   { regex: /my (?:email|mail|e-mail) (?:is|address is)\s+([\w.+-]+@[\w.-]+\.\w{2,})/i, category: 'Profile', title: 'Email', extract: (m: RegExpMatchArray) => m[1].trim() },
@@ -93,7 +93,7 @@ If no facts are present, return []. Respond with ONLY valid JSON, no markdown.`;
             method: "POST",
             headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "gpt-5.6-luna",
+              model: "gpt-4o-mini",
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: `Here is the user's latest message:\n"${lastUserMessage}"\nExtract any facts.` }

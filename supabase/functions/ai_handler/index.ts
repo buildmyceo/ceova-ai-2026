@@ -42,15 +42,8 @@ serve(async (req) => {
     let activeConfig = null;
 
     if (mode === "custom" || mode === "custom_api") {
-      const { data: config } = await supabase
-        .from("user_ai_configs")
-        .select("*")
-        .eq("user_id", user_id)
-        .eq("is_active", true)
-        .maybeSingle();
-      
-      activeConfig = config;
-      if (config) provider = config.provider;
+      // user_ai_configs was deprecated and dropped. Custom API now unsupported or handled differently.
+      console.warn("Custom API mode requested but user_ai_configs is deprecated.");
     }
 
     // 3. Usage Check (Only for Ceova provider)

@@ -3,12 +3,8 @@ import { Logger } from "./logger.ts";
 
 export const loadMemory = async (userId: string) => {
   const supabase = getAdminClient();
-  // Fetch user preferences/configs
-  const { data: configs } = await supabase
-    .from('user_ai_configs')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
+  // user_ai_configs is deprecated and dropped
+  const configs = null;
     
   return { configs };
 };

@@ -18,7 +18,7 @@ export interface AIResponse {
 
 export class AIRouter {
     private getModelsForTask(taskType: TaskType): string[] {
-        return ['gpt-5.6-luna', 'gpt-5.4-nano', 'gpt-4o-mini'];
+        return ['gpt-4o', 'gpt-4o-mini'];
     }
 
     async generateContent(
@@ -56,7 +56,7 @@ export class AIRouter {
                 };
                 
                 // Only add temperature if it's not a model that restricts it
-                if (!currentModel.includes('gpt-5.6') && !currentModel.includes('gpt-5.4') && !currentModel.startsWith('o1-')) {
+                if (!currentModel.startsWith('o1-')) {
                     requestBody.temperature = temperature;
                 }
 
@@ -159,7 +159,7 @@ export class AIRouter {
             stream_options: { include_usage: true }
         };
 
-        if (!model.includes('gpt-5.6') && !model.includes('gpt-5.4') && !model.startsWith('o1-')) {
+        if (!model.startsWith('o1-')) {
             requestBody.temperature = temperature;
         }
 

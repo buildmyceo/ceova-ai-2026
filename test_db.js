@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 
-const envFile = fs.readFileSync(".env", "utf8");
+const envFile = fs.readFileSync(".env.local", "utf8");
 let dbUrl = "", dbKey = "";
 envFile.split("\n").forEach(line => {
   if (line.startsWith("SUPABASE_URL=")) dbUrl = line.split("=")[1].replace(/"/g, "").trim();

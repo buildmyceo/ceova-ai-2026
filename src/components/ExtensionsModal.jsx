@@ -126,18 +126,31 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                         100% { transform: scale(0.95); opacity: 0.8; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
                     }
                 `}</style>
-                <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
+                <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1000, background: 'rgba(0, 0, 0, 0.4)' }}>
+                    <div style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: '70vw',
+                        height: '70vh',
+                        background: 'radial-gradient(circle, rgba(59,130,246,0.15) 0%, rgba(168,85,247,0.1) 50%, rgba(0,0,0,0) 70%)',
+                        filter: 'blur(80px)',
+                        pointerEvents: 'none',
+                    }} />
+                </motion.div>
                 <motion.div 
                     className="settings-card extensions-modal-card"
                     {...(isMobile ? mobileAnimation : desktopAnimation)}
                     transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                     style={{
                         ...(!isMobile ? { top: "50%", left: "50%", position: "fixed" } : { bottom: 0, left: 0, position: "fixed", width: '100%', height: '85vh', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }),
-                        background: 'rgba(10, 15, 25, 0.65)',
-                        backdropFilter: 'blur(24px)',
-                        WebkitBackdropFilter: 'blur(24px)',
-                        border: '1px solid rgba(255, 255, 255, 0.08)',
-                        boxShadow: '0 24px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1)',
+                        background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.6))',
+                        backdropFilter: 'blur(40px) saturate(200%)',
+                        WebkitBackdropFilter: 'blur(40px) saturate(200%)',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        boxShadow: '0 24px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
+                        zIndex: 1001
                     }}
                 >
                     <header className="settings-header">

@@ -59,7 +59,7 @@ export class ImageAnalysisTool implements Tool {
       
       const url = "https://api.openai.com/v1/chat/completions";
       const body = {
-        model: "gpt-5.6-luna",
+        model: "gpt-4o",
         messages: [
           {
             role: "user",

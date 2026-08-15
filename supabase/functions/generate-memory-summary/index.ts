@@ -169,7 +169,7 @@ Keep it under 80 words. Return ONLY the paragraph, nothing else.`;
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "gpt-5.6-luna",
+              model: "gpt-4o-mini",
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt },
