@@ -900,7 +900,9 @@ export default function Home({ session }) {
                                 created_at: messages[aiIdx].time
                             };
                             cacheManager.setMessage(aiMsgObj).catch(console.error);
-                            supabase.from('messages').insert(aiMsgObj).catch(console.error);
+                            supabase.from('messages').insert(aiMsgObj).then(({ error }) => {
+                                if (error) console.error(error);
+                            });
                             
                         } else if (messages[aiIdx].isTyping) {
                             messages.splice(aiIdx, 1);
