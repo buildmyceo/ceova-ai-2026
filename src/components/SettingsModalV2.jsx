@@ -726,23 +726,36 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                                     ← Back to summary
                                                 </button>
                                             </div>
-                                            {memories.map(mem => (
-                                                <div key={mem.id} className="memory-item">
-                                                    <div className="memory-text" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                            <img src="/ceova logo dark.png" alt="Ceova" style={{ width: 16, height: 16, objectFit: 'contain', flexShrink: 0 }} />
-                                                            <span><strong>{mem.title}:</strong> {mem.value}</span>
+                                            {Object.entries(
+                                                memories.reduce((acc, mem) => {
+                                                    const cat = mem.category || 'Other';
+                                                    if (!acc[cat]) acc[cat] = [];
+                                                    acc[cat].push(mem);
+                                                    return acc;
+                                                }, {})
+                                            ).map(([category, catMemories]) => (
+                                                <div key={category} style={{ marginBottom: '16px' }}>
+                                                    <h4 style={{ margin: '16px 20px 8px', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#9ca3af' }}>
+                                                        {category}
+                                                    </h4>
+                                                    {catMemories.map(mem => (
+                                                        <div key={mem.id} className="memory-item">
+                                                            <div className="memory-text" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                                    <img src="/ceova logo dark.png" alt="Ceova" style={{ width: 16, height: 16, objectFit: 'contain', flexShrink: 0 }} />
+                                                                    <span><strong>{mem.title}:</strong> {mem.value}</span>
+                                                                </div>
+                                                                <span className="memory-date" style={{ marginLeft: '26px' }}>
+                                                                    Saved on: {new Date(mem.created_at).toLocaleDateString()}
+                                                                </span>
+                                                            </div>
+                                                            <div className="memory-actions">
+                                                                <button className="del-btn" onClick={() => handleDeleteMemory(mem.id)} title="Delete memory">
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                        <span className="memory-date" style={{ marginLeft: '26px' }}>
-                                                            <span style={{ fontSize: '10px', opacity: 0.6, marginRight: '8px', background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: '4px' }}>{mem.category}</span>
-                                                            Saved on: {new Date(mem.created_at).toLocaleDateString()}
-                                                        </span>
-                                                    </div>
-                                                    <div className="memory-actions">
-                                                        <button className="del-btn" onClick={() => handleDeleteMemory(mem.id)} title="Delete memory">
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </div>
+                                                    ))}
                                                 </div>
                                             ))}
                                         </div>
