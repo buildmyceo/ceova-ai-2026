@@ -13,6 +13,7 @@ import { ColorToolkitTool } from './tools/color-toolkit.ts';
 import { WriteLocalFilesTool } from './tools/write-local-files.ts';
 import { ReadLocalFilesTool } from './tools/read-local-files.ts';
 import { ListLocalFilesTool } from './tools/list-local-files.ts';
+import { SystemContextTool } from './tools/system-context.ts';
 
 import { InvoiceGeneratorTool } from './tools/invoice-generator.ts';
 import { MediaConverterTool } from './tools/media-converter.ts';
@@ -36,6 +37,7 @@ class ToolRegistry {
     this.registerTool(new WriteLocalFilesTool());
     this.registerTool(new ReadLocalFilesTool());
     this.registerTool(new ListLocalFilesTool());
+    this.registerTool(new SystemContextTool());
 
     this.registerTool(new InvoiceGeneratorTool());
     this.registerTool(new MediaConverterTool());
