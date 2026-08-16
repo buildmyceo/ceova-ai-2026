@@ -900,15 +900,18 @@ export default function Home({ session }) {
                             const aiMsgObj = {
                                 id: newMsgId,
                                 chat_id: idToUse,
-                                role: 'ai',
-                                content: fullMsg, // Note: DB column is usually 'content' for messages, wait let me check (it was 'text' earlier but 'content' in user msg). Let's use 'text' and 'content' to be safe.
-                                text: fullMsg,
+                                user_id: session?.user?.id,
+                                role: 'assistant',
+                                content: fullMsg,
+                                mode: 'ceova',
                                 created_at: timeNow
                             };
                             cacheManager.setMessage(aiMsgObj).catch(console.error);
-                            supabase.from('messages').insert(aiMsgObj).then(({ error }) => {
-                                if (error) console.error(error);
-                            });
+                            if (!isTemporary) {
+                                supabase.from('messages').insert(aiMsgObj).then(({ error }) => {
+                                    if (error) console.error("Error saving fallback message:", error);
+                                });
+                            }
                             
                             // Turn off typing animation after a short delay so cursor stops blinking
                             setTimeout(() => {
