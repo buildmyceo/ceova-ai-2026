@@ -132,6 +132,21 @@ export async function syncGoogleDrive(userId) {
   }
 
   try {
+    // Check if user has ANY files synced already
+    const { count: existingFilesCount } = await supabase
+      .from('files')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('storage_source', 'gdrive');
+
+    // If 0 files in DB, ALWAYS do a full sync (even if a pageToken exists)
+    if (!existingFilesCount || existingFilesCount === 0) {
+      console.log('[GDriveSyncEngine] No files in DB for user. Forcing Full Sync...');
+      // Clear any stale sync logs so we get a clean start
+      await supabase.from('drive_sync_logs').delete().eq('user_id', userId);
+      return await executeFullSync(userId, accessToken);
+    }
+
     // Check for previous pageToken
     const { data: syncLog } = await supabase
       .from('drive_sync_logs')
@@ -240,11 +255,11 @@ async function executeFullSync(userId, accessToken) {
       if (syncedFolders.length > 0) {
         // Deduplicate to prevent Postgres ON CONFLICT errors within the same batch
         const dedupedFolders = Array.from(new Map(syncedFolders.map(f => [f.drive_id, f])).values());
-        const { error: fErr } = await supabase.from('folders').upsert(dedupedFolders, { onConflict: 'drive_id' });
+        const { error: fErr } = await supabase.from('folders').upsert(dedupedFolders, { onConflict: 'user_id,drive_id' });
         if (fErr) {
           console.error('[GDriveSyncEngine] Folder batch upsert error, falling back to individual:', fErr);
           for (const folder of dedupedFolders) {
-            const { error: indErr } = await supabase.from('folders').upsert([folder], { onConflict: 'drive_id' });
+            const { error: indErr } = await supabase.from('folders').upsert([folder], { onConflict: 'user_id,drive_id' });
             if (indErr) console.error('[GDriveSyncEngine] Folder individual upsert error:', indErr);
           }
         }
@@ -252,15 +267,30 @@ async function executeFullSync(userId, accessToken) {
       }
 
       if (syncedFiles.length > 0) {
-        // Deduplicate files
+        // Deduplicate files within this batch
         const dedupedFiles = Array.from(new Map(syncedFiles.map(f => [f.drive_id, f])).values());
-        const { error: fErr } = await supabase.from('files').upsert(dedupedFiles, { onConflict: 'drive_id' });
+        
+        // Try batch upsert first
+        const { error: fErr, data: upsertedData } = await supabase
+          .from('files')
+          .upsert(dedupedFiles, { onConflict: 'user_id,drive_id', ignoreDuplicates: false });
+        
         if (fErr) {
-          console.error('[GDriveSyncEngine] File batch upsert error, falling back to individual:', fErr);
+          console.error('[GDriveSyncEngine] Batch upsert error:', JSON.stringify(fErr));
+          // Fall back to individual inserts, skipping any that fail
           for (const file of dedupedFiles) {
-            const { error: indErr } = await supabase.from('files').upsert([file], { onConflict: 'drive_id' });
-            if (indErr) console.error('[GDriveSyncEngine] File individual upsert error:', indErr);
+            // Try upsert first, then plain insert
+            const { error: iErr } = await supabase.from('files').upsert([file], { onConflict: 'user_id,drive_id', ignoreDuplicates: false });
+            if (iErr) {
+              console.error('[GDriveSyncEngine] Individual file error:', file.name, JSON.stringify(iErr));
+              // Last resort: delete existing and re-insert
+              await supabase.from('files').delete().eq('drive_id', file.drive_id).eq('user_id', userId);
+              const { error: riErr } = await supabase.from('files').insert([file]);
+              if (riErr) console.error('[GDriveSyncEngine] Re-insert failed:', file.name, JSON.stringify(riErr));
+            }
           }
+        } else {
+          console.log(`[GDriveSyncEngine] ✅ Upserted ${dedupedFiles.length} files successfully`);
         }
         syncedFiles.length = 0; // Clear array after upsert
       }
@@ -340,7 +370,7 @@ async function executeDeltaSync(userId, accessToken, pageToken) {
               is_favorite: !!item.starred,
               is_trashed: !!item.trashed,
               updated_at: item.modifiedTime || new Date().toISOString()
-            }], { onConflict: 'drive_id' });
+            }], { onConflict: 'user_id,drive_id' });
             if (fErr) console.error('[GDriveSyncEngine] Folder delta upsert error:', fErr);
           } else {
             const category = categorizeMimeType(item.mimeType, item.name);
@@ -360,7 +390,7 @@ async function executeDeltaSync(userId, accessToken, pageToken) {
               is_shared: !!item.shared,
               is_trashed: !!item.trashed,
               updated_at: item.modifiedTime || new Date().toISOString()
-            }], { onConflict: 'drive_id' });
+            }], { onConflict: 'user_id,drive_id' });
             if (fErr) console.error('[GDriveSyncEngine] File delta upsert error:', fErr);
           }
         }
