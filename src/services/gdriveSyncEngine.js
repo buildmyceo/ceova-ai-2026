@@ -244,7 +244,8 @@ async function executeFullSync(userId, accessToken) {
         if (fErr) {
           console.error('[GDriveSyncEngine] Folder batch upsert error, falling back to individual:', fErr);
           for (const folder of dedupedFolders) {
-            await supabase.from('folders').upsert([folder], { onConflict: 'drive_id' });
+            const { error: indErr } = await supabase.from('folders').upsert([folder], { onConflict: 'drive_id' });
+            if (indErr) console.error('[GDriveSyncEngine] Folder individual upsert error:', indErr);
           }
         }
         syncedFolders.length = 0; // Clear array after upsert
@@ -257,7 +258,8 @@ async function executeFullSync(userId, accessToken) {
         if (fErr) {
           console.error('[GDriveSyncEngine] File batch upsert error, falling back to individual:', fErr);
           for (const file of dedupedFiles) {
-            await supabase.from('files').upsert([file], { onConflict: 'drive_id' });
+            const { error: indErr } = await supabase.from('files').upsert([file], { onConflict: 'drive_id' });
+            if (indErr) console.error('[GDriveSyncEngine] File individual upsert error:', indErr);
           }
         }
         syncedFiles.length = 0; // Clear array after upsert

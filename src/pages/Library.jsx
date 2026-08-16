@@ -433,16 +433,11 @@ export default function Library({ session, onBack, switchChat }) {
     setIsSyncing(true);
     setSyncNotice('Scanning Cloud Services...');
     try {
+      let needsAuth = false;
+
       const res = await syncGoogleDrive(userId);
-      const hasGoogleItems = allItems.some(i => i.source === 'gdrive' || i.source === 'gmail' || i.source === 'gcalendar');
       if (res.needsAuth) {
-        if (!hasGoogleItems) {
-          setNeedsDriveAuth(true);
-        } else {
-          setNeedsDriveAuth(false);
-        }
-      } else if (res.success) {
-        setNeedsDriveAuth(false);
+        needsAuth = true;
       }
 
       // 2. Sync Google Mail and Calendar
@@ -450,11 +445,13 @@ export default function Library({ session, onBack, switchChat }) {
         const mailRes = await fetchGoogleEmails(userId);
         const calRes = await fetchGoogleCalendarEvents(userId);
         if (mailRes?.needsAuth || calRes?.needsAuth) {
-          setNeedsDriveAuth(true);
+          needsAuth = true;
         }
       } catch (e) {
         console.warn('Google Mail/Calendar sync error:', e);
       }
+
+      setNeedsDriveAuth(needsAuth);
 
 
 
