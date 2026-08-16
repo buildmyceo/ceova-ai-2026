@@ -1266,6 +1266,7 @@ export default function Home({ session }) {
                         isHome={(chats[currentChatId] || []).length === 0}
                         localDirectoryHandle={localDirectoryHandle}
                         setLocalDirectoryHandle={setLocalDirectoryHandle}
+                        onOpenLibrary={() => { setIsLibraryOpen(true); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}
                     />
 
                 </div>

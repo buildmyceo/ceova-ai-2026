@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain } from 'lucide-react';
+import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../services/supabase';
 import ExtensionsModal from './ExtensionsModal';
@@ -12,7 +12,7 @@ const COMMON_EMOJIS = [
 
 export default function InputBox({ 
     input, setInput, handleSend, isLoading, handleStop, isHome,
-    localDirectoryHandle, setLocalDirectoryHandle
+    localDirectoryHandle, setLocalDirectoryHandle, onOpenLibrary
 }) {
     const textareaRef = useRef(null);
     const fileInputRef = useRef(null);
@@ -278,6 +278,13 @@ export default function InputBox({
                                             fileInputRef.current?.click(); 
                                         }}>
                                             <Plus size={18} /> Upload files
+                                        </button>
+                                    <button onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsPlusOpen(false);
+                                            if (onOpenLibrary) onOpenLibrary();
+                                        }}>
+                                            <BookOpen size={18} /> Select from Library
                                         </button>
 
                                 </div>
