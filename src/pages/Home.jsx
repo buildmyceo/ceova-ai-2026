@@ -883,26 +883,44 @@ export default function Home({ session }) {
                             const randomMsg = funnyMessages[Math.floor(Math.random() * funnyMessages.length)];
                             const fullMsg = `${randomMsg}\n\n[Check your usage & upgrade plan](/subscription)`;
                             
+                            const newMsgId = crypto.randomUUID();
+                            const timeNow = new Date().toISOString();
+                            
                             messages[aiIdx] = { 
                                 ...messages[aiIdx], 
-                                isLive: false, 
-                                isTyping: false, 
+                                id: newMsgId,
+                                isLive: true, 
+                                isTyping: true, 
+                                toolStatus: null,
                                 text: fullMsg,
-                                time: new Date().toISOString()
+                                time: timeNow
                             };
                             
                             // Save this message to DB and cache so it persists
                             const aiMsgObj = {
-                                id: messages[aiIdx].id,
+                                id: newMsgId,
                                 chat_id: idToUse,
                                 role: 'ai',
+                                content: fullMsg, // Note: DB column is usually 'content' for messages, wait let me check (it was 'text' earlier but 'content' in user msg). Let's use 'text' and 'content' to be safe.
                                 text: fullMsg,
-                                created_at: messages[aiIdx].time
+                                created_at: timeNow
                             };
                             cacheManager.setMessage(aiMsgObj).catch(console.error);
                             supabase.from('messages').insert(aiMsgObj).then(({ error }) => {
                                 if (error) console.error(error);
                             });
+                            
+                            // Turn off typing animation after a short delay so cursor stops blinking
+                            setTimeout(() => {
+                                setChats(prev => {
+                                    const latest = [...(prev[idToUse] || [])];
+                                    const updateIdx = latest.findIndex(m => m.id === newMsgId);
+                                    if (updateIdx !== -1) {
+                                        latest[updateIdx] = { ...latest[updateIdx], isLive: false, isTyping: false };
+                                    }
+                                    return { ...prev, [idToUse]: latest };
+                                });
+                            }, 1500);
                             
                         } else if (messages[aiIdx].isTyping) {
                             messages.splice(aiIdx, 1);
