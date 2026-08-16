@@ -570,21 +570,45 @@ function MessageItem({ msg, idx, isUser, editingMsg, editText, setEditText, hand
 
 const CyclingStatus = ({ defaultStatus }) => {
   const [statusIdx, setStatusIdx] = useState(0);
-  const statuses = ["Thinking...", "Writing...", "Analyzing..."];
+  const [displayText, setDisplayText] = useState('');
   
+  const statuses = ["Thinking...", "Writing...", "Searching..."];
+  const currentText = defaultStatus || statuses[statusIdx];
+  
+  useEffect(() => {
+    setDisplayText(''); 
+    let i = 0;
+    const typingInterval = setInterval(() => {
+      if (i < currentText.length) {
+        setDisplayText(currentText.slice(0, i + 1));
+        i++;
+      } else {
+        clearInterval(typingInterval);
+      }
+    }, 40);
+    
+    return () => clearInterval(typingInterval);
+  }, [currentText]);
+
   useEffect(() => {
     if (defaultStatus) return;
     const interval = setInterval(() => {
       setStatusIdx(prev => (prev + 1) % statuses.length);
-    }, 2000);
+    }, 2500);
     return () => clearInterval(interval);
   }, [defaultStatus]);
 
+  const lcText = currentText.toLowerCase();
+  let iconSrc = null;
+  if (lcText.includes('gmail')) iconSrc = '/gmail.png';
+  else if (lcText.includes('drive')) iconSrc = '/drive.png';
+  else if (lcText.includes('calendar')) iconSrc = '/google_calendar.png';
+  
   return (
-    <div className="premium-typing-status" style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.8 }}>
-      <Loader size={14} style={{ animation: 'spin 2s linear infinite', color: '#10a37f' }} />
-      <span className="typing-status-text">
-        {defaultStatus || statuses[statusIdx]}
+    <div className="premium-typing-status" style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.8, minHeight: '24px' }}>
+      {iconSrc && <img src={iconSrc} alt="service icon" style={{ width: 14, height: 14, objectFit: 'contain' }} />}
+      <span className="typing-status-text" style={{ fontFamily: 'monospace', fontSize: '13px' }}>
+        {displayText}<span className="blinking-cursor">_</span>
       </span>
     </div>
   );

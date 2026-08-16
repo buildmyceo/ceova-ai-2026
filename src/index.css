@@ -73,3 +73,14 @@ html, body, #root {
   justify-content: flex-end;
 }
 
+
+@keyframes blink-cursor {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.blinking-cursor {
+  animation: blink-cursor 1s step-end infinite;
+  margin-left: 2px;
+  font-weight: bold;
+}
