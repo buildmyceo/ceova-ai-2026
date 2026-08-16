@@ -28,6 +28,10 @@ export default function InputBox({
     const [isListening, setIsListening] = useState(false);
     const [isGmailConnected, setIsGmailConnected] = useState(false);
     const [isThinking, setIsThinking] = useState(false);
+    const [isLibraryPickerOpen, setIsLibraryPickerOpen] = useState(false);
+    const [libraryItems, setLibraryItems] = useState([]);
+    const [libraryLoading, setLibraryLoading] = useState(false);
+    const [librarySearch, setLibrarySearch] = useState('');
     const recognitionRef = useRef(null);
 
     useEffect(() => {
@@ -44,6 +48,93 @@ export default function InputBox({
         };
         checkGmailConnection();
     }, []);
+
+    // Fetch library items from Supabase for the picker
+    const openLibraryPicker = async () => {
+        setIsLibraryPickerOpen(true);
+        setLibrarySearch('');
+        setLibraryLoading(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+            const items = [];
+
+            // 1. Drive files (CEOVA + Google Drive)
+            const { data: driveFiles } = await supabase
+                .from('files')
+                .select('id, name, mime_type, category, storage_source, web_view_link, thumbnail_url, size')
+                .eq('user_id', user.id)
+                .not('is_trashed', 'eq', true)
+                .order('created_at', { ascending: false })
+                .limit(200);
+            (driveFiles || []).forEach(f => items.push({
+                id: f.id,
+                name: f.name,
+                mime_type: f.mime_type,
+                url: f.web_view_link || f.thumbnail_url,
+                thumbnail_url: f.thumbnail_url,
+                source: f.storage_source || 'gdrive',
+                type: 'file'
+            }));
+
+            // 2. Gmail emails
+            const { data: emails } = await supabase
+                .from('gmail_emails')
+                .select('id, name, snippet, from_sender, web_view_link')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false })
+                .limit(100);
+            (emails || []).forEach(e => items.push({
+                id: `gmail-${e.id}`,
+                name: e.name || 'Email',
+                mime_type: 'message/rfc822',
+                url: e.web_view_link,
+                snippet: e.snippet,
+                from_sender: e.from_sender,
+                source: 'gmail',
+                type: 'email'
+            }));
+
+            // 3. Calendar events
+            const { data: events } = await supabase
+                .from('calendar_events')
+                .select('id, name, start_time, location')
+                .eq('user_id', user.id)
+                .order('start_time', { ascending: true })
+                .limit(100);
+            (events || []).forEach(ev => items.push({
+                id: `cal-${ev.id}`,
+                name: ev.name || 'Event',
+                mime_type: 'text/calendar',
+                url: null,
+                snippet: ev.start_time ? new Date(ev.start_time).toLocaleString() : '',
+                source: 'gcalendar',
+                type: 'event'
+            }));
+
+            setLibraryItems(items);
+        } catch(e) {
+            console.error('Library picker load error:', e);
+        } finally {
+            setLibraryLoading(false);
+        }
+    };
+
+    const attachLibraryItem = (item) => {
+        // Build a lightweight pseudo-file object compatible with handleSend
+        const pseudoFile = {
+            name: item.name,
+            type: item.mime_type || 'application/octet-stream',
+            url: item.url,
+            thumbnail_url: item.thumbnail_url,
+            source: item.source,
+            snippet: item.snippet,
+            from_sender: item.from_sender,
+            isLibraryItem: true,
+        };
+        setFiles(prev => [...prev, pseudoFile]);
+        setIsLibraryPickerOpen(false);
+    };
 
     useEffect(() => {
         if (textareaRef.current) {
@@ -282,7 +373,7 @@ export default function InputBox({
                                     <button onClick={(e) => {
                                             e.stopPropagation();
                                             setIsPlusOpen(false);
-                                            if (onOpenLibrary) onOpenLibrary();
+                                            openLibraryPicker();
                                         }}>
                                             <BookOpen size={18} /> Select from Library
                                         </button>
@@ -550,6 +641,118 @@ export default function InputBox({
                     textareaRef.current?.focus();
                 }}
             />
+
+            {/* ── Library Picker Modal ─────────────────────────── */}
+            {isLibraryPickerOpen && (
+                <div
+                    style={{
+                        position: 'fixed', inset: 0, zIndex: 9999,
+                        background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                    onClick={() => setIsLibraryPickerOpen(false)}
+                >
+                    <div
+                        style={{
+                            background: 'var(--bg-secondary, #1a1a2e)',
+                            border: '1px solid var(--border-color, rgba(255,255,255,0.1))',
+                            borderRadius: '18px',
+                            width: '560px',
+                            maxWidth: '95vw',
+                            maxHeight: '75vh',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div style={{ padding: '18px 20px 12px', borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.08))', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <BookOpen size={18} color="var(--brand-color, #10a37f)" />
+                            <span style={{ fontWeight: 600, fontSize: '15px', color: 'var(--text-main)' }}>Select from Library</span>
+                            <button
+                                onClick={() => setIsLibraryPickerOpen(false)}
+                                style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Search */}
+                        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.06))' }}>
+                            <input
+                                autoFocus
+                                placeholder="Search files, emails, events…"
+                                value={librarySearch}
+                                onChange={e => setLibrarySearch(e.target.value)}
+                                style={{
+                                    width: '100%', boxSizing: 'border-box',
+                                    background: 'var(--bg-primary, #0d0d1a)',
+                                    border: '1px solid var(--border-color, rgba(255,255,255,0.1))',
+                                    borderRadius: '10px', padding: '9px 14px',
+                                    color: 'var(--text-main)', fontSize: '14px', outline: 'none'
+                                }}
+                            />
+                        </div>
+
+                        {/* Items */}
+                        <div style={{ overflowY: 'auto', flex: 1, padding: '8px' }}>
+                            {libraryLoading ? (
+                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                                    <div style={{ marginBottom: '10px' }}>Loading library…</div>
+                                </div>
+                            ) : libraryItems.filter(it => !librarySearch || it.name?.toLowerCase().includes(librarySearch.toLowerCase()) || it.snippet?.toLowerCase().includes(librarySearch.toLowerCase()) || it.from_sender?.toLowerCase().includes(librarySearch.toLowerCase())).length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '14px' }}>
+                                    No items found
+                                </div>
+                            ) : (
+                                libraryItems
+                                    .filter(it => !librarySearch || it.name?.toLowerCase().includes(librarySearch.toLowerCase()) || it.snippet?.toLowerCase().includes(librarySearch.toLowerCase()) || it.from_sender?.toLowerCase().includes(librarySearch.toLowerCase()))
+                                    .map(item => {
+                                        const sourceColors = { gdrive: '#34d399', gmail: '#c084fc', gcalendar: '#38bdf8', local: '#f59e0b', ai_generated: '#f472b6' };
+                                        const sourceLabels = { gdrive: 'Drive', gmail: 'Gmail', gcalendar: 'Calendar', local: 'Local', ai_generated: 'AI' };
+                                        const color = sourceColors[item.source] || '#94a3b8';
+                                        return (
+                                            <div
+                                                key={item.id}
+                                                onClick={() => attachLibraryItem(item)}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: '12px',
+                                                    padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
+                                                    transition: 'background 0.15s',
+                                                    marginBottom: '2px',
+                                                }}
+                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                            >
+                                                <div style={{ width: 36, height: 36, borderRadius: '8px', background: `${color}22`, border: `1px solid ${color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                    {item.source === 'gmail' ? '✉️' : item.source === 'gcalendar' ? '📅' : item.mime_type?.startsWith('image/') ? '🖼️' : item.mime_type === 'application/pdf' ? '📄' : '📁'}
+                                                </div>
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                        {item.name}
+                                                    </div>
+                                                    {(item.snippet || item.from_sender) && (
+                                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '2px' }}>
+                                                            {item.from_sender ? `From: ${item.from_sender}` : item.snippet}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <span style={{ fontSize: '10px', fontWeight: 600, color, background: `${color}22`, border: `1px solid ${color}44`, borderRadius: '6px', padding: '2px 7px', flexShrink: 0 }}>
+                                                    {sourceLabels[item.source] || item.source}
+                                                </span>
+                                            </div>
+                                        );
+                                    })
+                            )}
+                        </div>
+                        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border-color, rgba(255,255,255,0.06))', fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>
+                            Click any item to attach it to your message
+                        </div>
+                    </div>
+                </div>
+            )}
         </motion.div>
     );
 }
