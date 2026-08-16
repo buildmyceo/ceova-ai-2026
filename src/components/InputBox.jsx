@@ -256,17 +256,17 @@ export default function InputBox({
                                 <Plus size={18} />
                             </button>
 
-                            <button
-                                className={`toolbar-btn ${isThinking ? 'active' : ''}`}
-                                onClick={() => setIsThinking(!isThinking)}
-                                title="Think (Detailed Analysis)"
-                                style={isThinking ? { color: 'var(--brand-color)' } : {}}
-                            >
-                                <Brain size={18} />
-                            </button>
-
                                 {isPlusOpen && !isToolsSubmenuOpen && !isConnectorsSubmenuOpen && (
                                 <div className="plus-dropdown-menu">
+                                    <button onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsThinking(!isThinking);
+                                            setIsPlusOpen(false);
+                                        }}>
+                                            <Brain size={18} color={isThinking ? 'var(--brand-color)' : 'currentColor'} /> 
+                                            {isThinking ? 'Detailed Thinking: ON' : 'Enable Deep Thinking'}
+                                        </button>
+                                    <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
                                     <button onClick={(e) => {
                                             e.stopPropagation();
                                             setIsConnectorsSubmenuOpen(true);
