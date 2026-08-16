@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen } from 'lucide-react';
+import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../services/supabase';
 import ExtensionsModal from './ExtensionsModal';
@@ -697,13 +697,18 @@ export default function InputBox({
                         </div>
 
                         {/* Items */}
-                        <div style={{ overflowY: 'auto', flex: 1, padding: '8px' }}>
+                        <div style={{ 
+                            overflowY: 'auto', flex: 1, padding: '16px',
+                            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '16px',
+                            alignContent: 'start',
+                            background: 'var(--bg-primary, #0d0d1a)'
+                        }}>
                             {libraryLoading ? (
-                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', gridColumn: '1 / -1' }}>
                                     <div style={{ marginBottom: '10px' }}>Loading library…</div>
                                 </div>
                             ) : libraryItems.filter(it => !librarySearch || it.name?.toLowerCase().includes(librarySearch.toLowerCase()) || it.snippet?.toLowerCase().includes(librarySearch.toLowerCase()) || it.from_sender?.toLowerCase().includes(librarySearch.toLowerCase())).length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '14px' }}>
+                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '14px', gridColumn: '1 / -1' }}>
                                     No items found
                                 </div>
                             ) : (
@@ -718,30 +723,72 @@ export default function InputBox({
                                                 key={item.id}
                                                 onClick={() => attachLibraryItem(item)}
                                                 style={{
-                                                    display: 'flex', alignItems: 'center', gap: '12px',
-                                                    padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
-                                                    transition: 'background 0.15s',
-                                                    marginBottom: '2px',
+                                                    background: 'var(--bg-secondary, #1a1a2e)',
+                                                    border: '1px solid var(--border-color, rgba(255,255,255,0.06))',
+                                                    borderRadius: '12px', overflow: 'hidden', cursor: 'pointer',
+                                                    display: 'flex', flexDirection: 'column', position: 'relative',
+                                                    transition: 'transform 0.2s, box-shadow 0.2s, border-color 0.2s'
                                                 }}
-                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                onMouseEnter={e => {
+                                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
+                                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+                                                }}
+                                                onMouseLeave={e => {
+                                                    e.currentTarget.style.transform = 'none';
+                                                    e.currentTarget.style.boxShadow = 'none';
+                                                    e.currentTarget.style.borderColor = 'var(--border-color, rgba(255,255,255,0.06))';
+                                                }}
                                             >
-                                                <div style={{ width: 36, height: 36, borderRadius: '8px', background: `${color}22`, border: `1px solid ${color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                                    {item.source === 'gmail' ? '✉️' : item.source === 'gcalendar' ? '📅' : item.mime_type?.startsWith('image/') ? '🖼️' : item.mime_type === 'application/pdf' ? '📄' : '📁'}
+                                                {/* Thumbnail area */}
+                                                <div style={{ position: 'relative', aspectRatio: '1', background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                                    {item.url && (item.mime_type?.startsWith('image/') || item.thumbnail_url) ? (
+                                                        <img src={item.thumbnail_url || item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={item.name} />
+                                                    ) : (
+                                                        <div style={{ fontSize: '32px', color: 'var(--text-muted)' }}>
+                                                            {item.source === 'gmail' ? <Mail size={32} /> : item.source === 'gcalendar' ? <CalendarIcon size={32} /> : item.mime_type === 'application/pdf' ? <FileText size={32} /> : <Folder size={32} />}
+                                                        </div>
+                                                    )}
+                                                    {/* Hover Overlay */}
+                                                    <div className="picker-card-overlay" style={{
+                                                        position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        opacity: 0, transition: 'opacity 0.2s', pointerEvents: 'none'
+                                                    }}>
+                                                        <div style={{ background: 'var(--brand-color, #10a37f)', color: '#fff', padding: '6px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600 }}>
+                                                            Select
+                                                        </div>
+                                                    </div>
+                                                    {/* Source Badge */}
+                                                    <div style={{
+                                                        position: 'absolute', top: '8px', left: '8px',
+                                                        background: `${color}33`, border: `1px solid ${color}55`, color: color,
+                                                        padding: '3px 7px', borderRadius: '12px', fontSize: '10px', fontWeight: 600,
+                                                        display: 'flex', alignItems: 'center', gap: '4px', backdropFilter: 'blur(4px)'
+                                                    }}>
+                                                        {item.source === 'gdrive' ? <Cloud size={10} /> : item.source === 'gmail' ? <Mail size={10} /> : item.source === 'gcalendar' ? <CalendarIcon size={10} /> : <Folder size={10} />}
+                                                        {sourceLabels[item.source] || item.source}
+                                                    </div>
+                                                    {/* Three dots icon */}
+                                                    <div style={{
+                                                        position: 'absolute', top: '8px', right: '8px',
+                                                        background: 'rgba(0,0,0,0.5)', borderRadius: '6px', padding: '3px', color: '#fff',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                    }}>
+                                                        <MoreVertical size={14} />
+                                                    </div>
                                                 </div>
-                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                    <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {/* Meta area */}
+                                                <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, justifyContent: 'center' }}>
+                                                    <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '1.3' }}>
                                                         {item.name}
                                                     </div>
                                                     {(item.snippet || item.from_sender) && (
-                                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '2px' }}>
+                                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                             {item.from_sender ? `From: ${item.from_sender}` : item.snippet}
                                                         </div>
                                                     )}
                                                 </div>
-                                                <span style={{ fontSize: '10px', fontWeight: 600, color, background: `${color}22`, border: `1px solid ${color}44`, borderRadius: '6px', padding: '2px 7px', flexShrink: 0 }}>
-                                                    {sourceLabels[item.source] || item.source}
-                                                </span>
                                             </div>
                                         );
                                     })
