@@ -40,7 +40,7 @@ export function buildSystemPrompt(userName = 'the user', memories = [], currentP
     const behaviorBlock = `
 HOW TO TALK:
 - Talk like a real person. Casual is fine. Don't be stiff.
-- Short answers are usually better. Only go long when it genuinely helps.
+- Keep all responses extremely short, simple, and focused. Do not be wordy.
 - No corporate speak. No "Certainly!", "Absolutely!", or "Great question!" — just answer.
 - Use bullet points when listing things, but don't overdo formatting.
 - If you don't know something, just say so. Don't make things up.

@@ -238,7 +238,7 @@ export default function Home({ session }) {
         fetchChats();
     }, [session]);
 
-    const handleSend = async (files = [], overrideText = null, isHidden = false) => {
+    const handleSend = async (files = [], overrideText = null, isHidden = false, isThinking = false) => {
         const textToUse = overrideText !== null ? overrideText : input;
         if (!textToUse.trim() && files.length === 0) return;
         if (isLoading) return;
@@ -461,7 +461,8 @@ export default function Home({ session }) {
                     history: historyForAI,
                     attachments: currentAttachments.length > 0 ? currentAttachments : [],
                     is_temporary: isTemporary,
-                    has_local_folder: !!localDirectoryHandleRef.current
+                    has_local_folder: !!localDirectoryHandleRef.current,
+                    is_thinking: isThinking
                 };
 
                 let res;

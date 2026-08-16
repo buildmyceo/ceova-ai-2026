@@ -1,40 +1,39 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabase";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
+  const [status, setStatus] = useState("Finalizing connection...");
 
   useEffect(() => {
-    const handle = async () => {
-      // Small delay to ensure session is available
-      const { data, error } = await supabase.auth.getSession();
+    let mounted = true;
 
-      if (error) {
-        console.error("[AuthCallback] Error getting session:", error);
-        navigate("/login");
-        return;
+    // VERY IMPORTANT: Grab from hash immediately before Supabase strips it!
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const hashProviderToken = hashParams.get('provider_token');
+    const hashProviderRefreshToken = hashParams.get('provider_refresh_token');
+
+    if (hashProviderToken) {
+      console.log("[AuthCallback] Found provider_token directly in hash!");
+      localStorage.setItem('google_provider_token', hashProviderToken);
+      if (hashProviderRefreshToken) {
+        localStorage.setItem('google_refresh_token', hashProviderRefreshToken);
       }
+    }
 
-      const session = data.session;
-      if (!session) {
-        console.warn("[AuthCallback] No session found, redirecting to login.");
-        navigate("/login");
-        return;
-      }
+    const processSession = async (session) => {
+      if (!session) return;
+      
+      const provider_token = session.provider_token || hashProviderToken || localStorage.getItem('google_provider_token');
+      const provider_refresh_token = session.provider_refresh_token || hashProviderRefreshToken || localStorage.getItem('google_refresh_token');
 
-      const provider_token = session.provider_token;
-      const provider_refresh_token = session.provider_refresh_token;
-
-      console.log("ACCESS:", provider_token);
-      console.log("REFRESH:", provider_refresh_token);
+      console.log("[AuthCallback] Session received, Provider Token present:", !!provider_token);
 
       if (provider_token) {
         try {
           const newExpiry = Date.now() + (3500 * 1000); // roughly 1 hour
 
-          // IMPORTANT: provider_refresh_token may be null on subsequent logins
-          // Only save/update refresh_token if we actually received one
           const upsertData = {
             user_id: session.user.id,
             access_token: provider_token,
@@ -60,27 +59,44 @@ export default function AuthCallback() {
           if (dbError) {
             console.error(`[AuthCallback] DB save error for ${providerName}:`, dbError);
           } else {
-            console.log(`[AuthCallback] Successfully saved ${providerName} tokens to database!`, 
-              provider_refresh_token ? "(with refresh token)" : "(access token only — will need reconnect when expired)");
+            console.log(`[AuthCallback] Successfully saved ${providerName} tokens to database!`);
           }
         } catch (err) {
           console.error("[AuthCallback] Failed to save tokens:", err);
         }
       } else {
-        console.warn("[AuthCallback] No provider_token in session. Check if prompt=consent was used.");
+        console.warn("[AuthCallback] No provider_token found.");
       }
 
-      // Finish by redirecting to dashboard
-      navigate("/dashboard", { replace: true });
+      if (mounted) {
+        // Return to library
+        navigate("/library", { replace: true });
+      }
     };
 
-    handle();
+    // 1. Try to get session immediately
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) console.error("[AuthCallback] getSession error:", error);
+      if (session) processSession(session);
+    });
+
+    // 2. Also listen for state change
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        processSession(session);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
   return (
     <div className="auth-overlay">
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '1.2rem', fontWeight: 500 }}>Finalizing connection...</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '1.2rem', fontWeight: 500 }}>{status}</p>
         <div className="spinner" /> 
       </div>
     </div>

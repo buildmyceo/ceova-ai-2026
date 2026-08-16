@@ -8,6 +8,7 @@ export const GoogleCalendarConnectorTool: Tool = {
     name: "Google Calendar Connector",
     description: `Reads, searches, creates, updates, and deletes Google Calendar events.
 CALENDAR_CONNECTOR RULES:
+- Keep all conversational responses extremely short, simple, and direct. Do not be overly polite or wordy.
 - If creating an event and the title is missing, ask the user for it BEFORE calling the tool.
 - If date or time is missing, ask for the missing info.
 - If no duration is provided, default to 1 hour and inform the user.

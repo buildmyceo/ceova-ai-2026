@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip } from 'lucide-react';
+import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../services/supabase';
 import ExtensionsModal from './ExtensionsModal';
@@ -27,6 +27,7 @@ export default function InputBox({
     const [files, setFiles] = useState([]);
     const [isListening, setIsListening] = useState(false);
     const [isGmailConnected, setIsGmailConnected] = useState(false);
+    const [isThinking, setIsThinking] = useState(false);
     const recognitionRef = useRef(null);
 
     useEffect(() => {
@@ -80,7 +81,7 @@ export default function InputBox({
         setIsToolsSubmenuOpen(false);
         setIsConnectorsSubmenuOpen(false);
         setIsEmojiOpen(false);
-        handleSend(files);
+        handleSend(files, null, false, isThinking);
         // Revoke preview URLs before clearing
         files.forEach(f => {
             if (f.url && f.url.startsWith('blob:')) URL.revokeObjectURL(f.url);
@@ -255,6 +256,14 @@ export default function InputBox({
                                 <Plus size={18} />
                             </button>
 
+                            <button
+                                className={`toolbar-btn ${isThinking ? 'active' : ''}`}
+                                onClick={() => setIsThinking(!isThinking)}
+                                title="Think (Detailed Analysis)"
+                                style={isThinking ? { color: 'var(--brand-color)' } : {}}
+                            >
+                                <Brain size={18} />
+                            </button>
 
                                 {isPlusOpen && !isToolsSubmenuOpen && !isConnectorsSubmenuOpen && (
                                 <div className="plus-dropdown-menu">
