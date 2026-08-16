@@ -864,20 +864,58 @@ export default function Home({ session }) {
         } catch (error) {
             if (error.name !== 'AbortError') {
                 console.error("Send Error:", error);
+                
+                const errorMessage = error?.message || error?.toString() || 'Unknown error';
+                const isTokenLimit = errorMessage.toLowerCase().includes('token limit reached');
+                
                 setChats(prev => {
                     const messages = [...(prev[idToUse] || [])];
                     const aiIdx = messages.findIndex(m => m.tempId === tempId);
-                    if (aiIdx !== -1 && messages[aiIdx].isTyping) {
-                        messages.splice(aiIdx, 1);
+                    
+                    if (aiIdx !== -1) {
+                        if (isTokenLimit) {
+                            const funnyMessages = [
+                                "I'm out of breath for today! Upgrade your plan to keep talking, or I'll see you tomorrow.",
+                                "My talk-o-meter hit zero! Upgrade now to add more fuel, or we can chat again tomorrow.",
+                                "You used up all my words for today! Upgrade your plan to buy me more, or wait until tomorrow.",
+                                "My daily battery is dead. 🔋 Upgrade your plan to plug me in, or come back tomorrow!"
+                            ];
+                            const randomMsg = funnyMessages[Math.floor(Math.random() * funnyMessages.length)];
+                            const fullMsg = `${randomMsg}\n\n[Check your usage & upgrade plan](/subscription)`;
+                            
+                            messages[aiIdx] = { 
+                                ...messages[aiIdx], 
+                                isLive: false, 
+                                isTyping: false, 
+                                text: fullMsg,
+                                time: new Date().toISOString()
+                            };
+                            
+                            // Save this message to DB and cache so it persists
+                            const aiMsgObj = {
+                                id: messages[aiIdx].id,
+                                chat_id: idToUse,
+                                role: 'ai',
+                                text: fullMsg,
+                                created_at: messages[aiIdx].time
+                            };
+                            cacheManager.setMessage(aiMsgObj).catch(console.error);
+                            supabase.from('messages').insert(aiMsgObj).catch(console.error);
+                            
+                        } else if (messages[aiIdx].isTyping) {
+                            messages.splice(aiIdx, 1);
+                        }
                     }
                     return { ...prev, [idToUse]: messages };
                 });
-                // Debug: Show detailed error to help diagnose "Load failed"
-                const errorMessage = error?.message || error?.toString() || 'Unknown error';
-                const errorStr = (error?.stack && !error.stack.includes(errorMessage)) 
-                    ? `${errorMessage}\n${error.stack}` 
-                    : (error?.stack || errorMessage);
-                showToast(errorStr.substring(0, 150) || 'Failed to reach server.', 'error');
+                
+                if (!isTokenLimit) {
+                    // Debug: Show detailed error to help diagnose "Load failed"
+                    const errorStr = (error?.stack && !error.stack.includes(errorMessage)) 
+                        ? `${errorMessage}\n${error.stack}` 
+                        : (error?.stack || errorMessage);
+                    showToast(errorStr.substring(0, 150) || 'Failed to reach server.', 'error');
+                }
             }
         } finally {
             setIsLoading(false);
