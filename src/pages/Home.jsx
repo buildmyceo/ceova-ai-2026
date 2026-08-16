@@ -462,7 +462,13 @@ export default function Home({ session }) {
                     attachments: currentAttachments.length > 0 ? currentAttachments : [],
                     is_temporary: isTemporary,
                     has_local_folder: !!localDirectoryHandleRef.current,
-                    is_thinking: isThinking
+                    is_thinking: isThinking,
+                    user_context: {
+                        date: new Date().toLocaleDateString(),
+                        time: new Date().toLocaleTimeString(),
+                        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                        dayOfWeek: new Date().toLocaleDateString(undefined, { weekday: 'long' })
+                    }
                 };
 
                 let res;
