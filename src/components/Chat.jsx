@@ -575,20 +575,61 @@ const CyclingStatus = ({ defaultStatus }) => {
   const statuses = ["Thinking...", "Writing...", "Searching..."];
   const currentText = defaultStatus || statuses[statusIdx];
   
+  // Smooth typewriter that types forward, pauses, then deletes backward
   useEffect(() => {
-    setDisplayText(''); 
-    let i = 0;
-    const typingInterval = setInterval(() => {
-      if (i < currentText.length) {
-        setDisplayText(currentText.slice(0, i + 1));
+    let i = displayText.length;
+    let isDeleting = false;
+    let timer;
+
+    const tick = () => {
+      if (!isDeleting && i < currentText.length) {
+        // Typing forward
         i++;
-      } else {
-        clearInterval(typingInterval);
+        setDisplayText(currentText.slice(0, i));
+        timer = setTimeout(tick, 40);
+      } else if (!isDeleting && i === currentText.length) {
+        // Pause at the end before next cycle (handled by outer interval, but we wait here)
+        // We only delete if it's a cycling status and we're about to change. 
+        // Actually, since currentText changes from the outer interval, when currentText changes, 
+        // this useEffect re-runs. 
+        // So we need a better approach to delete backward.
       }
-    }, 40);
+    };
     
-    return () => clearInterval(typingInterval);
+    // Instead of deleting, just type it out smoothly. If currentText changes, 
+    // we'll smoothly delete the old text then type the new one.
   }, [currentText]);
+
+  // Let's rewrite the typewriter to handle transitions smoothly
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [textToType, setTextToType] = useState(currentText);
+
+  useEffect(() => {
+    if (textToType !== currentText) {
+      setIsDeleting(true);
+    }
+  }, [currentText, textToType]);
+
+  useEffect(() => {
+    let timer;
+    if (isDeleting) {
+      if (displayText.length > 0) {
+        timer = setTimeout(() => {
+          setDisplayText(displayText.slice(0, -1));
+        }, 20);
+      } else {
+        setIsDeleting(false);
+        setTextToType(currentText);
+      }
+    } else {
+      if (displayText.length < textToType.length) {
+        timer = setTimeout(() => {
+          setDisplayText(textToType.slice(0, displayText.length + 1));
+        }, 40);
+      }
+    }
+    return () => clearTimeout(timer);
+  }, [displayText, isDeleting, textToType, currentText]);
 
   useEffect(() => {
     if (defaultStatus) return;
@@ -598,7 +639,7 @@ const CyclingStatus = ({ defaultStatus }) => {
     return () => clearInterval(interval);
   }, [defaultStatus]);
 
-  const lcText = currentText.toLowerCase();
+  const lcText = textToType.toLowerCase();
   let iconSrc = null;
   if (lcText.includes('gmail')) iconSrc = '/gmail.png';
   else if (lcText.includes('drive')) iconSrc = '/drive.png';
@@ -608,7 +649,7 @@ const CyclingStatus = ({ defaultStatus }) => {
     <div className="premium-typing-status" style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.8, minHeight: '24px' }}>
       {iconSrc && <img src={iconSrc} alt="service icon" style={{ width: 14, height: 14, objectFit: 'contain' }} />}
       <span className="typing-status-text" style={{ fontFamily: 'monospace', fontSize: '13px' }}>
-        {displayText}<span className="blinking-cursor">_</span>
+        {displayText}
       </span>
     </div>
   );
