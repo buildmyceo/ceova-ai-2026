@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import './Library.css';
 import {
   X, Search, Image, FileText, File, Code2, Music, Video,
@@ -406,6 +407,7 @@ function ActionCard({ item, onPreview, onDownload, onVisit }) {
 // ─── Main Library Page Component ──────────────────────────────────────────────
 export default function Library({ session, onBack, switchChat }) {
   const { resolvedTheme } = useTheme();
+  const location = useLocation();
 
   // Top Drive Tabs: 'ceova' | 'gdrive' | 'gmail' | 'gcalendar' | 'ai'
   const [topTab, setTopTab] = useState('ceova');
@@ -436,6 +438,7 @@ export default function Library({ session, onBack, switchChat }) {
       let needsAuth = false;
 
       const res = await syncGoogleDrive(userId);
+      console.log('[Library] Drive sync result:', res);
       if (res.needsAuth) {
         needsAuth = true;
       }
@@ -451,10 +454,14 @@ export default function Library({ session, onBack, switchChat }) {
         console.warn('Google Mail/Calendar sync error:', e);
       }
 
-      setNeedsDriveAuth(needsAuth);
+      if (needsAuth) {
+        // Token is expired or missing — redirect to Google OAuth
+        setSyncNotice('Google authentication needed. Redirecting...');
+        setTimeout(() => connectGoogleDrive(), 1000);
+        return;
+      }
 
-
-
+      setNeedsDriveAuth(false);
       setSyncNotice('Cloud services synced.');
       await fetchLibraryData();
     } catch (e) {
@@ -619,12 +626,14 @@ export default function Library({ session, onBack, switchChat }) {
       } catch (aigErr) {}
 
       // 4. Pull Google Drive / Local synced metadata from public.files table
-      const { data: driveFiles } = await supabase
+      const { data: driveFiles, error: driveErr } = await supabase
         .from('files')
         .select('*')
         .eq('user_id', userId)
-        .eq('is_trashed', false)
+        .not('is_trashed', 'eq', true)  // handles both false AND null
         .order('created_at', { ascending: false });
+
+      if (driveErr) console.error('[Library] Drive files fetch error:', driveErr);
 
       (driveFiles || []).forEach(df => {
         const isImg = df.category === 'images' || df.mime_type?.startsWith('image/');
@@ -767,12 +776,20 @@ export default function Library({ session, onBack, switchChat }) {
 
   useEffect(() => { fetchLibraryData(); }, [fetchLibraryData]);
 
-  // Attempt initial Drive sync on load
+  // Auto-sync on load, and also when returning from Google OAuth
   useEffect(() => {
     if (session?.user?.id) {
       handleSyncDrive();
     }
   }, [session?.user?.id]);
+
+  // Extra sync trigger when returning from OAuth (AuthCallback sets triggerSync: true)
+  useEffect(() => {
+    if (location?.state?.triggerSync && session?.user?.id) {
+      // Small delay to ensure token is saved before syncing
+      setTimeout(() => handleSyncDrive(), 1500);
+    }
+  }, [location?.state?.triggerSync]);
 
   // Filter Items by Top Drive Tab (ceova, gdrive, dropbox, gmail, gcalendar, ai)
   const driveItems = allItems.filter(it => {
@@ -878,11 +895,14 @@ export default function Library({ session, onBack, switchChat }) {
   const actions = filtered.filter(i => i.kind === 'action');
 
   // Top Tab Counts
-  const countCEOVA   = allItems.filter(i => i.source !== 'gdrive' && i.source !== 'gmail' && i.source !== 'gcalendar').length;
+  const countCEOVA   = allItems.filter(i => {
+    const isAiItem = i.source === 'ai' || i.source === 'ai_generated' || i.category === 'ai_generated' || i.category === 'action';
+    return i.source !== 'gdrive' && i.source !== 'gmail' && i.source !== 'gcalendar' && !isAiItem;
+  }).length;
   const countGDrive  = allItems.filter(i => i.source === 'gdrive').length;
   const countGmail   = allItems.filter(i => i.source === 'gmail').length;
   const countGCal    = allItems.filter(i => i.source === 'gcalendar').length;
-  const countAI      = allItems.filter(i => i.source === 'ai').length;
+  const countAI      = allItems.filter(i => i.source === 'ai' || i.source === 'ai_generated' || i.category === 'ai_generated' || i.category === 'action').length;
 
   const TOP_TABS = [
     { id: 'ceova',     label: 'CEOVA Drive',     count: countCEOVA },
@@ -1060,7 +1080,7 @@ export default function Library({ session, onBack, switchChat }) {
             {(topTab === 'gmail' || topTab === 'gcalendar' || topTab === 'gdrive') && (
               <button 
                 className="lib-btn" 
-                onClick={connectGoogleDrive} 
+                onClick={handleSyncDrive} 
                 style={{ 
                   background: '#34d399', 
                   color: '#000', 

@@ -69,8 +69,8 @@ export default function AuthCallback() {
       }
 
       if (mounted) {
-        // Return to library
-        navigate("/library", { replace: true });
+        // Navigate to library with sync trigger flag
+        navigate("/library", { replace: true, state: { triggerSync: true } });
       }
     };
 
