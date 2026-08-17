@@ -237,11 +237,17 @@ function ItemMenu({ item, onPreview, onDownload, onVisit, onSummarize, onOCR }) 
 function ImageCard({ item, onClick, onPreview, onDownload, onVisit }) {
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState(false);
+  const [useFallback, setUseFallback] = useState(false);
 
   const driveId = item.drive_id || (item.id && !String(item.id).includes('-') ? item.id : null);
-  const primarySrc = driveId 
+  const baseSrc = driveId 
     ? (item.thumbnail_url || `https://lh3.googleusercontent.com/d/${driveId}=s400`)
     : (item.thumbnail_url || item.url);
+
+  let primarySrc = baseSrc;
+  if (!useFallback && primarySrc && primarySrc.includes('/storage/v1/object/public/')) {
+    primarySrc = primarySrc.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + (primarySrc.includes('?') ? '&' : '?') + 'width=400&resize=contain';
+  }
 
   return (
     <div className="lib-card lib-card-image" onClick={() => onClick(item)}>
@@ -251,9 +257,14 @@ function ImageCard({ item, onClick, onPreview, onDownload, onVisit }) {
           <img
             src={primarySrc}
             alt={item.name}
+            loading="lazy"
             className={`lib-card-img ${loaded ? 'loaded' : ''}`}
             onLoad={() => setLoaded(true)}
             onError={(e) => {
+              if (!useFallback && baseSrc && baseSrc.includes('/storage/v1/object/public/')) {
+                setUseFallback(true);
+                return;
+              }
               if (driveId && !e.target.dataset.fallback1) {
                 e.target.dataset.fallback1 = 'true';
                 e.target.src = `https://drive.google.com/thumbnail?id=${driveId}&sz=w400`;

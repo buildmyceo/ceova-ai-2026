@@ -344,6 +344,27 @@ export default function Home({ session }) {
                         .from('attachments')
                         .getPublicUrl(filePath);
 
+                    const fileCategory = file.type.startsWith('image/') ? 'images' 
+                                       : file.type.startsWith('video/') ? 'videos' 
+                                       : file.type.startsWith('audio/') ? 'audio' 
+                                       : file.type.includes('pdf') ? 'pdfs' 
+                                       : 'documents';
+                                       
+                    const { error: dbError } = await supabase.from('files').insert({
+                        user_id: session.user.id,
+                        storage_source: 'local',
+                        name: file.name,
+                        mime_type: file.type,
+                        category: fileCategory,
+                        size: file.size,
+                        web_download_link: publicUrl,
+                        web_view_link: publicUrl,
+                    });
+                    
+                    if (dbError) {
+                        console.error("Error saving file to library:", dbError);
+                    }
+
                     currentAttachments.push({
                         name: file.name,
                         url: publicUrl,
