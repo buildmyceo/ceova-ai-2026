@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.2";
 import { decrypt } from "../../_utils/encryption.ts";
 
 export async function handleCustomApps(supabase: any, userId: string, prompt: string, history: any[] = []) {

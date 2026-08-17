@@ -1,5 +1,5 @@
 import { Tool, ToolMetadata, ToolContext, ToolResult } from '../types.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.8';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2.45.2';
 
 export class FileSizeReductionTool implements Tool {
   metadata: ToolMetadata = {

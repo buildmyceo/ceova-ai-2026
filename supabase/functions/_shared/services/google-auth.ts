@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.44.2";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.2.45.2";
 import { Logger } from "./logger.ts";
 
 export class GoogleAuthService {

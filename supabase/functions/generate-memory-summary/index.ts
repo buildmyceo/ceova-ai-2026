@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.2.45.2";
 
 const OPENAI_API_KEY = Deno.env.get("OPEN_AI") || Deno.env.get("OPENAI_API_KEY");
 

@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.2.45.2";
 import { Logger } from "./logger.ts";
 
 export const getAdminClient = () => {

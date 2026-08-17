@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.2";
 import { sendWhatsApp, getAdminClient } from "../utils.ts";
 
 export async function handleWhatsApp(req: Request, handleChatAI: Function): Promise<Response> {

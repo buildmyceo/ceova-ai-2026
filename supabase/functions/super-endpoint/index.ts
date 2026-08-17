@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.8';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2.45.2';
 import { aiRouter } from "../_shared/services/ai-router.ts";
 import { toolRegistry } from '../_shared/tools/registry.ts';
 import { ToolExecutor } from '../_shared/tools/executor.ts';

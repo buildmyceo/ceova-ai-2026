@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.2.45.2"
 
 // SECURITY FIX: API keys are now read from Supabase secrets directly.
 // They are NEVER accepted from the request body (previously leaked into logs).
