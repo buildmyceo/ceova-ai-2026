@@ -3,7 +3,7 @@ import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link
 import { motion } from 'framer-motion';
 import { supabase } from '../services/supabase';
 import ExtensionsModal from './ExtensionsModal';
-import { ImageCard, FileCard, MailCard, CalendarCard, AiFileCard } from '../pages/Library';
+import { ImageCard, FileCard, MailCard, CalendarCard } from '../pages/Library';
 import '../pages/Library.css';
 
 const COMMON_EMOJIS = [
@@ -764,9 +764,6 @@ export default function InputBox({
                                             }
                                             if (item.type === 'event') {
                                                 return <CalendarCard key={item.id} item={item} onPreview={attachLibraryItem} onVisit={() => {}} onSummarize={() => {}} />;
-                                            }
-                                            if (item.source === 'ai') {
-                                                return <AiFileCard key={item.id} item={item} onPreview={attachLibraryItem} onDownload={() => {}} />;
                                             }
                                             return <FileCard key={item.id} item={item} onPreview={attachLibraryItem} onDownload={() => {}} onVisit={() => {}} onSummarize={() => {}} onOCR={() => {}} />;
                                         })}
