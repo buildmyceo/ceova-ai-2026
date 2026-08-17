@@ -655,7 +655,8 @@ export default function Library({ session, onBack, switchChat }) {
         const getFullUrl = (link) => {
            if (!link) return null;
            if (link.startsWith('http')) return link;
-           return `${supabase.supabaseUrl}/storage/v1/object/public/user_files/${link}`;
+           const cleanLink = link.startsWith('/') ? link.substring(1) : link;
+           return `${supabase.supabaseUrl}/storage/v1/object/public/user_files/${cleanLink}`;
         };
 
         const resolvedWebView = getFullUrl(df.web_view_link);
