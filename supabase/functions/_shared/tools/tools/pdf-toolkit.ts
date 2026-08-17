@@ -1,5 +1,5 @@
 import { Tool, ToolMetadata, ToolContext, ToolResult } from '../types.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2.45.2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
 import { PDFDocument, rgb, degrees, StandardFonts } from 'https://esm.sh/pdf-lib@1.17.1';
 import pdf from 'https://esm.sh/pdf-parse@1.1.1';
 import { Buffer } from 'node:buffer';

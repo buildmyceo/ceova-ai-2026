@@ -1,4 +1,4 @@
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.2.45.2";
+import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.2";
 
 /**
  * Validates a request against the rate limit Token Bucket.

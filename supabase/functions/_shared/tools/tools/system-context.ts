@@ -1,5 +1,5 @@
 import { Tool, ToolContext, ToolResult } from '../types.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2.45.2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
 
 export class SystemContextTool implements Tool {
   metadata = {
