@@ -104,7 +104,7 @@ function CountdownBadge({ expiresAt }) {
 }
 
 // ─── Event Card (Google Calendar) ─────────────────────────────────────────────
-function CalendarCard({ item, onPreview, onVisit, onSummarize }) {
+export function CalendarCard({ item, onPreview, onVisit, onSummarize }) {
   return (
     <div className="lib-card lib-card-file" onClick={() => onPreview(item)} style={{ cursor: 'pointer' }}>
       <div className="lib-file-icon" style={{ background: '#38bdf818', borderColor: '#38bdf830' }}>
@@ -150,7 +150,7 @@ function CalendarCard({ item, onPreview, onVisit, onSummarize }) {
 }
 
 // ─── Email Card ───────────────────────────────────────────────────────────────
-function MailCard({ item, onPreview, onVisit, onSummarize }) {
+export function MailCard({ item, onPreview, onVisit, onSummarize }) {
   return (
     <div className="lib-card lib-card-file" onClick={() => onPreview(item)} style={{ cursor: 'pointer' }}>
       <div className="lib-file-icon" style={{ background: '#c084fc18', borderColor: '#c084fc30' }}>
@@ -234,7 +234,7 @@ function ItemMenu({ item, onPreview, onDownload, onVisit, onSummarize, onOCR }) 
 }
 
 // ─── Single card (image) ──────────────────────────────────────────────────────
-function ImageCard({ item, onClick, onPreview, onDownload, onVisit }) {
+export function ImageCard({ item, onClick, onPreview, onDownload, onVisit }) {
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
@@ -312,7 +312,7 @@ function ImageCard({ item, onClick, onPreview, onDownload, onVisit }) {
 }
 
 // ─── File/doc/media card ──────────────────────────────────────────────────────
-function FileCard({ item, onPreview, onDownload, onVisit, onSummarize, onOCR }) {
+export function FileCard({ item, onPreview, onDownload, onVisit, onSummarize, onOCR }) {
   const { icon: Icon, color, label } = MIME_ICON(item.mime_type || '', item.name);
 
   return (

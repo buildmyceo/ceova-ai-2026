@@ -3,6 +3,8 @@ import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link
 import { motion } from 'framer-motion';
 import { supabase } from '../services/supabase';
 import ExtensionsModal from './ExtensionsModal';
+import { ImageCard, FileCard, MailCard, CalendarCard, AiFileCard } from '../pages/Library';
+import '../pages/Library.css';
 
 const COMMON_EMOJIS = [
     "😊", "😂", "🥰", "😎", "🤔", "😅", "🔥", "✨", 
@@ -62,20 +64,60 @@ export default function InputBox({
             // 1. Drive files (CEOVA + Google Drive)
             const { data: driveFiles } = await supabase
                 .from('files')
-                .select('id, name, mime_type, category, storage_source, web_view_link, thumbnail_url, size')
+                .select('id, drive_id, name, mime_type, category, storage_source, web_view_link, web_download_link, thumbnail_url, size, created_at')
                 .eq('user_id', user.id)
                 .not('is_trashed', 'eq', true)
                 .order('created_at', { ascending: false })
                 .limit(200);
-            (driveFiles || []).forEach(f => items.push({
-                id: f.id,
-                name: f.name,
-                mime_type: f.mime_type,
-                url: f.web_view_link || f.thumbnail_url,
-                thumbnail_url: f.thumbnail_url,
-                source: f.storage_source || 'gdrive',
-                type: 'file'
-            }));
+
+            const pathsToSign = [];
+            (driveFiles || []).forEach(df => {
+               if (df.web_view_link && !df.web_view_link.startsWith('http')) {
+                   const cleanLink = df.web_view_link.startsWith('/') ? df.web_view_link.substring(1) : df.web_view_link;
+                   pathsToSign.push(cleanLink);
+               }
+            });
+            let signedUrlsMap = {};
+            if (pathsToSign.length > 0) {
+               for (let i = 0; i < pathsToSign.length; i += 50) {
+                   const chunk = pathsToSign.slice(i, i + 50);
+                   const { data: signedData } = await supabase.storage.from('user_files').createSignedUrls(chunk, 3600);
+                   if (signedData) {
+                       signedData.forEach(item => {
+                           if (!item.error) signedUrlsMap[item.path] = item.signedUrl;
+                       });
+                   }
+               }
+            }
+
+            (driveFiles || []).forEach(f => {
+                const isImg = f.category === 'images' || f.mime_type?.startsWith('image/');
+                const driveId = f.drive_id || (f.id && !String(f.id).includes('-') ? f.id : null);
+                
+                const getFullUrl = (link) => {
+                   if (!link) return null;
+                   if (link.startsWith('http')) return link;
+                   const cleanLink = link.startsWith('/') ? link.substring(1) : link;
+                   if (signedUrlsMap[cleanLink]) return signedUrlsMap[cleanLink];
+                   return `${supabase.supabaseUrl}/storage/v1/object/public/user_files/${cleanLink}`;
+                };
+
+                const resolvedUrl = getFullUrl(f.web_view_link);
+                items.push({
+                    id: f.id,
+                    drive_id: driveId,
+                    name: f.name,
+                    mime_type: f.mime_type,
+                    category: f.category,
+                    url: resolvedUrl,
+                    web_view_link: resolvedUrl,
+                    thumbnail_url: f.thumbnail_url,
+                    source: f.storage_source || 'gdrive',
+                    kind: isImg ? 'image' : 'file',
+                    type: 'file',
+                    created_at: f.created_at
+                });
+            });
 
             // 2. Gmail emails
             const { data: emails } = await supabase
@@ -699,99 +741,36 @@ export default function InputBox({
                         {/* Items */}
                         <div style={{ 
                             overflowY: 'auto', flex: 1, padding: '16px',
-                            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '16px',
-                            alignContent: 'start',
                             background: 'var(--bg-primary, #0d0d1a)'
                         }}>
                             {libraryLoading ? (
-                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', gridColumn: '1 / -1' }}>
+                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                                     <div style={{ marginBottom: '10px' }}>Loading library…</div>
                                 </div>
                             ) : libraryItems.filter(it => !librarySearch || it.name?.toLowerCase().includes(librarySearch.toLowerCase()) || it.snippet?.toLowerCase().includes(librarySearch.toLowerCase()) || it.from_sender?.toLowerCase().includes(librarySearch.toLowerCase())).length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '14px', gridColumn: '1 / -1' }}>
+                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '14px' }}>
                                     No items found
                                 </div>
                             ) : (
-                                libraryItems
-                                    .filter(it => !librarySearch || it.name?.toLowerCase().includes(librarySearch.toLowerCase()) || it.snippet?.toLowerCase().includes(librarySearch.toLowerCase()) || it.from_sender?.toLowerCase().includes(librarySearch.toLowerCase()))
-                                    .map(item => {
-                                        const sourceColors = { gdrive: '#34d399', gmail: '#c084fc', gcalendar: '#38bdf8', local: '#f59e0b', ai_generated: '#f472b6' };
-                                        const sourceLabels = { gdrive: 'Drive', gmail: 'Gmail', gcalendar: 'Calendar', local: 'Local', ai_generated: 'AI' };
-                                        const color = sourceColors[item.source] || '#94a3b8';
-                                        return (
-                                            <div
-                                                key={item.id}
-                                                onClick={() => attachLibraryItem(item)}
-                                                style={{
-                                                    background: 'var(--bg-secondary, #1a1a2e)',
-                                                    border: '1px solid var(--border-color, rgba(255,255,255,0.06))',
-                                                    borderRadius: '12px', overflow: 'hidden', cursor: 'pointer',
-                                                    display: 'flex', flexDirection: 'column', position: 'relative',
-                                                    transition: 'transform 0.2s, box-shadow 0.2s, border-color 0.2s'
-                                                }}
-                                                onMouseEnter={e => {
-                                                    e.currentTarget.style.transform = 'translateY(-2px)';
-                                                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
-                                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
-                                                }}
-                                                onMouseLeave={e => {
-                                                    e.currentTarget.style.transform = 'none';
-                                                    e.currentTarget.style.boxShadow = 'none';
-                                                    e.currentTarget.style.borderColor = 'var(--border-color, rgba(255,255,255,0.06))';
-                                                }}
-                                            >
-                                                {/* Thumbnail area */}
-                                                <div style={{ position: 'relative', aspectRatio: '1', background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                                                    {item.url && (item.mime_type?.startsWith('image/') || item.thumbnail_url) ? (
-                                                        <img src={item.thumbnail_url || item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={item.name} />
-                                                    ) : (
-                                                        <div style={{ fontSize: '32px', color: 'var(--text-muted)' }}>
-                                                            {item.source === 'gmail' ? <Mail size={32} /> : item.source === 'gcalendar' ? <CalendarIcon size={32} /> : item.mime_type === 'application/pdf' ? <FileText size={32} /> : <Folder size={32} />}
-                                                        </div>
-                                                    )}
-                                                    {/* Hover Overlay */}
-                                                    <div className="picker-card-overlay" style={{
-                                                        position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)',
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                        opacity: 0, transition: 'opacity 0.2s', pointerEvents: 'none'
-                                                    }}>
-                                                        <div style={{ background: 'var(--brand-color, #10a37f)', color: '#fff', padding: '6px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600 }}>
-                                                            Select
-                                                        </div>
-                                                    </div>
-                                                    {/* Source Badge */}
-                                                    <div style={{
-                                                        position: 'absolute', top: '8px', left: '8px',
-                                                        background: `${color}33`, border: `1px solid ${color}55`, color: color,
-                                                        padding: '3px 7px', borderRadius: '12px', fontSize: '10px', fontWeight: 600,
-                                                        display: 'flex', alignItems: 'center', gap: '4px', backdropFilter: 'blur(4px)'
-                                                    }}>
-                                                        {item.source === 'gdrive' ? <Cloud size={10} /> : item.source === 'gmail' ? <Mail size={10} /> : item.source === 'gcalendar' ? <CalendarIcon size={10} /> : <Folder size={10} />}
-                                                        {sourceLabels[item.source] || item.source}
-                                                    </div>
-                                                    {/* Three dots icon */}
-                                                    <div style={{
-                                                        position: 'absolute', top: '8px', right: '8px',
-                                                        background: 'rgba(0,0,0,0.5)', borderRadius: '6px', padding: '3px', color: '#fff',
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                                    }}>
-                                                        <MoreVertical size={14} />
-                                                    </div>
-                                                </div>
-                                                {/* Meta area */}
-                                                <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, justifyContent: 'center' }}>
-                                                    <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '1.3' }}>
-                                                        {item.name}
-                                                    </div>
-                                                    {(item.snippet || item.from_sender) && (
-                                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                            {item.from_sender ? `From: ${item.from_sender}` : item.snippet}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })
+                                <div className="lib-grid">
+                                    {libraryItems
+                                        .filter(it => !librarySearch || it.name?.toLowerCase().includes(librarySearch.toLowerCase()) || it.snippet?.toLowerCase().includes(librarySearch.toLowerCase()) || it.from_sender?.toLowerCase().includes(librarySearch.toLowerCase()))
+                                        .map(item => {
+                                            if (item.kind === 'image' || (item.mime_type && item.mime_type.startsWith('image/'))) {
+                                                return <ImageCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onDownload={() => {}} onVisit={() => {}} />;
+                                            }
+                                            if (item.type === 'email') {
+                                                return <MailCard key={item.id} item={item} onPreview={attachLibraryItem} onVisit={() => {}} onSummarize={() => {}} />;
+                                            }
+                                            if (item.type === 'event') {
+                                                return <CalendarCard key={item.id} item={item} onPreview={attachLibraryItem} onVisit={() => {}} onSummarize={() => {}} />;
+                                            }
+                                            if (item.source === 'ai') {
+                                                return <AiFileCard key={item.id} item={item} onPreview={attachLibraryItem} onDownload={() => {}} />;
+                                            }
+                                            return <FileCard key={item.id} item={item} onPreview={attachLibraryItem} onDownload={() => {}} onVisit={() => {}} onSummarize={() => {}} onOCR={() => {}} />;
+                                        })}
+                                </div>
                             )}
                         </div>
                         <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border-color, rgba(255,255,255,0.06))', fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>
