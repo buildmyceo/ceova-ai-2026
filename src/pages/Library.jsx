@@ -245,8 +245,12 @@ function ImageCard({ item, onClick, onPreview, onDownload, onVisit }) {
     : (item.thumbnail_url || item.url);
 
   let primarySrc = baseSrc;
-  if (!useFallback && primarySrc && primarySrc.includes('/storage/v1/object/public/')) {
-    primarySrc = primarySrc.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + (primarySrc.includes('?') ? '&' : '?') + 'width=400&resize=contain';
+  if (!useFallback && primarySrc) {
+    if (primarySrc.includes('/storage/v1/object/public/')) {
+      primarySrc = primarySrc.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + (primarySrc.includes('?') ? '&' : '?') + 'width=400&resize=contain';
+    } else if (primarySrc.includes('/storage/v1/object/sign/')) {
+      primarySrc = primarySrc.replace('/storage/v1/object/sign/', '/storage/v1/render/image/sign/') + (primarySrc.includes('?') ? '&' : '?') + 'width=400&resize=contain';
+    }
   }
 
   return (
@@ -261,7 +265,7 @@ function ImageCard({ item, onClick, onPreview, onDownload, onVisit }) {
             className={`lib-card-img ${loaded ? 'loaded' : ''}`}
             onLoad={() => setLoaded(true)}
             onError={(e) => {
-              if (!useFallback && baseSrc && baseSrc.includes('/storage/v1/object/public/')) {
+              if (!useFallback && baseSrc && (baseSrc.includes('/storage/v1/object/public/') || baseSrc.includes('/storage/v1/object/sign/'))) {
                 setUseFallback(true);
                 return;
               }
@@ -646,6 +650,26 @@ export default function Library({ session, onBack, switchChat }) {
 
       if (driveErr) console.error('[Library] Drive files fetch error:', driveErr);
 
+      const pathsToSign = [];
+      (driveFiles || []).forEach(df => {
+         if (df.web_view_link && !df.web_view_link.startsWith('http')) {
+             const cleanLink = df.web_view_link.startsWith('/') ? df.web_view_link.substring(1) : df.web_view_link;
+             pathsToSign.push(cleanLink);
+         }
+      });
+      let signedUrlsMap = {};
+      if (pathsToSign.length > 0) {
+         for (let i = 0; i < pathsToSign.length; i += 50) {
+             const chunk = pathsToSign.slice(i, i + 50);
+             const { data: signedData } = await supabase.storage.from('user_files').createSignedUrls(chunk, 3600);
+             if (signedData) {
+                 signedData.forEach(item => {
+                     if (!item.error) signedUrlsMap[item.path] = item.signedUrl;
+                 });
+             }
+         }
+      }
+
       (driveFiles || []).forEach(df => {
         const isImg = df.category === 'images' || df.mime_type?.startsWith('image/');
         const driveId = df.drive_id || (df.id && !String(df.id).includes('-') ? df.id : null);
@@ -656,6 +680,11 @@ export default function Library({ session, onBack, switchChat }) {
            if (!link) return null;
            if (link.startsWith('http')) return link;
            const cleanLink = link.startsWith('/') ? link.substring(1) : link;
+           
+           if (signedUrlsMap[cleanLink]) {
+              return signedUrlsMap[cleanLink];
+           }
+           
            return `${supabase.supabaseUrl}/storage/v1/object/public/user_files/${cleanLink}`;
         };
 
