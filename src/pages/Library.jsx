@@ -482,9 +482,8 @@ export default function Library({ session, onBack, switchChat }) {
       }
 
       if (needsAuth) {
-        // Token is expired or missing — redirect to Google OAuth
-        setSyncNotice('Google authentication needed. Redirecting...');
-        setTimeout(() => connectGoogleDrive(), 1000);
+        // Token is expired or missing — show message but DO NOT force redirect
+        setSyncNotice('Google authentication needed. Please connect your account.');
         return;
       }
 

@@ -89,9 +89,23 @@ export async function getGoogleAccessToken(userId) {
         dbToken = data.access_token;
         const now = Date.now();
         const isExpired = data.expiry_date ? now >= (data.expiry_date - 60000) : false;
+        
         if (!isExpired) {
           localStorage.setItem('google_provider_token', data.access_token);
           return data.access_token;
+        } else if (data.refresh_token) {
+          // Token is expired but we have a refresh_token, ask Edge Function to refresh
+          try {
+            const { data: refreshData, error: refreshErr } = await supabase.functions.invoke('refresh-google-token');
+            if (refreshData?.access_token) {
+              localStorage.setItem('google_provider_token', refreshData.access_token);
+              return refreshData.access_token;
+            } else if (refreshErr) {
+              console.warn('[GDriveSyncEngine] Edge function refresh error:', refreshErr);
+            }
+          } catch (e) {
+            console.warn('[GDriveSyncEngine] Failed to invoke token refresh:', e);
+          }
         }
       }
     } catch (err) {}
