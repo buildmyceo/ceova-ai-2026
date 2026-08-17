@@ -809,7 +809,8 @@ export default function Library({ session, onBack, switchChat }) {
       // Deduplicate items
       const seen = new Set();
       const deduped = items.filter(it => {
-        const key = it.gcal_id || it.gmail_id || it.drive_id || it.url || it.id;
+        // Use a composite key including name and size to deduplicate multiple uploads of the same file
+        const key = it.gcal_id || it.gmail_id || it.drive_id || (it.name ? `${it.name}-${it.size || ''}` : null) || it.url || it.id;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;

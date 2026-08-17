@@ -117,7 +117,8 @@ export default function InputBox({
                     source: f.storage_source || 'gdrive',
                     kind: isImg ? 'image' : 'file',
                     type: 'file',
-                    created_at: f.created_at
+                    created_at: f.created_at,
+                    size: f.size
                 });
             });
 
@@ -156,7 +157,15 @@ export default function InputBox({
                 type: 'event'
             }));
 
-            setLibraryItems(items);
+            const seen = new Set();
+            const deduped = items.filter(it => {
+                const key = it.drive_id || (it.name ? `${it.name}-${it.size || ''}` : null) || it.url || it.id;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+
+            setLibraryItems(deduped);
         } catch(e) {
             console.error('Library picker load error:', e);
         } finally {
@@ -782,7 +791,7 @@ export default function InputBox({
                                 return (
                                     <>
                                         {images.length > 0 && (
-                                            <div className="lib-grid-images" style={{ marginBottom: '16px' }}>
+                                            <div className="lib-grid-images" style={{ marginBottom: '16px', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px' }}>
                                                 {images.map(item => (
                                                     <ImageCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onDownload={() => {}} onVisit={() => {}} />
                                                 ))}
