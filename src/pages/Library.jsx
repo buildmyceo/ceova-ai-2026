@@ -229,7 +229,7 @@ function ItemMenu({ item, onPreview, onDownload, onVisit, onSummarize, onOCR, on
           {onOCR && (
             <button onClick={() => { setOpen(false); onOCR(item); }}>OCR / Extract Text</button>
           )}
-          {onDelete && (
+          {onDelete && item.source !== 'gdrive' && item.source !== 'gmail' && item.source !== 'gcalendar' && (
             <button onClick={() => { setOpen(false); onDelete(item); }} style={{ color: '#ef4444' }}>Delete</button>
           )}
         </div>
