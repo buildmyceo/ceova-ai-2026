@@ -104,7 +104,7 @@ function CountdownBadge({ expiresAt }) {
 }
 
 // ─── Event Card (Google Calendar) ─────────────────────────────────────────────
-export function CalendarCard({ item, onClick, onPreview, onVisit, onSummarize }) {
+export function CalendarCard({ item, onClick, onPreview, onVisit, onSummarize, onDelete }) {
   return (
     <div className="lib-card lib-card-file" onClick={() => onClick ? onClick(item) : (onPreview && onPreview(item))} style={{ cursor: 'pointer' }}>
       <div className="lib-file-icon" style={{ background: '#38bdf818', borderColor: '#38bdf830' }}>
@@ -144,13 +144,14 @@ export function CalendarCard({ item, onClick, onPreview, onVisit, onSummarize })
         onPreview={onPreview}
         onVisit={onVisit}
         onSummarize={onSummarize}
+        onDelete={onDelete}
       />
     </div>
   );
 }
 
 // ─── Email Card ───────────────────────────────────────────────────────────────
-export function MailCard({ item, onClick, onPreview, onVisit, onSummarize }) {
+export function MailCard({ item, onClick, onPreview, onVisit, onSummarize, onDelete }) {
   return (
     <div className="lib-card lib-card-file" onClick={() => onClick ? onClick(item) : (onPreview && onPreview(item))} style={{ cursor: 'pointer' }}>
       <div className="lib-file-icon" style={{ background: '#c084fc18', borderColor: '#c084fc30' }}>
@@ -184,13 +185,14 @@ export function MailCard({ item, onClick, onPreview, onVisit, onSummarize }) {
         onPreview={onPreview}
         onVisit={onVisit}
         onSummarize={onSummarize}
+        onDelete={onDelete}
       />
     </div>
   );
 }
 
 // ─── Item Menu (3-dot dropdown) ────────────────────────────────────────────────
-function ItemMenu({ item, onPreview, onDownload, onVisit, onSummarize, onOCR }) {
+function ItemMenu({ item, onPreview, onDownload, onVisit, onSummarize, onOCR, onDelete }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -227,6 +229,9 @@ function ItemMenu({ item, onPreview, onDownload, onVisit, onSummarize, onOCR }) 
           {onOCR && (
             <button onClick={() => { setOpen(false); onOCR(item); }}>OCR / Extract Text</button>
           )}
+          {onDelete && (
+            <button onClick={() => { setOpen(false); onDelete(item); }} style={{ color: '#ef4444' }}>Delete</button>
+          )}
         </div>
       )}
     </div>
@@ -234,7 +239,7 @@ function ItemMenu({ item, onPreview, onDownload, onVisit, onSummarize, onOCR }) 
 }
 
 // ─── Single card (image) ──────────────────────────────────────────────────────
-export function ImageCard({ item, onClick, onPreview, onDownload, onVisit }) {
+export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDelete }) {
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
@@ -289,7 +294,7 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit }) {
         <div className="lib-card-overlay">
           <ZoomIn size={18} />
         </div>
-        <ItemMenu item={item} onPreview={onPreview} onDownload={onDownload} onVisit={onVisit} />
+        <ItemMenu item={item} onPreview={onPreview} onDownload={onDownload} onVisit={onVisit} onDelete={onDelete} />
       </div>
       <div className="lib-card-meta">
         <span className="lib-card-name">{truncate(item.name, 24)}</span>
@@ -312,7 +317,7 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit }) {
 }
 
 // ─── File/doc/media card ──────────────────────────────────────────────────────
-export function FileCard({ item, onClick, onPreview, onDownload, onVisit, onSummarize, onOCR }) {
+export function FileCard({ item, onClick, onPreview, onDownload, onVisit, onSummarize, onOCR, onDelete }) {
   const { icon: Icon, color, label } = MIME_ICON(item.mime_type || '', item.name);
 
   return (
@@ -359,6 +364,7 @@ export function FileCard({ item, onClick, onPreview, onDownload, onVisit, onSumm
         onVisit={onVisit}
         onSummarize={onSummarize}
         onOCR={onOCR}
+        onDelete={onDelete}
       />
       {item.source === 'ai' && (
         <div className="lib-card-badge lib-badge-ai"><Sparkles size={10} />AI</div>
@@ -376,7 +382,7 @@ export function FileCard({ item, onClick, onPreview, onDownload, onVisit, onSumm
 }
 
 // ─── AI App Action card ─────────────────────────────────────────────────────
-function ActionCard({ item, onPreview, onDownload, onVisit }) {
+function ActionCard({ item, onPreview, onDownload, onVisit, onDelete }) {
   const meta = item.meta || {};
   let title = "AI Action";
   let desc = "";
@@ -413,7 +419,7 @@ function ActionCard({ item, onPreview, onDownload, onVisit }) {
         </div>
         <span className="lib-snippet-title">{title}</span>
         <div style={{ marginLeft: 'auto' }}>
-          <ItemMenu item={item} onPreview={onPreview} onDownload={onDownload} onVisit={onVisit} />
+          <ItemMenu item={item} onPreview={onPreview} onDownload={onDownload} onVisit={onVisit} onDelete={onDelete} />
         </div>
       </div>
       <p className="lib-snippet-body">{desc}</p>
@@ -977,6 +983,76 @@ export default function Library({ session, onBack, switchChat }) {
     if (res.success) setAiModal({ title: `Summary: ${item.name}`, text: res.summary });
   };
 
+  
+  const handleDelete = async (item) => {
+    if (!window.confirm(`Are you sure you want to delete "${item.name}"?`)) return;
+
+    setLoading(true);
+    try {
+      if (item.source === 'gmail') {
+        await supabase.from('gmail_emails').delete().eq('id', item.id.replace('db-gmail-', ''));
+      } else if (item.source === 'gcalendar') {
+        await supabase.from('calendar_events').delete().eq('id', item.id.replace('db-gcal-', ''));
+      } else if (item.source === 'gdrive') {
+        await supabase.from('files').delete().eq('id', item.id);
+      } else if (item.id.startsWith('aig-')) {
+        await supabase.from('ai_generated_files').delete().eq('id', item.id.replace('aig-', ''));
+      } else if (item.id.startsWith('att-')) {
+        const msgId = item.id.split('-')[1];
+        const { data: msg } = await supabase.from('messages').select('attachments').eq('id', msgId).single();
+        if (msg && msg.attachments) {
+           const newAtt = msg.attachments.filter(a => a.name !== item.name && a.url !== item.url);
+           await supabase.from('messages').update({ attachments: newAtt }).eq('id', msgId);
+        }
+      } else {
+        await supabase.from('files').delete().eq('id', item.id);
+      }
+      
+      const newItems = allItems.filter(i => i.id !== item.id);
+      setAllItems(newItems);
+      cacheManager.setLibraryItems(newItems);
+    } catch (e) {
+      console.error('Delete error', e);
+      alert('Failed to delete item');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClearCeovaDrive = async () => {
+    if (!window.confirm('Are you sure you want to clear all CEOVA Drive files? This will remove all attachments from your chats in the library.')) return;
+
+    setLoading(true);
+    try {
+      const ceovaItems = allItems.filter(i => {
+        const isAiItem = i.source === 'ai' || i.source === 'ai_generated' || i.category === 'ai_generated' || i.category === 'action';
+        return i.source !== 'gdrive' && i.source !== 'gmail' && i.source !== 'gcalendar' && !isAiItem;
+      });
+
+      for (const item of ceovaItems) {
+        if (item.id.startsWith('att-')) {
+          const msgId = item.id.split('-')[1];
+          const { data: msg } = await supabase.from('messages').select('attachments').eq('id', msgId).single();
+          if (msg && msg.attachments) {
+             const newAtt = msg.attachments.filter(a => a.name !== item.name && a.url !== item.url);
+             await supabase.from('messages').update({ attachments: newAtt }).eq('id', msgId);
+          }
+        } else if (!item.id.startsWith('aig-') && !item.id.startsWith('db-')) {
+          await supabase.from('files').delete().eq('id', item.id);
+        }
+      }
+
+      const newItems = allItems.filter(i => !ceovaItems.includes(i));
+      setAllItems(newItems);
+      cacheManager.setLibraryItems(newItems);
+    } catch (e) {
+      console.error('Clear ceova drive error', e);
+      alert('Failed to clear CEOVA Drive');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleOCR = async (item) => {
     setLoading(true);
     const res = await performOCR(session?.user?.id, item);
@@ -996,6 +1072,9 @@ export default function Library({ session, onBack, switchChat }) {
         </div>
 
         <div className="lib-header-right">
+          {topTab === 'ceova' && (
+             <button onClick={handleClearCeovaDrive} style={{ background: 'var(--glass)', color: '#ef4444', border: '1px solid #ef444455', padding: '8px 12px', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>Clear CEOVA Drive</button>
+          )}
           {/* Sync Google Services Button */}
           <button
             className="lib-btn"
@@ -1166,6 +1245,7 @@ export default function Library({ session, onBack, switchChat }) {
                     <CalendarCard
                       key={item.id}
                       item={item}
+                      onDelete={handleDelete}
                       onPreview={it => setEventPreview(it)}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                       onSummarize={handleSummarize}
@@ -1183,6 +1263,7 @@ export default function Library({ session, onBack, switchChat }) {
                     <MailCard
                       key={item.id}
                       item={item}
+                      onDelete={handleDelete}
                       onPreview={it => setEmailPreview(it)}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                       onSummarize={handleSummarize}
@@ -1207,6 +1288,7 @@ export default function Library({ session, onBack, switchChat }) {
                     <ImageCard
                       key={item.id}
                       item={item}
+                      onDelete={handleDelete}
                       onClick={it => setLightbox({ src: it.url || it.web_view_link, caption: it.name })}
                       onPreview={it => setLightbox({ src: it.url || it.web_view_link, caption: it.name })}
                       onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
@@ -1232,6 +1314,7 @@ export default function Library({ session, onBack, switchChat }) {
                     <FileCard
                       key={item.id}
                       item={item}
+                      onDelete={handleDelete}
                       onPreview={it => window.open(it.web_view_link || it.url, '_blank')}
                       onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
@@ -1258,6 +1341,7 @@ export default function Library({ session, onBack, switchChat }) {
                     <FileCard
                       key={item.id}
                       item={item}
+                      onDelete={handleDelete}
                       onPreview={it => window.open(it.web_view_link || it.url, '_blank')}
                       onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
@@ -1284,6 +1368,7 @@ export default function Library({ session, onBack, switchChat }) {
                     <FileCard
                       key={item.id}
                       item={item}
+                      onDelete={handleDelete}
                       onPreview={it => window.open(it.web_view_link || it.url, '_blank')}
                       onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
