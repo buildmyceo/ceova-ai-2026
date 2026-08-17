@@ -1,6 +1,8 @@
 import { Tool, ToolMetadata, ToolContext, ToolResult } from '../types.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.8';
 import { PDFDocument, rgb, degrees, StandardFonts } from 'https://esm.sh/pdf-lib@1.17.1';
+import pdf from 'https://esm.sh/pdf-parse@1.1.1';
+import { Buffer } from 'node:buffer';
 
 export class PdfToolkitTool implements Tool {
   metadata: ToolMetadata = {
@@ -17,8 +19,8 @@ export class PdfToolkitTool implements Tool {
       properties: {
         action: {
           type: 'string',
-          description: 'The operation to perform: merge, split, extract, delete, rearrange, rotate, watermark, page_numbers, protect, unlock, change_password',
-          enum: ['merge', 'split', 'extract', 'delete', 'rearrange', 'rotate', 'watermark', 'page_numbers', 'protect', 'unlock', 'change_password']
+          description: 'The operation to perform: merge, split, extract, delete, rearrange, rotate, watermark, page_numbers, protect, unlock, change_password, read_text',
+          enum: ['merge', 'split', 'extract', 'delete', 'rearrange', 'rotate', 'watermark', 'page_numbers', 'protect', 'unlock', 'change_password', 'read_text']
         },
         pages: {
           type: 'string',
@@ -148,7 +150,31 @@ export class PdfToolkitTool implements Tool {
                   text: `Redirected to client for password operation.\n\n<!-- ACTION_META: ${JSON.stringify(actionMeta)} -->`,
                   urls: [],
                   processingTimeMs: Date.now() - startTime
+              }
+        if (action === 'read_text') {
+          const targetPdf = pdfAttachments[0];
+          if (!targetPdf.url) throw new Error("No URL found for the PDF.");
+          const bytes = await this.fetchPdfBytes(targetPdf.url);
+          const buffer = new Uint8Array(bytes);
+          try {
+            const data = await pdf(Buffer.from ? Buffer.from(buffer) : buffer);
+            updateStatus('Finished');
+            return {
+              success: true,
+              data: {
+                text: `PDF Extracted Text:
+
+${data.text}`,
+                processingTimeMs: Date.now() - startTime
               },
+              ui: { type: 'message', props: { text: 'Extracted text from PDF successfully.' } }
+            };
+          } catch (err: any) {
+             throw new Error(`Failed to extract text from PDF: ${err.message}`);
+          }
+        }
+
+,
               ui: { type: 'message', props: { text: `Please enter the password securely below:` } }
           };
       }

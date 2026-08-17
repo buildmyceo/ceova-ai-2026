@@ -32,6 +32,19 @@ export const GmailConnectorTool: Tool = {
           type: "string",
           description: "The email body content (for send_email, draft_email, reply_email)"
         },
+        attachments: {
+          type: "array",
+          description: "Array of attachment objects. Provide either a 'url' (for web/supabase files) or a 'drive_id' (for Google Drive files), along with 'filename' and 'mime_type'.",
+          items: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
+              drive_id: { type: "string" },
+              filename: { type: "string" },
+              mime_type: { type: "string" }
+            }
+          }
+        },
         query: {
           type: "string",
           description: "The search query (for search_emails)"
@@ -86,6 +99,40 @@ export const GmailConnectorTool: Tool = {
       const subject = args.subject;
       const body = args.body || args.message;
 
+
+      // Fetch attachments if any
+      let fetchedAttachments: any[] = [];
+      if (args.attachments && Array.isArray(args.attachments)) {
+        context.onStatusUpdate?.("Fetching attachments...");
+        for (const att of args.attachments) {
+          try {
+            let buffer: ArrayBuffer | null = null;
+            if (att.url) {
+              const res = await fetch(att.url);
+              if (res.ok) buffer = await res.arrayBuffer();
+            } else if (att.drive_id) {
+              const url = `https://www.googleapis.com/drive/v3/files/${att.drive_id}?alt=media`;
+              const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+              if (res.ok) buffer = await res.arrayBuffer();
+            }
+            if (buffer) {
+              const bytes = new Uint8Array(buffer);
+              let binary = '';
+              for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+              }
+              fetchedAttachments.push({
+                filename: att.filename || "attachment",
+                mimeType: att.mime_type || "application/octet-stream",
+                data: btoa(binary)
+              });
+            }
+          } catch (err: any) {
+             Logger.ERROR(`Failed to fetch attachment: ${err.message}`);
+          }
+        }
+      }
+
       context.onStatusUpdate?.(`Executing ${action}...`);
 
       switch (action) {
@@ -96,11 +143,11 @@ export const GmailConnectorTool: Tool = {
         case "read_email":
           return await readSpecificEmail(accessToken, args.message_id);
         case "send_email":
-          return await sendEmail(accessToken, recipient, subject, body);
+          return await sendEmail(accessToken, recipient, subject, body, fetchedAttachments);
         case "draft_email":
-          return await draftEmail(accessToken, recipient, subject, body);
+          return await draftEmail(accessToken, recipient, subject, body, fetchedAttachments);
         case "reply_email":
-          return await replyEmail(accessToken, args.thread_id, recipient, subject, body);
+          return await replyEmail(accessToken, args.thread_id, recipient, subject, body, fetchedAttachments);
         case "list_labels":
           return await listLabels(accessToken);
         default:
@@ -148,7 +195,7 @@ async function readSpecificEmail(token: string, messageId: string): Promise<Tool
   return { success: true, data: { text } };
 }
 
-async function sendEmail(token: string, to: string, subject: string, body: string): Promise<ToolResult> {
+async function sendEmail(token: string, to: string, subject: string, body: string, attachments: any[] = []): Promise<ToolResult> {
   if (!to || !subject || !body) throw new Error("recipient, subject, and body are required to send an email.");
   if (!to.includes("@")) {
     return {
@@ -157,7 +204,7 @@ async function sendEmail(token: string, to: string, subject: string, body: strin
     };
   }
   
-  const raw = createRawEmail(to, subject, body);
+  const raw = createRawEmail(to, subject, body, undefined, attachments);
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`;
   const res = await fetch(url, {
     method: "POST",
@@ -175,7 +222,7 @@ async function sendEmail(token: string, to: string, subject: string, body: strin
   return { success: true, data: { text: `✅ Email successfully sent to ${to}.` } };
 }
 
-async function draftEmail(token: string, to: string, subject: string, body: string): Promise<ToolResult> {
+async function draftEmail(token: string, to: string, subject: string, body: string, attachments: any[] = []): Promise<ToolResult> {
   if (!to || !subject || !body) throw new Error("recipient, subject, and body are required to draft an email.");
   if (!to.includes("@")) {
     return {
@@ -184,7 +231,7 @@ async function draftEmail(token: string, to: string, subject: string, body: stri
     };
   }
   
-  const raw = createRawEmail(to, subject, body);
+  const raw = createRawEmail(to, subject, body, undefined, attachments);
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/drafts`;
   const res = await fetch(url, {
     method: "POST",
@@ -202,7 +249,7 @@ async function draftEmail(token: string, to: string, subject: string, body: stri
   return { success: true, data: { text: `📝 Email draft to ${to} created successfully.` } };
 }
 
-async function replyEmail(token: string, threadId: string, to: string, subject: string, body: string): Promise<ToolResult> {
+async function replyEmail(token: string, threadId: string, to: string, subject: string, body: string, attachments: any[] = []): Promise<ToolResult> {
   if (!threadId || !to || !subject || !body) throw new Error("thread_id, recipient, subject, and body are required to reply.");
   if (!to.includes("@")) {
     return {
@@ -211,7 +258,7 @@ async function replyEmail(token: string, threadId: string, to: string, subject: 
     };
   }
   
-  const raw = createRawEmail(to, subject, body, threadId);
+  const raw = createRawEmail(to, subject, body, threadId, attachments);
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`;
   const res = await fetch(url, {
     method: "POST",
@@ -291,12 +338,11 @@ function base64UrlDecode(str: string) {
   return decodeURIComponent(escape(atob(base64)));
 }
 
-function createRawEmail(to: string, subject: string, body: string, threadId?: string) {
+function createRawEmail(to: string, subject: string, body: string, threadId?: string, attachments?: any[]) {
   const utf8Subject = `=?utf-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=`;
   let message = [
     `To: ${to}`,
     `Subject: ${utf8Subject}`,
-    "Content-Type: text/html; charset=utf-8",
     "MIME-Version: 1.0",
   ];
   
@@ -305,9 +351,36 @@ function createRawEmail(to: string, subject: string, body: string, threadId?: st
     message.push(`References: ${threadId}`);
   }
   
-  message.push("", body.replace(/\n/g, "<br>"));
+  if (attachments && attachments.length > 0) {
+    const boundary = "foo_bar_baz_boundary_" + Date.now();
+    message.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+    message.push("");
+    message.push(`--${boundary}`);
+    message.push("Content-Type: text/html; charset=utf-8");
+    message.push("");
+    message.push(body.replace(/
+/g, "<br>"));
+    
+    for (const att of attachments) {
+      message.push("");
+      message.push(`--${boundary}`);
+      message.push(`Content-Type: ${att.mimeType}; name="${att.filename}"`);
+      message.push("Content-Transfer-Encoding: base64");
+      message.push(`Content-Disposition: attachment; filename="${att.filename}"`);
+      message.push("");
+      message.push(att.data);
+    }
+    message.push("");
+    message.push(`--${boundary}--`);
+  } else {
+    message.push("Content-Type: text/html; charset=utf-8");
+    message.push("");
+    message.push(body.replace(/
+/g, "<br>"));
+  }
   
-  const raw = message.join("\r\n");
+  const raw = message.join("
+");
   return btoa(unescape(encodeURIComponent(raw))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 

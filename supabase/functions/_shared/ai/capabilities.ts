@@ -22,7 +22,7 @@ export interface Capability {
 export const CAPABILITIES: Capability[] = [
   {
     id: "gmail",
-    description: "Read, search, send, reply, draft and organize Gmail.",
+    description: "Read, search, send, reply, draft and organize Gmail. IMPORTANT: When asked to send an email, ALWAYS use draft_email first. Tell the user you created a draft and ask for confirmation. ONLY use send_email if the user explicitly confirms.",
     keywords: ["email", "mail", "gmail", "send", "inbox", "reply", "draft", "message", "compose", "unread", "attachment", "forward", "cc", "bcc", "subject"],
     toolIds: ["gmail_connector"],
     memoryCategories: ["email", "contacts", "communication"],
@@ -57,8 +57,8 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "pdf",
-    description: "Merge, compress, split, convert and extract text from PDFs.",
-    keywords: ["pdf", "merge", "split", "extract", "compress pdf", "convert pdf", "pages", "rotate", "watermark"],
+    description: "Merge, compress, split, convert, and extract/read text from PDFs.",
+    keywords: ["pdf", "merge", "split", "extract", "read", "compress pdf", "convert pdf", "pages", "rotate", "watermark"],
     toolIds: ["pdf_toolkit"],
     memoryCategories: [],
   },
