@@ -1,18 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
-import fs from 'fs';
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+dotenv.config();
 
-const envFile = fs.readFileSync(".env.local", "utf8");
-let dbUrl = "", dbKey = "";
-envFile.split("\n").forEach(line => {
-  if (line.startsWith("SUPABASE_URL=")) dbUrl = line.split("=")[1].replace(/"/g, "").trim();
-  if (line.startsWith("SUPABASE_SERVICE_ROLE=")) dbKey = line.split("=")[1].replace(/"/g, "").trim();
-});
+const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
 
-const supabase = createClient(dbUrl, dbKey);
-supabase.from('user_google_tokens').select('*').limit(1).then(res => {
-  if (res.error) {
-    console.error("Error:", res.error);
-  } else {
-    console.log("Token:", JSON.stringify(res.data, null, 2));
-  }
-});
+async function run() {
+  const { data: files } = await supabase.from('files').select('id, name, web_view_link');
+  console.log("FILES:", files);
+  
+  const { data: messages } = await supabase.from('messages').select('id, attachments').not('attachments', 'is', null);
+  console.log("MESSAGES with attachments:", JSON.stringify(messages, null, 2));
+}
+
+run();
