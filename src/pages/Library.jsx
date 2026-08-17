@@ -104,9 +104,9 @@ function CountdownBadge({ expiresAt }) {
 }
 
 // ─── Event Card (Google Calendar) ─────────────────────────────────────────────
-export function CalendarCard({ item, onPreview, onVisit, onSummarize }) {
+export function CalendarCard({ item, onClick, onPreview, onVisit, onSummarize }) {
   return (
-    <div className="lib-card lib-card-file" onClick={() => onPreview(item)} style={{ cursor: 'pointer' }}>
+    <div className="lib-card lib-card-file" onClick={() => onClick ? onClick(item) : (onPreview && onPreview(item))} style={{ cursor: 'pointer' }}>
       <div className="lib-file-icon" style={{ background: '#38bdf818', borderColor: '#38bdf830' }}>
         <CalendarIcon size={26} color="#38bdf8" />
       </div>
@@ -150,9 +150,9 @@ export function CalendarCard({ item, onPreview, onVisit, onSummarize }) {
 }
 
 // ─── Email Card ───────────────────────────────────────────────────────────────
-export function MailCard({ item, onPreview, onVisit, onSummarize }) {
+export function MailCard({ item, onClick, onPreview, onVisit, onSummarize }) {
   return (
-    <div className="lib-card lib-card-file" onClick={() => onPreview(item)} style={{ cursor: 'pointer' }}>
+    <div className="lib-card lib-card-file" onClick={() => onClick ? onClick(item) : (onPreview && onPreview(item))} style={{ cursor: 'pointer' }}>
       <div className="lib-file-icon" style={{ background: '#c084fc18', borderColor: '#c084fc30' }}>
         <Mail size={26} color="#c084fc" />
       </div>
@@ -312,11 +312,17 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit }) {
 }
 
 // ─── File/doc/media card ──────────────────────────────────────────────────────
-export function FileCard({ item, onPreview, onDownload, onVisit, onSummarize, onOCR }) {
+export function FileCard({ item, onClick, onPreview, onDownload, onVisit, onSummarize, onOCR }) {
   const { icon: Icon, color, label } = MIME_ICON(item.mime_type || '', item.name);
 
   return (
-    <div className="lib-card lib-card-file">
+    <div className="lib-card lib-card-file" onClick={(e) => {
+      if (onClick) {
+        // Only trigger onClick if it's the picker doing it. 
+        // We prevent default so buttons inside don't fire this.
+        onClick(item);
+      }
+    }} style={{ cursor: onClick ? 'pointer' : 'default' }}>
       <div className="lib-file-icon" style={{ background: `${color}18`, borderColor: `${color}30` }}>
         <Icon size={28} color={color} />
       </div>

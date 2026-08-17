@@ -31,6 +31,7 @@ export default function InputBox({
     const [isGmailConnected, setIsGmailConnected] = useState(false);
     const [isThinking, setIsThinking] = useState(false);
     const [isLibraryPickerOpen, setIsLibraryPickerOpen] = useState(false);
+    const [libraryTab, setLibraryTab] = useState('all');
     const [libraryItems, setLibraryItems] = useState([]);
     const [libraryLoading, setLibraryLoading] = useState(false);
     const [librarySearch, setLibrarySearch] = useState('');
@@ -738,6 +739,15 @@ export default function InputBox({
                             />
                         </div>
 
+                        {/* Tabs */}
+                        <div className="lib-tabs" style={{ padding: '0 16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary, #1a1a2e)' }}>
+                            <button className={`lib-tab ${libraryTab === 'all' ? 'active' : ''}`} onClick={() => setLibraryTab('all')}>All</button>
+                            <button className={`lib-tab ${libraryTab === 'images' ? 'active' : ''}`} onClick={() => setLibraryTab('images')}>Images</button>
+                            <button className={`lib-tab ${libraryTab === 'files' ? 'active' : ''}`} onClick={() => setLibraryTab('files')}>Files</button>
+                            <button className={`lib-tab ${libraryTab === 'emails' ? 'active' : ''}`} onClick={() => setLibraryTab('emails')}>Emails</button>
+                            <button className={`lib-tab ${libraryTab === 'events' ? 'active' : ''}`} onClick={() => setLibraryTab('events')}>Events</button>
+                        </div>
+
                         {/* Items */}
                         <div style={{ 
                             overflowY: 'auto', flex: 1, padding: '16px',
@@ -747,28 +757,42 @@ export default function InputBox({
                                 <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                                     <div style={{ marginBottom: '10px' }}>Loading library…</div>
                                 </div>
-                            ) : libraryItems.filter(it => !librarySearch || it.name?.toLowerCase().includes(librarySearch.toLowerCase()) || it.snippet?.toLowerCase().includes(librarySearch.toLowerCase()) || it.from_sender?.toLowerCase().includes(librarySearch.toLowerCase())).length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '14px' }}>
-                                    No items found
-                                </div>
-                            ) : (
-                                <div className="lib-grid">
-                                    {libraryItems
-                                        .filter(it => !librarySearch || it.name?.toLowerCase().includes(librarySearch.toLowerCase()) || it.snippet?.toLowerCase().includes(librarySearch.toLowerCase()) || it.from_sender?.toLowerCase().includes(librarySearch.toLowerCase()))
-                                        .map(item => {
-                                            if (item.kind === 'image' || (item.mime_type && item.mime_type.startsWith('image/'))) {
-                                                return <ImageCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onDownload={() => {}} onVisit={() => {}} />;
-                                            }
-                                            if (item.type === 'email') {
-                                                return <MailCard key={item.id} item={item} onPreview={attachLibraryItem} onVisit={() => {}} onSummarize={() => {}} />;
-                                            }
-                                            if (item.type === 'event') {
-                                                return <CalendarCard key={item.id} item={item} onPreview={attachLibraryItem} onVisit={() => {}} onSummarize={() => {}} />;
-                                            }
-                                            return <FileCard key={item.id} item={item} onPreview={attachLibraryItem} onDownload={() => {}} onVisit={() => {}} onSummarize={() => {}} onOCR={() => {}} />;
-                                        })}
-                                </div>
-                            )}
+                            ) : (() => {
+                                const filtered = libraryItems.filter(it => !librarySearch || it.name?.toLowerCase().includes(librarySearch.toLowerCase()) || it.snippet?.toLowerCase().includes(librarySearch.toLowerCase()) || it.from_sender?.toLowerCase().includes(librarySearch.toLowerCase()));
+                                
+                                const images = filtered.filter(it => it.kind === 'image' || it.mime_type?.startsWith('image/'));
+                                const others = filtered.filter(it => !(it.kind === 'image' || it.mime_type?.startsWith('image/')));
+
+                                if (filtered.length === 0) {
+                                    return <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '14px' }}>No items found</div>;
+                                }
+
+                                return (
+                                    <>
+                                        {(libraryTab === 'all' || libraryTab === 'images') && images.length > 0 && (
+                                            <div className="lib-grid-images" style={{ marginBottom: '16px' }}>
+                                                {images.map(item => (
+                                                    <ImageCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onDownload={() => {}} onVisit={() => {}} />
+                                                ))}
+                                            </div>
+                                        )}
+                                        {libraryTab !== 'images' && others.length > 0 && (
+                                            <div className="lib-grid-files">
+                                                {others.filter(item => {
+                                                    if (libraryTab === 'files') return item.type === 'file';
+                                                    if (libraryTab === 'emails') return item.type === 'email';
+                                                    if (libraryTab === 'events') return item.type === 'event';
+                                                    return true;
+                                                }).map(item => {
+                                                    if (item.type === 'email') return <MailCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onVisit={() => {}} onSummarize={() => {}} />;
+                                                    if (item.type === 'event') return <CalendarCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onVisit={() => {}} onSummarize={() => {}} />;
+                                                    return <FileCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onDownload={() => {}} onVisit={() => {}} onSummarize={() => {}} onOCR={() => {}} />;
+                                                })}
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })()}
                         </div>
                         <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border-color, rgba(255,255,255,0.06))', fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>
                             Click any item to attach it to your message
