@@ -62,19 +62,10 @@ async function extractMemoryBackground(authHeader: string, message: string, hist
     }
 }
 
-const ALLOWED_ORIGINS = [
-    'https://ceova.online',
-    'https://www.ceova.online',
-    'https://ceova.vercel.app',
-    'http://localhost:12827',
-    'http://localhost:3000',
-];
-
 function getCorsHeaders(req: Request): Record<string, string> {
-    const origin = req.headers.get('Origin') || '';
-    const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+    const origin = req.headers.get('Origin') || '*';
     return {
-        "Access-Control-Allow-Origin": allowedOrigin,
+        "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Vary": "Origin",
