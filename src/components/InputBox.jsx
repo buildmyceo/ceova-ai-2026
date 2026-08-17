@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../services/supabase';
@@ -686,7 +687,7 @@ export default function InputBox({
             />
 
             {/* ── Library Picker Modal ─────────────────────────── */}
-            {isLibraryPickerOpen && (
+            {isLibraryPickerOpen && typeof document !== 'undefined' && createPortal(
                 <div
                     style={{
                         position: 'fixed', inset: 0, zIndex: 9999,
@@ -804,7 +805,8 @@ export default function InputBox({
                             Click any item to attach it to your message
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </motion.div>
     );
