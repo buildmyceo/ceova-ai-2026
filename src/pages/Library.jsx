@@ -984,6 +984,18 @@ export default function Library({ session, onBack, switchChat }) {
   };
 
   
+  const deleteFromStorage = async (url) => {
+    if (!url || !url.includes('/storage/v1/object/public/')) return;
+    try {
+      const parts = url.split('/storage/v1/object/public/')[1].split('/');
+      const bucket = parts[0];
+      const path = parts.slice(1).join('/');
+      await supabase.storage.from(bucket).remove([path]);
+    } catch (e) {
+      console.warn('Storage delete error', e);
+    }
+  };
+
   const handleDelete = async (item) => {
     if (!window.confirm(`Are you sure you want to delete "${item.name}"? This action cannot be undone and the file cannot be restored.`)) return;
 
@@ -997,15 +1009,18 @@ export default function Library({ session, onBack, switchChat }) {
         await supabase.from('files').delete().eq('id', item.id);
       } else if (item.id.startsWith('aig-')) {
         await supabase.from('ai_generated_files').delete().eq('id', item.id.replace('aig-', ''));
+        await deleteFromStorage(item.url);
       } else if (item.id.startsWith('att-')) {
         const msgId = item.id.split('-')[1];
         const { data: msg } = await supabase.from('messages').select('attachments').eq('id', msgId).single();
         if (msg && msg.attachments) {
            const newAtt = msg.attachments.filter(a => a.name !== item.name && a.url !== item.url);
            await supabase.from('messages').update({ attachments: newAtt }).eq('id', msgId);
+           await deleteFromStorage(item.url);
         }
       } else {
         await supabase.from('files').delete().eq('id', item.id);
+        await deleteFromStorage(item.url);
       }
       
       const newItems = allItems.filter(i => i.id !== item.id);
@@ -1040,6 +1055,7 @@ export default function Library({ session, onBack, switchChat }) {
         } else if (!item.id.startsWith('aig-') && !item.id.startsWith('db-')) {
           await supabase.from('files').delete().eq('id', item.id);
         }
+        await deleteFromStorage(item.url);
       }
 
       const newItems = allItems.filter(i => !ceovaItems.includes(i));
