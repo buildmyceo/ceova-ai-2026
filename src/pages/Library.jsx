@@ -652,16 +652,25 @@ export default function Library({ session, onBack, switchChat }) {
         const directThumb = df.thumbnail_url || (driveId ? `https://lh3.googleusercontent.com/d/${driveId}=s400` : null);
         const isAiSource = df.storage_source === 'ai_generated' || df.category === 'ai_generated';
 
+        const getFullUrl = (link) => {
+           if (!link) return null;
+           if (link.startsWith('http')) return link;
+           return `${supabase.supabaseUrl}/storage/v1/object/public/user_files/${link}`;
+        };
+
+        const resolvedWebView = getFullUrl(df.web_view_link);
+        const resolvedWebDownload = getFullUrl(df.web_download_link);
+
         items.push({
           id: df.id,
           drive_id: driveId,
           kind: isImg ? 'image' : 'file',
           category: df.category || 'documents',
           name: df.name,
-          url: directThumb || df.web_view_link,
+          url: directThumb || resolvedWebView,
           thumbnail_url: directThumb,
-          web_view_link: df.web_view_link || (driveId ? `https://drive.google.com/file/d/${driveId}/view` : null),
-          web_download_link: df.web_download_link || (driveId ? `https://drive.google.com/uc?export=download&id=${driveId}` : null),
+          web_view_link: resolvedWebView || (driveId ? `https://drive.google.com/file/d/${driveId}/view` : null),
+          web_download_link: resolvedWebDownload || (driveId ? `https://drive.google.com/uc?export=download&id=${driveId}` : null),
           mime_type: df.mime_type || '',
           size: df.size,
           created_at: df.created_at,

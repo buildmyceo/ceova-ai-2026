@@ -1,6 +1,7 @@
 -- Migration: Fix CEOVA Drive Storage Tracking and Visibility
 
 -- 1. Migrate legacy user_files to public.files so they appear in CEOVA Drive
+-- NOTE: We store the relative storage_path. The frontend will dynamically resolve the Supabase URL.
 INSERT INTO public.files (
     id,
     user_id,
@@ -27,11 +28,14 @@ SELECT
         ELSE 'documents'
     END AS category,
     size_bytes AS size,
-    REPLACE(current_setting('app.settings.edge_function_url', true), '/functions/v1', '/storage/v1/object/public/user_files/') || storage_path AS web_download_link,
-    REPLACE(current_setting('app.settings.edge_function_url', true), '/functions/v1', '/storage/v1/object/public/user_files/') || storage_path AS web_view_link,
+    storage_path AS web_download_link,
+    storage_path AS web_view_link,
     created_at
 FROM public.user_files
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET 
+    web_download_link = EXCLUDED.web_download_link,
+    web_view_link = EXCLUDED.web_view_link
+WHERE public.files.web_view_link IS NULL;
 
 -- 2. Update get_usage_and_limits RPC to count both old and new local files accurately
 CREATE OR REPLACE FUNCTION public.get_usage_and_limits(p_user_id UUID)
