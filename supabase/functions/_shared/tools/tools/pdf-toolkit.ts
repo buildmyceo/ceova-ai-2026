@@ -150,33 +150,30 @@ export class PdfToolkitTool implements Tool {
                   text: `Redirected to client for password operation.\n\n<!-- ACTION_META: ${JSON.stringify(actionMeta)} -->`,
                   urls: [],
                   processingTimeMs: Date.now() - startTime
-              }
-        if (action === 'read_text') {
-          const targetPdf = pdfAttachments[0];
-          if (!targetPdf.url) throw new Error("No URL found for the PDF.");
-          const bytes = await this.fetchPdfBytes(targetPdf.url);
-          const buffer = new Uint8Array(bytes);
-          try {
-            const data = await pdf(Buffer.from ? Buffer.from(buffer) : buffer);
-            updateStatus('Finished');
-            return {
-              success: true,
-              data: {
-                text: `PDF Extracted Text:
-
-${data.text}`,
-                processingTimeMs: Date.now() - startTime
               },
-              ui: { type: 'message', props: { text: 'Extracted text from PDF successfully.' } }
-            };
-          } catch (err: any) {
-             throw new Error(`Failed to extract text from PDF: ${err.message}`);
-          }
-        }
-
-,
               ui: { type: 'message', props: { text: `Please enter the password securely below:` } }
           };
+      }
+
+      if (action === 'read_text') {
+        const targetPdf = pdfAttachments[0];
+        if (!targetPdf.url) throw new Error("No URL found for the PDF.");
+        const bytes = await this.fetchPdfBytes(targetPdf.url);
+        const buffer = new Uint8Array(bytes);
+        try {
+          const data = await pdf(Buffer.from ? Buffer.from(buffer) : buffer);
+          updateStatus('Finished');
+          return {
+            success: true,
+            data: {
+              text: `PDF Extracted Text:\n\n${data.text}`,
+              processingTimeMs: Date.now() - startTime
+            },
+            ui: { type: 'message', props: { text: 'Extracted text from PDF successfully.' } }
+          };
+        } catch (err: any) {
+           throw new Error(`Failed to extract text from PDF: ${err.message}`);
+        }
       }
 
       if (action === 'merge') {
