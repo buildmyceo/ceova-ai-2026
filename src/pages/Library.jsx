@@ -985,7 +985,7 @@ export default function Library({ session, onBack, switchChat }) {
 
   
   const handleDelete = async (item) => {
-    if (!window.confirm(`Are you sure you want to delete "${item.name}"?`)) return;
+    if (!window.confirm(`Are you sure you want to delete "${item.name}"? This action cannot be undone and the file cannot be restored.`)) return;
 
     setLoading(true);
     try {
@@ -1020,7 +1020,7 @@ export default function Library({ session, onBack, switchChat }) {
   };
 
   const handleClearCeovaDrive = async () => {
-    if (!window.confirm('Are you sure you want to clear all CEOVA Drive files? This will remove all attachments from your chats in the library.')) return;
+    if (!window.confirm('Are you sure you want to clear all CEOVA Drive files?\n\nWARNING: This will permanently delete all attachments from your chats and cannot be restored.')) return;
 
     setLoading(true);
     try {
