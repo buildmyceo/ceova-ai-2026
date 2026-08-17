@@ -31,7 +31,7 @@ export default function InputBox({
     const [isGmailConnected, setIsGmailConnected] = useState(false);
     const [isThinking, setIsThinking] = useState(false);
     const [isLibraryPickerOpen, setIsLibraryPickerOpen] = useState(false);
-    const [libraryTab, setLibraryTab] = useState('all');
+    const [libraryTab, setLibraryTab] = useState('ceova');
     const [libraryItems, setLibraryItems] = useState([]);
     const [libraryLoading, setLibraryLoading] = useState(false);
     const [librarySearch, setLibrarySearch] = useState('');
@@ -715,10 +715,10 @@ export default function InputBox({
                             <BookOpen size={18} color="var(--brand-color, #10a37f)" />
                             <span style={{ fontWeight: 600, fontSize: '15px', color: 'var(--text-main)' }}>Select from Library</span>
                             <button
-                                onClick={() => setIsLibraryPickerOpen(false)}
-                                style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+                                onClick={(e) => { e.stopPropagation(); setIsLibraryPickerOpen(false); }}
+                                style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-main)', padding: '8px', zIndex: 10, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             >
-                                <X size={18} />
+                                <X size={20} />
                             </button>
                         </div>
 
@@ -740,17 +740,17 @@ export default function InputBox({
                         </div>
 
                         {/* Tabs */}
-                        <div className="lib-tabs" style={{ padding: '0 16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary, #1a1a2e)' }}>
-                            <button className={`lib-tab ${libraryTab === 'all' ? 'active' : ''}`} onClick={() => setLibraryTab('all')}>All</button>
-                            <button className={`lib-tab ${libraryTab === 'images' ? 'active' : ''}`} onClick={() => setLibraryTab('images')}>Images</button>
-                            <button className={`lib-tab ${libraryTab === 'files' ? 'active' : ''}`} onClick={() => setLibraryTab('files')}>Files</button>
-                            <button className={`lib-tab ${libraryTab === 'emails' ? 'active' : ''}`} onClick={() => setLibraryTab('emails')}>Emails</button>
-                            <button className={`lib-tab ${libraryTab === 'events' ? 'active' : ''}`} onClick={() => setLibraryTab('events')}>Events</button>
+                        <div className="lib-tabs" style={{ padding: '0 16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary, #1a1a2e)', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+                            <button className={`lib-tab ${libraryTab === 'ceova' ? 'active' : ''}`} onClick={() => setLibraryTab('ceova')}>CEOVA Drive</button>
+                            <button className={`lib-tab ${libraryTab === 'gdrive' ? 'active' : ''}`} onClick={() => setLibraryTab('gdrive')}>Google Drive</button>
+                            <button className={`lib-tab ${libraryTab === 'gmail' ? 'active' : ''}`} onClick={() => setLibraryTab('gmail')}>Google Mail</button>
+                            <button className={`lib-tab ${libraryTab === 'gcalendar' ? 'active' : ''}`} onClick={() => setLibraryTab('gcalendar')}>Google Calendar</button>
+                            <button className={`lib-tab ${libraryTab === 'ai' ? 'active' : ''}`} onClick={() => setLibraryTab('ai')}>AI Generated</button>
                         </div>
 
                         {/* Items */}
                         <div style={{ 
-                            overflowY: 'auto', flex: 1, padding: '16px',
+                            overflowY: 'auto', flex: 1, minHeight: 0, padding: '16px',
                             background: 'var(--bg-primary, #0d0d1a)'
                         }}>
                             {libraryLoading ? (
@@ -758,7 +758,18 @@ export default function InputBox({
                                     <div style={{ marginBottom: '10px' }}>Loading library…</div>
                                 </div>
                             ) : (() => {
-                                const filtered = libraryItems.filter(it => !librarySearch || it.name?.toLowerCase().includes(librarySearch.toLowerCase()) || it.snippet?.toLowerCase().includes(librarySearch.toLowerCase()) || it.from_sender?.toLowerCase().includes(librarySearch.toLowerCase()));
+                                const filtered = libraryItems.filter(it => {
+                                    if (librarySearch) {
+                                        const term = librarySearch.toLowerCase();
+                                        if (!(it.name?.toLowerCase().includes(term) || it.snippet?.toLowerCase().includes(term) || it.from_sender?.toLowerCase().includes(term))) return false;
+                                    }
+                                    if (libraryTab === 'ceova') return it.source === 'local' || it.source === 'ceova';
+                                    if (libraryTab === 'gdrive') return it.source === 'gdrive';
+                                    if (libraryTab === 'gmail') return it.source === 'gmail';
+                                    if (libraryTab === 'gcalendar') return it.source === 'gcalendar';
+                                    if (libraryTab === 'ai') return it.source === 'ai_generated' || it.source === 'ai';
+                                    return true;
+                                });
                                 
                                 const images = filtered.filter(it => it.kind === 'image' || it.mime_type?.startsWith('image/'));
                                 const others = filtered.filter(it => !(it.kind === 'image' || it.mime_type?.startsWith('image/')));
@@ -769,21 +780,16 @@ export default function InputBox({
 
                                 return (
                                     <>
-                                        {(libraryTab === 'all' || libraryTab === 'images') && images.length > 0 && (
+                                        {images.length > 0 && (
                                             <div className="lib-grid-images" style={{ marginBottom: '16px' }}>
                                                 {images.map(item => (
                                                     <ImageCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onDownload={() => {}} onVisit={() => {}} />
                                                 ))}
                                             </div>
                                         )}
-                                        {libraryTab !== 'images' && others.length > 0 && (
+                                        {others.length > 0 && (
                                             <div className="lib-grid-files">
-                                                {others.filter(item => {
-                                                    if (libraryTab === 'files') return item.type === 'file';
-                                                    if (libraryTab === 'emails') return item.type === 'email';
-                                                    if (libraryTab === 'events') return item.type === 'event';
-                                                    return true;
-                                                }).map(item => {
+                                                {others.map(item => {
                                                     if (item.type === 'email') return <MailCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onVisit={() => {}} onSummarize={() => {}} />;
                                                     if (item.type === 'event') return <CalendarCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onVisit={() => {}} onSummarize={() => {}} />;
                                                     return <FileCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onDownload={() => {}} onVisit={() => {}} onSummarize={() => {}} onOCR={() => {}} />;
