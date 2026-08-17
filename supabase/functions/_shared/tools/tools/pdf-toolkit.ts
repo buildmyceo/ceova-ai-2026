@@ -1,8 +1,6 @@
 import { Tool, ToolMetadata, ToolContext, ToolResult } from '../types.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
 import { PDFDocument, rgb, degrees, StandardFonts } from 'https://esm.sh/pdf-lib@1.17.1';
-import pdf from 'https://esm.sh/pdf-parse@1.1.1';
-import { Buffer } from 'node:buffer';
 
 export class PdfToolkitTool implements Tool {
   metadata: ToolMetadata = {
@@ -158,15 +156,48 @@ export class PdfToolkitTool implements Tool {
       if (action === 'read_text') {
         const targetPdf = pdfAttachments[0];
         if (!targetPdf.url) throw new Error("No URL found for the PDF.");
+        updateStatus('Reading PDF text...');
         const bytes = await this.fetchPdfBytes(targetPdf.url);
-        const buffer = new Uint8Array(bytes);
         try {
-          const data = await pdf(Buffer.from ? Buffer.from(buffer) : buffer);
+          // Extract raw text from PDF content streams using pdf-lib
+          const pdfDoc = await PDFDocument.load(bytes);
+          const pageCount = pdfDoc.getPageCount();
+          
+          // Use a basic approach: extract any readable ASCII text from the raw bytes
+          const rawBytes = new Uint8Array(bytes);
+          const rawText = new TextDecoder('utf-8', { fatal: false }).decode(rawBytes);
+          
+          // Extract text between BT and ET markers (PDF text objects)
+          const textChunks: string[] = [];
+          const btEtRegex = /BT([\s\S]*?)ET/g;
+          let btMatch;
+          while ((btMatch = btEtRegex.exec(rawText)) !== null) {
+            const block = btMatch[1];
+            // Extract strings from parentheses (Tj, TJ operators)
+            const strRegex = /\(([^)]*)\)/g;
+            let strMatch;
+            while ((strMatch = strRegex.exec(block)) !== null) {
+              const str = strMatch[1]
+                .replace(/\\n/g, '\n')
+                .replace(/\\r/g, '\r')
+                .replace(/\\t/g, '\t')
+                .replace(/\\\(/g, '(')
+                .replace(/\\\)/g, ')')
+                .replace(/\\\\/g, '\\');
+              if (str.trim().length > 0) textChunks.push(str);
+            }
+          }
+          
+          const extractedText = textChunks.join(' ').trim();
+          const resultText = extractedText.length > 0
+            ? `PDF Text (${pageCount} pages):\n\n${extractedText}`
+            : `PDF has ${pageCount} pages but no extractable text (may be scanned/image-only). Use image analysis for scanned PDFs.`;
+          
           updateStatus('Finished');
           return {
             success: true,
             data: {
-              text: `PDF Extracted Text:\n\n${data.text}`,
+              text: resultText,
               processingTimeMs: Date.now() - startTime
             },
             ui: { type: 'message', props: { text: 'Extracted text from PDF successfully.' } }
