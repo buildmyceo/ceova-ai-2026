@@ -358,8 +358,7 @@ function createRawEmail(to: string, subject: string, body: string, threadId?: st
     message.push(`--${boundary}`);
     message.push("Content-Type: text/html; charset=utf-8");
     message.push("");
-    message.push(body.replace(/
-/g, "<br>"));
+    message.push(body.replace(/\\n/g, "<br>"));
     
     for (const att of attachments) {
       message.push("");
@@ -375,12 +374,10 @@ function createRawEmail(to: string, subject: string, body: string, threadId?: st
   } else {
     message.push("Content-Type: text/html; charset=utf-8");
     message.push("");
-    message.push(body.replace(/
-/g, "<br>"));
+    message.push(body.replace(/\\n/g, "<br>"));
   }
   
-  const raw = message.join("
-");
+  const raw = message.join("\r\n");
   return btoa(unescape(encodeURIComponent(raw))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
