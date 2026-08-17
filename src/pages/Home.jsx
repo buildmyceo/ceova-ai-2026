@@ -882,32 +882,37 @@ export default function Home({ session }) {
                 setTimeout(() => handleSend([], autoFollowUpText, true), 50);
             }
             
-        } catch (error) {
-            if (error.name !== 'AbortError') {
-                console.error("Send Error:", error);
-                
-                const errorMessage = error?.message || error?.toString() || 'Unknown error';
-                const isTokenLimit = errorMessage.toLowerCase().includes('token limit reached');
-                
-                setChats(prev => {
-                    const messages = [...(prev[idToUse] || [])];
-                    const aiIdx = messages.findIndex(m => m.tempId === tempId);
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error("Send Error:", error);
                     
-                    if (aiIdx !== -1) {
-                        if (isTokenLimit) {
-                            const funnyMessages = [
-                                "I'm out of breath for today! Upgrade your plan to keep talking, or I'll see you tomorrow.",
-                                "My talk-o-meter hit zero! Upgrade now to add more fuel, or we can chat again tomorrow.",
-                                "You used up all my words for today! Upgrade your plan to buy me more, or wait until tomorrow.",
-                                "My daily battery is dead. 🔋 Upgrade your plan to plug me in, or come back tomorrow!"
-                            ];
-                            const randomMsg = funnyMessages[Math.floor(Math.random() * funnyMessages.length)];
-                            const fullMsg = `${randomMsg}\n\n[Check your usage & upgrade plan](/subscription)`;
-                            
-                            const newMsgId = crypto.randomUUID();
-                            const timeNow = new Date().toISOString();
-                            
-                            messages[aiIdx] = { 
+                    const errorMessage = error?.message || error?.toString() || 'Unknown error';
+                    const isTokenLimit = errorMessage.toLowerCase().includes('token limit reached');
+                    
+                    let displayError = errorMessage;
+                    if (errorMessage === "Load failed" || errorMessage === "Failed to fetch") {
+                        displayError = "Network error: Could not connect to the AI server. Please try again.";
+                    }
+                    
+                    setChats(prev => {
+                        const messages = [...(prev[idToUse] || [])];
+                        const aiIdx = messages.findIndex(m => m.tempId === tempId);
+                        
+                        if (aiIdx !== -1) {
+                            if (isTokenLimit) {
+                                const funnyMessages = [
+                                    "I'm out of breath for today! Upgrade your plan to keep talking, or I'll see you tomorrow.",
+                                    "My talk-o-meter hit zero! Upgrade now to add more fuel, or we can chat again tomorrow.",
+                                    "You used up all my words for today! Upgrade your plan to buy me more, or wait until tomorrow.",
+                                    "My daily battery is dead. 🔋 Upgrade your plan to plug me in, or come back tomorrow!"
+                                ];
+                                const randomMsg = funnyMessages[Math.floor(Math.random() * funnyMessages.length)];
+                                const fullMsg = `${randomMsg}\n\n[Check your usage & upgrade plan](/subscription)`;
+                                
+                                const newMsgId = crypto.randomUUID();
+                                const timeNow = new Date().toISOString();
+                                
+                                messages[aiIdx] = { 
                                 ...messages[aiIdx], 
                                 id: newMsgId,
                                 isLive: true, 
@@ -955,10 +960,10 @@ export default function Home({ session }) {
                 
                 if (!isTokenLimit) {
                     // Debug: Show detailed error to help diagnose "Load failed"
-                    const errorStr = (error?.stack && !error.stack.includes(errorMessage)) 
-                        ? `${errorMessage}\n${error.stack}` 
-                        : (error?.stack || errorMessage);
-                    showToast(errorStr.substring(0, 150) || 'Failed to reach server.', 'error');
+                    const errorStr = (error?.stack && !error.stack.includes(displayError)) 
+                        ? `${displayError}\n${error.stack}` 
+                        : (error?.stack || displayError);
+                    showToast(displayError.substring(0, 150), 'error');
                 }
             }
         } finally {
