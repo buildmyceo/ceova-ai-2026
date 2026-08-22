@@ -37,7 +37,16 @@ export default function Home({ session }) {
         });
     };
 
-    const [input, setInput] = useState("");
+    const [input, setInput] = useState(() => {
+        try {
+            const pending = localStorage.getItem('pending_guest_prompt');
+            if (pending) {
+                localStorage.removeItem('pending_guest_prompt');
+                return pending;
+            }
+        } catch (e) {}
+        return "";
+    });
     const [editingMessage, setEditingMessage] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(() => {

@@ -9,6 +9,7 @@ import './App.css';
 
 // Lazy loaded routes for bundle splitting and performance optimization
 const Home = lazy(() => import('./pages/Home'));
+const GuestHome = lazy(() => import('./pages/GuestHome'));
 const Login = lazy(() => import('./pages/Login'));
 const Signup = lazy(() => import('./pages/Signup'));
 const Landing = lazy(() => import('./pages/Landing'));
@@ -42,7 +43,7 @@ export default function App() {
         <div className={`theme-${resolvedTheme}`}>
             <Suspense fallback={<LoadingScreen text="Loading..." />}>
                 <Routes>
-                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/" element={session ? <Navigate to="/dashboard" replace /> : <GuestHome />} />
                     <Route path="/legal" element={<Navigate to="/legal/privacy-policy" replace />} />
                     <Route path="/legal/:docId" element={<LegalCenter />} />
                     <Route path="/privacy" element={<Navigate to="/legal/privacy-policy" replace />} />
@@ -59,3 +60,4 @@ export default function App() {
         </div>
     );
 }
+
