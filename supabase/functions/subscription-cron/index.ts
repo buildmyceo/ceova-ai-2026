@@ -93,6 +93,23 @@ serve(async (req) => {
           }
 
           if (shouldDowngrade) {
+            // Ensure recurring subscription is cancelled on Razorpay so autopay stops immediately
+            if (!["cancelled", "completed", "expired"].includes(rzpStatus) && sub.razorpay_subscription_id) {
+              try {
+                console.log(`[CRON] Cancelling active Razorpay sub ${sub.razorpay_subscription_id}...`);
+                await fetch(`https://api.razorpay.com/v1/subscriptions/${sub.razorpay_subscription_id}/cancel`, {
+                  method: "POST",
+                  headers: {
+                    "Authorization": `Basic ${basicAuth}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({ cancel_at_cycle_end: 0 }),
+                });
+              } catch (cancelErr) {
+                console.error(`[CRON] Failed to cancel Razorpay sub ${sub.razorpay_subscription_id}:`, cancelErr);
+              }
+            }
+
             // Downgrade to Spark
             await adminClient.from("user_subscriptions")
               .update({

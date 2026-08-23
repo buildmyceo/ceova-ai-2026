@@ -72,17 +72,22 @@ export default function UsageSection() {
 
     const handleCancelSubscription = async () => {
         if (!userSub || !userSub.id) return;
-        if (!window.confirm("Are you sure you want to cancel your subscription? You will keep access until the end of your billing period.")) return;
+        if (!window.confirm("Are you sure you want to cancel your subscription? You will keep access until the end of your billing period and automatic renewal will be stopped.")) return;
         
         setIsProcessing(true);
         try {
-            const { error } = await supabase
-                .from('user_subscriptions')
-                .update({ cancel_at_period_end: true })
-                .eq('id', userSub.id);
-                
-            if (error) throw error;
-            alert("Your subscription has been set to cancel at the end of the billing period.");
+            const response = await fetch('https://jqpbgcmrlpfqnellznhz.supabase.co/functions/v1/razorpay-cancel', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session?.access_token}`
+                }
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Failed to cancel subscription');
+
+            alert(data.message || "Your subscription has been set to cancel and automatic payment has been stopped on Razorpay.");
             window.location.reload();
         } catch (error) {
             console.error("Cancel error:", error);
