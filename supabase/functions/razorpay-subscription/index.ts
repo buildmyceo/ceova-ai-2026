@@ -37,14 +37,31 @@ serve(async (req) => {
     const adminClient = getAdminClient();
 
     // 2. Get plan details + razorpay_plan_id
-    const { data: plan, error: planError } = await adminClient
+    let { data: plan, error: planError } = await adminClient
       .from("subscription_plans")
       .select("id, name, slug, monthly_price, annual_price, razorpay_plan_id, razorpay_yearly_plan_id")
       .eq("slug", plan_slug)
-      .single();
+      .maybeSingle();
 
-    if (planError || !plan) {
-      return new Response(JSON.stringify({ error: "Plan not found" }), { status: 404, headers: corsHeaders });
+    // Graceful fallback if razorpay_yearly_plan_id column does not exist yet in schema
+    if (planError && (planError.code === "42703" || planError.message?.includes("razorpay_yearly_plan_id"))) {
+      console.warn("[RAZORPAY-SUBSCRIPTION] razorpay_yearly_plan_id column not found in database schema, falling back...");
+      const fallback = await adminClient
+        .from("subscription_plans")
+        .select("id, name, slug, monthly_price, annual_price, razorpay_plan_id")
+        .eq("slug", plan_slug)
+        .maybeSingle();
+      plan = fallback.data ? { ...fallback.data, razorpay_yearly_plan_id: null } : null;
+      planError = fallback.error;
+    }
+
+    if (planError) {
+      console.error("[RAZORPAY-SUBSCRIPTION] Database query error:", planError);
+      return new Response(JSON.stringify({ error: `Database error: ${planError.message}` }), { status: 500, headers: corsHeaders });
+    }
+
+    if (!plan) {
+      return new Response(JSON.stringify({ error: `Plan '${plan_slug}' not found` }), { status: 404, headers: corsHeaders });
     }
 
     const isYearly = billing_cycle === "annual" || billing_cycle === "yearly";
