@@ -484,6 +484,7 @@ export default function Home({ session }) {
             const token = session?.access_token || SUPABASE_KEY;
             let aiRawText = "";
             let autoFollowUpText = null;
+            let currentCloudProject = null;
 
             // Cloud fetch directly to super-endpoint
                 const reqBody = {
@@ -559,12 +560,29 @@ export default function Home({ session }) {
                                     const parsed = JSON.parse(chunk.slice(6));
                                     let currentToolStatus = null;
                                     
-                                    if (parsed.type === 'status') {
+                                    if (parsed.type === 'project_progress' || parsed.type === 'cloud_project_ready') {
+                                        currentCloudProject = {
+                                            stage: parsed.stage || (parsed.type === 'cloud_project_ready' ? 'READY' : 'BUILDING'),
+                                            projectId: parsed.projectId,
+                                            slug: parsed.slug,
+                                            deploymentUrl: parsed.deploymentUrl,
+                                            files: parsed.files || currentCloudProject?.files || [],
+                                            logs: parsed.logs || currentCloudProject?.logs || '',
+                                            content: parsed.content || '',
+                                            error: parsed.error || null,
+                                        };
+                                        if (parsed.content) {
+                                            aiRawText = parsed.content;
+                                        }
+                                    } else if (parsed.type === 'status') {
                                         currentToolStatus = parsed.stage;
                                     } else if (parsed.type === 'text') {
                                         aiRawText += parsed.content;
                                     } else if (parsed.type === 'error') {
                                         aiRawText += `\n\n**Error:** ${parsed.error}`;
+                                        if (currentCloudProject) {
+                                            currentCloudProject = { ...currentCloudProject, stage: 'FAILED', error: parsed.error };
+                                        }
                                      } else if (parsed.type === 'tool_call' && parsed.tool === 'write_local_files') {
                                          let filesList = [];
                                          if (Array.isArray(parsed.args?.files)) {
@@ -804,8 +822,7 @@ export default function Home({ session }) {
                                              currentToolStatus = null;
                                          }
                                      }
-                                    
-                                    // Live update UI
+                                                          // Live update UI
                                     setChats(prev => {
                                         const messages = [...(prev[idToUse] || [])];
                                         const aiIdx = messages.findIndex(m => m.tempId === tempId);
@@ -814,8 +831,9 @@ export default function Home({ session }) {
                                                 ...messages[aiIdx], 
                                                 text: aiRawText, 
                                                 isTyping: true, 
-                                                isLive: true,
-                                                toolStatus: currentToolStatus 
+                                                isLive: true, 
+                                                toolStatus: currentToolStatus,
+                                                cloudProject: currentCloudProject
                                             };
                                         }
                                         return { ...prev, [idToUse]: messages };
@@ -830,7 +848,14 @@ export default function Home({ session }) {
                         const messages = [...(prev[idToUse] || [])];
                         const aiIdx = messages.findIndex(m => m.tempId === tempId);
                         if (aiIdx !== -1) {
-                            messages[aiIdx] = { ...messages[aiIdx], text: aiRawText, isTyping: false, isLive: true, toolStatus: null };
+                            messages[aiIdx] = { 
+                                ...messages[aiIdx], 
+                                text: aiRawText, 
+                                isTyping: false, 
+                                isLive: true, 
+                                toolStatus: null,
+                                cloudProject: currentCloudProject
+                            };
                         }
                         return { ...prev, [idToUse]: messages };
                     });

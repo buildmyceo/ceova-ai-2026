@@ -16,9 +16,11 @@ export interface AIResponse {
     model: string;
 }
 
+import { AI_MODEL } from "../ai/ai-provider.ts";
+
 export class AIRouter {
-    private getModelsForTask(taskType: TaskType): string[] {
-        return ['gpt-4o', 'gpt-4o-mini'];
+    private getModelsForTask(_taskType: TaskType): string[] {
+        return [AI_MODEL, 'gpt-4o', 'gpt-4o-mini'];
     }
 
     async generateContent(

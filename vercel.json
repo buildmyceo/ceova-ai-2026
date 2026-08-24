@@ -47,6 +47,14 @@
       "destination": "/api/video_prepare.js"
     },
     {
+      "source": "/p/:slug",
+      "destination": "/api/site_host.js?slug=:slug"
+    },
+    {
+      "source": "/sites/:slug/:path*",
+      "destination": "/api/site_host.js?slug=:slug&path=:path"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.py"
     },

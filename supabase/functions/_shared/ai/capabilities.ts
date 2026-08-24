@@ -49,10 +49,17 @@ export const CAPABILITIES: Capability[] = [
     memoryCategories: ["telegram", "communication"],
   },
   {
+    id: "cloud_dev",
+    description: "Build, test, and deploy production web applications and landing pages to https://<project>.ceova.online in isolated cloud workspaces.",
+    keywords: ["website", "build website", "create website", "make website", "web app", "landing page", "cloud project", "deploy", "ceova.online", "restaurant website", "portfolio", "store", "ecommerce", "saas", "frontend", "build app", "create app"],
+    toolIds: ["create_project", "write_project_file", "read_project_file", "list_project_files", "install_project_dependency", "run_project_build", "get_build_logs", "deploy_project"],
+    memoryCategories: ["coding", "projects", "design_preferences"],
+  },
+  {
     id: "ide",
     description: "Generate, edit, explain and run code. Build websites and apps.",
     keywords: ["code", "write", "function", "build", "create", "website", "app", "html", "css", "javascript", "python", "react", "component", "script", "program", "fix", "debug", "refactor", "implement", "develop", "server", "run", "terminal", "file", "folder", "read file", "list files", "directory"],
-    toolIds: ["write_local_files", "run_terminal_command", "read_local_files", "list_local_files"],
+    toolIds: ["create_project", "write_project_file", "read_project_file", "list_project_files", "install_project_dependency", "run_project_build", "get_build_logs", "deploy_project", "write_local_files", "run_terminal_command", "read_local_files", "list_local_files"],
     memoryCategories: ["coding", "projects", "preferences"],
   },
   {

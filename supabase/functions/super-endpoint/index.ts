@@ -5,6 +5,7 @@ import { toolRegistry } from '../_shared/tools/registry.ts';
 import { ToolExecutor } from '../_shared/tools/executor.ts';
 import { routeIntent } from '../_shared/ai/intent-router.ts';
 import { getCapabilitySummary } from '../_shared/ai/capabilities.ts';
+import { CloudDevOrchestrator } from '../_shared/ai/cloud-dev-orchestrator.ts';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MAX_HISTORY_MESSAGES  = 15;  // Reduced from 20 to cut token usage
@@ -272,6 +273,27 @@ serve(async (req) => {
                             }
                         } catch (memErr: any) {
                             console.error('Memory summary fetch failed (non-fatal):', memErr.message);
+                        }
+                    }
+
+                    // ── Cloud Development Fast Path ──────────────────────────────────────────
+                    // If user explicitly asks to build a website/app/landing page, run full autonomous Cloud Dev
+                    if (intent.toolIds.includes('create_project') && /(build|create|make|develop|generate|deploy)\s+(me\s+)?(a\s+)?(website|landing|page|app|store|portfolio|saas|site)/i.test(message)) {
+                        try {
+                            await CloudDevOrchestrator.buildAndDeployProject(message, user.id, sendEvent);
+                            const totalTokens = 3500;
+                            await supabaseAdmin.rpc('increment_daily_metrics', {
+                                p_user_id: user.id,
+                                p_ai_tokens: totalTokens,
+                                p_tool_calls: 1,
+                                p_connector_calls: 0
+                            });
+                            quotaCache.increment(user.id, totalTokens);
+                            return;
+                        } catch (devErr: any) {
+                            console.error("Cloud Dev Execution Error:", devErr.message);
+                            sendEvent({ type: 'error', error: `Cloud project creation error: ${devErr.message}` });
+                            return;
                         }
                     }
 

@@ -18,6 +18,7 @@ import { SystemContextTool } from './tools/system-context.ts';
 import { InvoiceGeneratorTool } from './tools/invoice-generator.ts';
 import { MediaConverterTool } from './tools/media-converter.ts';
 import { RunTerminalCommandTool } from './tools/run-terminal-command.ts';
+import { cloudDevelopmentTools } from './cloud-tools.ts';
 
 class ToolRegistry {
   private tools: Map<string, Tool> = new Map();
@@ -42,6 +43,11 @@ class ToolRegistry {
     this.registerTool(new InvoiceGeneratorTool());
     this.registerTool(new MediaConverterTool());
     this.registerTool(new RunTerminalCommandTool());
+
+    // Register all Cloud Development & Hosting Tools
+    for (const tool of cloudDevelopmentTools) {
+      this.registerTool(tool);
+    }
   }
 
   registerTool(tool: Tool) {

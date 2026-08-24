@@ -11,6 +11,7 @@ import ClientSecureGeneratorWidget from './ClientSecureGeneratorWidget';
 import ClientColorWidget from './ClientColorWidget';
 import ClientInvoiceWidget from './ClientInvoiceWidget';
 import ClientMediaConverterWidget from './ClientMediaConverterWidget';
+import CloudProjectCard from './CloudProjectCard';
 async function forceDownloadImage(url, filename = 'ceova-image.png') {
   try {
     const res = await fetch(url, { mode: 'cors' });
@@ -474,6 +475,10 @@ function MessageItem({ msg, idx, isUser, editingMsg, editText, setEditText, hand
 
             {(msg.text || !msg.isTyping) && (
               <TypewriterRenderer text={rawText.replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
+            )}
+
+            {msg.cloudProject && (
+              <CloudProjectCard project={msg.cloudProject} />
             )}
 
 
