@@ -37,4 +37,8 @@ entrypoint = "./functions/razorpay-verify/index.ts"
 enabled = true
 verify_jwt = false
 
+[functions.site-host]
+enabled = true
+verify_jwt = false
+
 
