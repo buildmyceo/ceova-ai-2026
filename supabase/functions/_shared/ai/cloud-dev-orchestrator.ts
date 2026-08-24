@@ -299,23 +299,21 @@ CRITICAL ARCHITECTURE RULES:
 2. Must include a complete 'index.html' file with responsive meta tags, Google Fonts, and Tailwind CDN ('https://cdn.tailwindcss.com').
 3. Must write rich, interactive, beautiful UI with vibrant gradients, glassmorphism cards, micro-interactions, mobile navigation, hero sections, features, call-to-actions, testimonials/forms, and footer.
 4. DO NOT use placeholder text like "Lorem ipsum" or empty stub functions. Generate realistic, compelling business copy.
-5. Return ONLY a valid JSON object matching this exact structure (NO extra markdown backticks or commentary):
-{
-  "files": [
-    {
-      "path": "index.html",
-      "content": "<!DOCTYPE html>..."
-    },
-    {
-      "path": "styles.css",
-      "content": "/* styles */"
-    },
-    {
-      "path": "app.js",
-      "content": "// interactive logic"
-    }
-  ]
-}`;
+5. Return the files using EXACTLY the following format:
+[FILE: filename.ext]
+...file content here...
+[/FILE]
+
+Example:
+[FILE: index.html]
+<!DOCTYPE html>
+<html>...</html>
+[/FILE]
+[FILE: styles.css]
+body { margin: 0; }
+[/FILE]
+
+Do NOT wrap the response in markdown code blocks. Just output the [FILE: path]...[/FILE] blocks directly.`;
 
     const userMessage = `Create a state-of-the-art web application for: "${userPrompt}"
 Project Name: ${projectName}
@@ -332,8 +330,9 @@ Ensure index.html is completely self-contained or cleanly references styles.css 
       maxTokens: 4000,
     });
 
-    const parsedFiles = this.parseFilesJson(response.content);
+    const parsedFiles = this.parseFilesFormat(response.content);
     if (parsedFiles.length === 0) {
+      Logger.ERROR(`[CloudDevOrchestrator] AI output parsing failed. Falling back to default template. Raw output: ${response.content.substring(0, 500)}...`);
       // Fallback: Generate template if LLM output was malformed
       return this.generateDefaultTemplate(projectName, userPrompt);
     }
@@ -354,15 +353,12 @@ Ensure index.html is completely self-contained or cleanly references styles.css 
     const systemPrompt = `You are GPT-5.6 Luna. You are diagnosing and fixing a build/validation error in a Ceova cloud project.
 Fix the errors completely and output the corrected full file contents.
 
-Return ONLY a JSON object:
-{
-  "files": [
-    {
-      "path": "filename.ext",
-      "content": "corrected code"
-    }
-  ]
-}`;
+Return the files using EXACTLY the following format:
+[FILE: filename.ext]
+...corrected file content here...
+[/FILE]
+
+Do NOT wrap the response in markdown code blocks.`;
 
     const filesContext = files.map(f => `=== FILE: ${f.path} ===\n${f.content}\n`).join('\n\n');
     const userMessage = `Project prompt: "${userPrompt}"
@@ -374,7 +370,7 @@ ${buildLogs.slice(-1500)}
 Current Project Files:
 ${filesContext}
 
-Please fix all errors and return the corrected files JSON.`;
+Please fix all errors and return the corrected files using the [FILE: path] format.`;
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -385,42 +381,28 @@ Please fix all errors and return the corrected files JSON.`;
       maxTokens: 4000,
     });
 
-    const fixed = this.parseFilesJson(response.content);
+    const fixed = this.parseFilesFormat(response.content);
     return fixed.length > 0 ? fixed : files;
   }
 
   /**
-   * Helper to parse JSON files array from LLM response
+   * Parse robust text delimiter format into ProjectFiles
    */
-  private static parseFilesJson(raw: string): ProjectFile[] {
-    let clean = raw.trim();
-    // Strip markdown code fences if present
-    if (clean.startsWith('```')) {
-      clean = clean.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-    }
-
-    try {
-      const parsed = JSON.parse(clean);
-      if (Array.isArray(parsed.files)) {
-        return parsed.files
-          .filter((f: any) => f.path && typeof f.content === 'string')
-          .map((f: any) => ({ path: f.path, content: f.content }));
-      }
-    } catch {
-      // Regex extraction fallback
-      const jsonMatch = clean.match(/\{[\s\S]*"files"[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0]);
-          if (Array.isArray(parsed.files)) {
-            return parsed.files
-              .filter((f: any) => f.path && typeof f.content === 'string')
-              .map((f: any) => ({ path: f.path, content: f.content }));
-          }
-        } catch {}
+  private static parseFilesFormat(raw: string): ProjectFile[] {
+    const files: ProjectFile[] = [];
+    const regex = /\[FILE:\s*([a-zA-Z0-9_\-\./]+)\]([\s\S]*?)\[\/FILE\]/gi;
+    
+    let match;
+    while ((match = regex.exec(raw)) !== null) {
+      if (match[1] && match[2] !== undefined) {
+        files.push({
+          path: match[1].trim(),
+          content: match[2].trim()
+        });
       }
     }
-    return [];
+    
+    return files;
   }
 
   /**
@@ -439,16 +421,13 @@ The user is requesting updates, styling changes, new sections, or modifications 
 CRITICAL RULES:
 1. Carefully inspect the existing files and apply the requested changes (e.g. design styling, layout, theme, color scheme, new sections, features, copy).
 2. Retain all necessary structure and working code from the previous files while applying the new requested improvements.
-3. Return the COMPLETE, full-content files in JSON format.
-4. Return ONLY a valid JSON object matching this structure:
-{
-  "files": [
-    {
-      "path": "filename.ext",
-      "content": "full updated code"
-    }
-  ]
-}`;
+3. Return the COMPLETE, full-content files.
+4. Return the files using EXACTLY the following format:
+[FILE: filename.ext]
+...updated file content here...
+[/FILE]
+
+Do NOT wrap the response in markdown code blocks.`;
 
     const filesContext = existingFiles.map(f => `=== FILE: ${f.path} ===\n${f.content}\n`).join('\n\n');
     const userMessage = `Existing Project: "${projectName}"
@@ -457,7 +436,7 @@ User Change Request: "${userPrompt}"
 Current Project Files:
 ${filesContext}
 
-Please update the project files to incorporate the requested changes and return the complete updated files JSON.`;
+Please update the project files to incorporate the requested changes and return the complete updated files using the [FILE: path] format.`;
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -468,7 +447,7 @@ Please update the project files to incorporate the requested changes and return 
       maxTokens: 4000,
     });
 
-    const parsedFiles = this.parseFilesJson(response.content);
+    const parsedFiles = this.parseFilesFormat(response.content);
     return parsedFiles.length > 0 ? parsedFiles : existingFiles;
   }
 
