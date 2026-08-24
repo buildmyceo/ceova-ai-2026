@@ -327,7 +327,7 @@ Ensure index.html is completely self-contained or cleanly references styles.css 
     ];
 
     const response = await AIProviderService.generate(messages, userId, {
-      maxTokens: 4000,
+      maxTokens: 8000,
     });
 
     const parsedFiles = this.parseFilesFormat(response.content);
@@ -378,7 +378,7 @@ Please fix all errors and return the corrected files using the [FILE: path] form
     ];
 
     const response = await AIProviderService.generate(messages, userId, {
-      maxTokens: 4000,
+      maxTokens: 8000,
     });
 
     const fixed = this.parseFilesFormat(response.content);
@@ -386,19 +386,32 @@ Please fix all errors and return the corrected files using the [FILE: path] form
   }
 
   /**
-   * Parse robust text delimiter format into ProjectFiles
+   * Parse robust text delimiter format into ProjectFiles (Truncation Tolerant)
    */
   private static parseFilesFormat(raw: string): ProjectFile[] {
     const files: ProjectFile[] = [];
-    const regex = /\[FILE:\s*([a-zA-Z0-9_\-\./]+)\]([\s\S]*?)\[\/FILE\]/gi;
+    const blocks = raw.split(/\[FILE:\s*/i);
     
-    let match;
-    while ((match = regex.exec(raw)) !== null) {
-      if (match[1] && match[2] !== undefined) {
-        files.push({
-          path: match[1].trim(),
-          content: match[2].trim()
-        });
+    for (const block of blocks) {
+      if (!block.trim()) continue;
+      
+      const closeBracketIdx = block.indexOf(']');
+      if (closeBracketIdx === -1) continue;
+      
+      const path = block.substring(0, closeBracketIdx).trim();
+      let content = block.substring(closeBracketIdx + 1);
+      
+      // Remove trailing [/FILE] if it exists, or just take what we have if truncated
+      const endTagIdx = content.indexOf('[/FILE]');
+      if (endTagIdx !== -1) {
+        content = content.substring(0, endTagIdx);
+      }
+      
+      // Remove any hallucinated markdown backticks
+      content = content.replace(/^```[a-z]*\n?/i, '').replace(/```$/i, '').trim();
+      
+      if (path && content) {
+        files.push({ path, content });
       }
     }
     
@@ -444,7 +457,7 @@ Please update the project files to incorporate the requested changes and return 
     ];
 
     const response = await AIProviderService.generate(messages, userId, {
-      maxTokens: 4000,
+      maxTokens: 8000,
     });
 
     const parsedFiles = this.parseFilesFormat(response.content);
