@@ -50,16 +50,16 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "cloud_dev",
-    description: "Build, test, and deploy production web applications and landing pages to https://<project>.ceova.online in isolated cloud workspaces.",
-    keywords: ["website", "build website", "create website", "make website", "web app", "landing page", "cloud project", "deploy", "ceova.online", "restaurant website", "portfolio", "store", "ecommerce", "saas", "frontend", "build app", "create app"],
+    description: "Build, test, and deploy production web applications, landing pages, SaaS apps, portfolios, and websites to https://<project>.ceova.online in isolated cloud workspaces.",
+    keywords: ["website", "build website", "create website", "make website", "develop website", "web app", "landing page", "landing", "page", "cloud project", "deploy", "ceova.online", "restaurant website", "portfolio", "store", "ecommerce", "saas", "frontend", "build app", "create app", "site", "webpage", "web page", "dashboard", "fullstack app", "build me", "create me"],
     toolIds: ["create_project", "write_project_file", "read_project_file", "list_project_files", "install_project_dependency", "run_project_build", "get_build_logs", "deploy_project"],
     memoryCategories: ["coding", "projects", "design_preferences"],
   },
   {
     id: "ide",
-    description: "Generate, edit, explain and run code. Build websites and apps.",
-    keywords: ["code", "write", "function", "build", "create", "website", "app", "html", "css", "javascript", "python", "react", "component", "script", "program", "fix", "debug", "refactor", "implement", "develop", "server", "run", "terminal", "file", "folder", "read file", "list files", "directory"],
-    toolIds: ["create_project", "write_project_file", "read_project_file", "list_project_files", "install_project_dependency", "run_project_build", "get_build_logs", "deploy_project", "write_local_files", "run_terminal_command", "read_local_files", "list_local_files"],
+    description: "Local workspace tools for interacting with a connected local folder on the user device.",
+    keywords: ["local folder", "local directory", "connected folder", "save to my computer", "save to my machine", "local disk", "download to folder"],
+    toolIds: ["write_local_files", "run_terminal_command", "read_local_files", "list_local_files"],
     memoryCategories: ["coding", "projects", "preferences"],
   },
   {

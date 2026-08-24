@@ -277,8 +277,12 @@ serve(async (req) => {
                     }
 
                     // ── Cloud Development Fast Path ──────────────────────────────────────────
-                    // If user explicitly asks to build a website/app/landing page, run full autonomous Cloud Dev
-                    if (intent.toolIds.includes('create_project') && /(build|create|make|develop|generate|deploy)\s+(me\s+)?(a\s+)?(website|landing|page|app|store|portfolio|saas|site)/i.test(message)) {
+                    // If user asks to build a website/app/landing page/portfolio, run full autonomous Cloud Dev
+                    const isCloudBuildRequest = intent.toolIds.includes('create_project') ||
+                        /(build|create|make|develop|generate|deploy|host|publish)\s+.*(website|landing|landing-page|page|app|store|portfolio|saas|site|dashboard|frontend)/i.test(message) ||
+                        /(website|landing page|portfolio|web app|store|frontend)\s+for\s+/i.test(message);
+
+                    if (isCloudBuildRequest) {
                         try {
                             await CloudDevOrchestrator.buildAndDeployProject(message, user.id, sendEvent);
                             const totalTokens = 3500;
