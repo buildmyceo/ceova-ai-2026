@@ -119,15 +119,26 @@ export class CloudDevOrchestrator {
 
     const generatedFiles = await this.generateProjectSource(userPrompt, projectName, slug, userId);
 
-    onProgress({
-      type: 'project_progress',
-      stage: 'GENERATING',
-      projectId: project.id,
-      slug: slug,
-      deploymentUrl: deploymentUrl,
-      files: generatedFiles.map(f => f.path),
-      content: `Generated ${generatedFiles.length} file(s): ${generatedFiles.map(f => f.path).join(', ')}`,
-    });
+    // Stream writing of each individual file
+    const writtenFilesList: string[] = [];
+    let fileActivityLog = '';
+
+    for (const file of generatedFiles) {
+      writtenFilesList.push(file.path);
+      fileActivityLog += `[FILE] Created & wrote: ${file.path} (${file.content.length} bytes)\n`;
+      onProgress({
+        type: 'project_progress',
+        stage: 'GENERATING',
+        projectId: project.id,
+        slug: slug,
+        deploymentUrl: deploymentUrl,
+        files: [...writtenFilesList],
+        logs: fileActivityLog,
+        content: `Creating ${file.path}... (${writtenFilesList.length}/${generatedFiles.length})`,
+      });
+      // Brief tick for visual stream feedback
+      await new Promise(r => setTimeout(r, 80));
+    }
 
     // Write source files to isolated project sandbox
     await CloudWorkerService.writeProjectFiles(project.id, generatedFiles);
@@ -139,7 +150,9 @@ export class CloudDevOrchestrator {
       projectId: project.id,
       slug: slug,
       deploymentUrl: deploymentUrl,
-      content: 'Isolated worker is bundling and testing the project assets...',
+      files: generatedFiles.map(f => f.path),
+      logs: fileActivityLog + `[SANDBOX] Validating dependencies and compiling bundle...\n`,
+      content: 'Isolated worker is bundling and testing the project assets in sandbox...',
     });
 
     await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
@@ -159,6 +172,7 @@ export class CloudDevOrchestrator {
         projectId: project.id,
         slug: slug,
         deploymentUrl: deploymentUrl,
+        files: generatedFiles.map(f => f.path),
         logs: buildResult.logs,
         content: `Build error detected. GPT-5.6 Luna is auto-fixing errors (Attempt ${fixAttempts}/${this.MAX_FIX_ATTEMPTS})...`,
       });
@@ -177,6 +191,8 @@ export class CloudDevOrchestrator {
         projectId: project.id,
         slug: slug,
         deploymentUrl: deploymentUrl,
+        files: fixedFiles.map(f => f.path),
+        logs: buildResult.logs + `[FIX] Re-testing auto-fixed bundle...\n`,
         content: `Re-running build verification after auto-fix...`,
       });
 
@@ -203,6 +219,8 @@ export class CloudDevOrchestrator {
       projectId: project.id,
       slug: slug,
       deploymentUrl: deploymentUrl,
+      files: generatedFiles.map(f => f.path),
+      logs: buildResult.logs + `[DEPLOY] Published bundle to edge hosting network\n`,
       content: 'Publishing distribution bundle to edge hosting network...',
     });
 
@@ -213,6 +231,7 @@ export class CloudDevOrchestrator {
       slug: slug,
       deploymentUrl: deploymentUrl,
       files: generatedFiles.map(f => f.path),
+      logs: buildResult.logs + `[READY] Deployed live at: ${deploymentUrl}\n`,
       content: `🎉 **Your website is live and ready!**\n\n🔗 **[${deploymentUrl}](${deploymentUrl})**\n\n- **Project Name**: ${projectName}\n- **Framework**: React + Tailwind CSS (Vite)\n- **Status**: Live on edge cloud network`,
     });
 

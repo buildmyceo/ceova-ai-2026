@@ -1029,12 +1029,40 @@ export default function Home({ session }) {
         }
     };
 
-    const switchChat = (id) => {
+    const switchChat = async (id) => {
         setCurrentChatId(id);
         setEditingMessage(null);
         setInput("");
         localStorage.setItem(CURRENT_CHAT_KEY, id);
         if (isMobile) setIsSidebarOpen(false);
+
+        if (id && !id.startsWith('temp_') && (!chats[id] || chats[id].length === 0)) {
+            try {
+                const { data: chatMsgs } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .eq('chat_id', id)
+                    .order('created_at', { ascending: true });
+
+                if (chatMsgs && chatMsgs.length > 0) {
+                    const formatted = chatMsgs.map(msg => {
+                        const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
+                        return {
+                            id: msg.id,
+                            sender: msg.role === 'user' ? 'user' : 'ai',
+                            text: msg.content,
+                            time: msg.created_at,
+                            mode: msg.mode,
+                            attachments: msg.attachments || [],
+                            cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null
+                        };
+                    });
+                    setChats(prev => ({ ...prev, [id]: formatted }));
+                }
+            } catch (e) {
+                console.error("Error switching chat:", e);
+            }
+        }
     };
 
     const createNewChat = (specificId = null, skipSwitch = false) => {

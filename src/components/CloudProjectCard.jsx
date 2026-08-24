@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { ExternalLink, Copy, Check, Terminal, FileCode, CheckCircle2, AlertCircle, Loader2, Sparkles, Globe, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ExternalLink, Copy, Check, Terminal, FileCode, CheckCircle2, AlertCircle, Loader2, Sparkles, Globe, ChevronDown, ChevronUp, FilePlus, Code2 } from 'lucide-react';
 
 export default function CloudProjectCard({ project }) {
   const [copied, setCopied] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
-  const [showFiles, setShowFiles] = useState(false);
+  const [showFiles, setShowFiles] = useState(true);
 
   if (!project) return null;
 
@@ -50,7 +50,7 @@ export default function CloudProjectCard({ project }) {
   const currentIdx = getStageIndex(stage);
 
   return (
-    <div className="my-4 w-full max-w-2xl rounded-2xl bg-[#0f0f13] border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden backdrop-blur-2xl transition-all">
+    <div className="my-4 w-full max-w-2xl rounded-2xl bg-[#0f0f13] border border-white/[0.08] shadow-[0_12px_40px_rgba(0,0,0,0.6)] overflow-hidden backdrop-blur-2xl transition-all">
       {/* Top Header */}
       <div className="px-5 py-3.5 border-b border-white/[0.06] flex items-center justify-between bg-white/[0.02]">
         <div className="flex items-center gap-3">
@@ -119,9 +119,17 @@ export default function CloudProjectCard({ project }) {
       <div className="p-5 space-y-3.5">
         {/* Status narrative */}
         {content && (
-          <p className="text-[13px] text-zinc-300 leading-relaxed bg-white/[0.02] p-3 rounded-xl border border-white/[0.06]">
-            {content}
-          </p>
+          <div className="text-[13px] text-zinc-300 leading-relaxed bg-white/[0.02] p-3 rounded-xl border border-white/[0.06] flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {inProgress && <Loader2 className="w-3.5 h-3.5 text-[#8b5cf6] animate-spin shrink-0" />}
+              <span>{content}</span>
+            </div>
+            {files && files.length > 0 && inProgress && (
+              <span className="text-[10px] font-mono text-[#a5b4fc] bg-[#6c63ff]/10 px-2 py-0.5 rounded-full">
+                {files.length} file{files.length > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
         )}
 
         {/* Live URL Callout (when ready) */}
@@ -164,7 +172,7 @@ export default function CloudProjectCard({ project }) {
           </div>
         )}
 
-        {/* Collapsible File Explorer */}
+        {/* Live File Generation Tracker */}
         {files && files.length > 0 && (
           <div className="border border-white/[0.06] rounded-xl overflow-hidden bg-black/20">
             <button
@@ -173,24 +181,33 @@ export default function CloudProjectCard({ project }) {
             >
               <span className="flex items-center gap-2">
                 <FileCode className="w-3.5 h-3.5 text-[#8b5cf6]" />
-                Generated Files ({files.length})
+                Project Source Files ({files.length})
               </span>
               {showFiles ? <ChevronUp className="w-3.5 h-3.5 text-zinc-500" /> : <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />}
             </button>
             {showFiles && (
-              <div className="p-3 bg-black/40 border-t border-white/[0.04] max-h-40 overflow-y-auto space-y-1 font-mono text-[11px] text-zinc-400">
-                {files.map((file, idx) => (
-                  <div key={idx} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-white/[0.03]">
-                    <span className="text-zinc-600">📄</span>
-                    <span className="text-zinc-300">{file}</span>
-                  </div>
-                ))}
+              <div className="p-3 bg-black/40 border-t border-white/[0.04] max-h-48 overflow-y-auto space-y-1.5 font-mono text-[11px]">
+                {files.map((file, idx) => {
+                  const isLast = idx === files.length - 1;
+                  return (
+                    <div key={idx} className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.03]">
+                      <div className="flex items-center gap-2 text-zinc-300">
+                        <Code2 className="w-3.5 h-3.5 text-[#a5b4fc]" />
+                        <span>{file}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] text-emerald-400">
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        <span className="text-zinc-500">written</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         )}
 
-        {/* Collapsible Build Logs */}
+        {/* Collapsible Build & Worker Logs */}
         {logs && (
           <div className="border border-white/[0.06] rounded-xl overflow-hidden bg-black/20">
             <button
