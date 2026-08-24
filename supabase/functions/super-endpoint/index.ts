@@ -276,15 +276,51 @@ serve(async (req) => {
                         }
                     }
 
-                    // ── Cloud Development Fast Path ──────────────────────────────────────────
-                    // If user asks to build a website/app/landing page/portfolio, run full autonomous Cloud Dev
+                    // ── Cloud Development Fast Path & Follow-up Iteration ────────────────────
+                    let existingProjectId: string | undefined;
+                    let existingSlug: string | undefined;
+
+                    if (history && Array.isArray(history) && history.length > 0) {
+                        for (const msg of history.slice().reverse()) {
+                            if (msg.attachments && Array.isArray(msg.attachments)) {
+                                const cloudProj = msg.attachments.find((a: any) => a.type === 'cloud_project');
+                                if (cloudProj?.data?.projectId) {
+                                    existingProjectId = cloudProj.data.projectId;
+                                    existingSlug = cloudProj.data.slug;
+                                    break;
+                                }
+                            }
+                            if (typeof msg.content === 'string') {
+                                const urlMatch = msg.content.match(/https:\/\/([a-z0-9-]+)\.ceova\.online/i);
+                                if (urlMatch) {
+                                    existingSlug = urlMatch[1];
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (existingSlug && !existingProjectId) {
+                        try {
+                            const { data: proj } = await supabaseAdmin
+                                .from('projects')
+                                .select('id, slug, name')
+                                .eq('slug', existingSlug)
+                                .maybeSingle();
+                            if (proj) {
+                                existingProjectId = proj.id;
+                            }
+                        } catch {}
+                    }
+
                     const isCloudBuildRequest = intent.toolIds.includes('create_project') ||
                         /(build|create|make|develop|generate|deploy|host|publish)\s+.*(website|landing|landing-page|page|app|store|portfolio|saas|site|dashboard|frontend)/i.test(message) ||
-                        /(website|landing page|portfolio|web app|store|frontend)\s+for\s+/i.test(message);
+                        /(website|landing page|portfolio|web app|store|frontend)\s+for\s+/i.test(message) ||
+                        (existingProjectId !== undefined && !intent.isCasualChat);
 
                     if (isCloudBuildRequest) {
                         try {
-                            await CloudDevOrchestrator.buildAndDeployProject(message, user.id, sendEvent);
+                            await CloudDevOrchestrator.buildAndDeployProject(message, user.id, sendEvent, existingProjectId);
                             const totalTokens = 3500;
                             await supabaseAdmin.rpc('increment_daily_metrics', {
                                 p_user_id: user.id,

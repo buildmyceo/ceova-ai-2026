@@ -36,61 +36,91 @@ export class CloudDevOrchestrator {
   /**
    * Executes the full end-to-end cloud development and hosting flow
    */
+  /**
+   * Executes the full end-to-end cloud development and hosting flow (supports both new projects and updates to existing projects)
+   */
   static async buildAndDeployProject(
     userPrompt: string,
     userId: string,
-    onProgress: CloudDevProgressCallback
+    onProgress: CloudDevProgressCallback,
+    existingProjectId?: string
   ): Promise<{ projectId: string; slug: string; deploymentUrl: string }> {
-    Logger.INFO(`[CloudDevOrchestrator] Starting cloud development for user: ${userId}`);
+    Logger.INFO(`[CloudDevOrchestrator] Starting cloud development for user: ${userId} (existingProjectId: ${existingProjectId || 'none'})`);
 
-    // ── STAGE 1: CREATING PROJECT ───────────────────────────────────────────
-    onProgress({
-      type: 'project_progress',
-      stage: 'CREATING',
-      content: 'Creating isolated cloud workspace and reserving subdomain...',
-    });
+    let project: any;
+    let projectName: string;
+    let slug: string;
+    let deploymentUrl: string;
+    let isUpdate = false;
 
-    const projectName = this.extractProjectName(userPrompt);
-    let slug = generateProjectSlug(projectName);
+    if (existingProjectId) {
+      const { data: existingProj } = await supabaseAdmin
+        .from('projects')
+        .select('*')
+        .eq('id', existingProjectId)
+        .maybeSingle();
 
-    // Ensure slug uniqueness
-    const { data: existingSlug } = await supabaseAdmin
-      .from('projects')
-      .select('id')
-      .eq('slug', slug)
-      .maybeSingle();
-
-    if (existingSlug) {
-      slug = `${slug}-${Math.random().toString(36).substring(2, 6)}`;
+      if (existingProj) {
+        project = existingProj;
+        projectName = existingProj.name;
+        slug = existingProj.slug;
+        deploymentUrl = `https://${slug}.ceova.online`;
+        isUpdate = true;
+      }
     }
 
-    const { data: project, error: createErr } = await supabaseAdmin
-      .from('projects')
-      .insert({
-        user_id: userId,
-        name: projectName,
-        slug: slug,
-        status: 'CREATING',
-        framework: 'react-vite',
-        runtime: 'nodejs',
-        metadata: { prompt: userPrompt },
-      })
-      .select()
-      .single();
+    if (!project) {
+      // ── STAGE 1: CREATING PROJECT ───────────────────────────────────────────
+      onProgress({
+        type: 'project_progress',
+        stage: 'CREATING',
+        content: 'Creating isolated cloud workspace and reserving subdomain...',
+      });
 
-    if (createErr || !project) {
-      throw new Error(`Failed to create project: ${createErr?.message}`);
+      projectName = this.extractProjectName(userPrompt);
+      slug = generateProjectSlug(projectName);
+
+      // Ensure slug uniqueness
+      const { data: existingSlug } = await supabaseAdmin
+        .from('projects')
+        .select('id')
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (existingSlug) {
+        slug = `${slug}-${Math.random().toString(36).substring(2, 6)}`;
+      }
+
+      const { data: newProj, error: createErr } = await supabaseAdmin
+        .from('projects')
+        .insert({
+          user_id: userId,
+          name: projectName,
+          slug: slug,
+          status: 'CREATING',
+          framework: 'react-vite',
+          runtime: 'nodejs',
+          metadata: { prompt: userPrompt },
+        })
+        .select()
+        .single();
+
+      if (createErr || !newProj) {
+        throw new Error(`Failed to create project: ${createErr?.message}`);
+      }
+      project = newProj;
+      deploymentUrl = `https://${slug}.ceova.online`;
     }
-
-    const deploymentUrl = `https://${slug}.ceova.online`;
 
     onProgress({
       type: 'project_progress',
-      stage: 'CREATING',
+      stage: isUpdate ? 'PLANNING' : 'CREATING',
       projectId: project.id,
       slug: slug,
       deploymentUrl: deploymentUrl,
-      content: `Reserved subdomain: ${deploymentUrl}`,
+      content: isUpdate 
+        ? `Updating existing website: ${deploymentUrl}` 
+        : `Reserved subdomain: ${deploymentUrl}`,
     });
 
     // ── STAGE 2: ARCHITECTURE PLANNING (GPT-5.6 Luna) ─────────────────────────
@@ -100,24 +130,34 @@ export class CloudDevOrchestrator {
       projectId: project.id,
       slug: slug,
       deploymentUrl: deploymentUrl,
-      content: 'GPT-5.6 Luna is designing the site architecture, theme, and component structure...',
+      content: isUpdate 
+        ? `GPT-5.6 Luna is planning updates for ${projectName}...`
+        : 'GPT-5.6 Luna is designing the site architecture, theme, and component structure...',
     });
 
     await supabaseAdmin.from('projects').update({ status: 'PLANNING' }).eq('id', project.id);
 
-    // ── STAGE 3: CODE GENERATION (GPT-5.6 Luna) ──────────────────────────────
+    // ── STAGE 3: CODE GENERATION / MODIFICATION (GPT-5.6 Luna) ────────────────
     onProgress({
       type: 'project_progress',
       stage: 'GENERATING',
       projectId: project.id,
       slug: slug,
       deploymentUrl: deploymentUrl,
-      content: 'GPT-5.6 Luna is generating production-grade React + Tailwind CSS code...',
+      content: isUpdate 
+        ? `GPT-5.6 Luna is applying changes to ${projectName}...`
+        : 'GPT-5.6 Luna is generating production-grade React + Tailwind CSS code...',
     });
 
     await supabaseAdmin.from('projects').update({ status: 'GENERATING' }).eq('id', project.id);
 
-    const generatedFiles = await this.generateProjectSource(userPrompt, projectName, slug, userId);
+    let generatedFiles: ProjectFile[];
+    if (isUpdate) {
+      const currentFiles = await CloudWorkerService.getProjectFiles(project.id);
+      generatedFiles = await this.modifyProjectSource(userPrompt, currentFiles, projectName, slug, userId);
+    } else {
+      generatedFiles = await this.generateProjectSource(userPrompt, projectName, slug, userId);
+    }
 
     // Stream writing of each individual file
     const writtenFilesList: string[] = [];
@@ -384,19 +424,83 @@ Please fix all errors and return the corrected files JSON.`;
   }
 
   /**
+   * Prompts GPT-5.6 Luna to modify existing project source files based on user feedback
+   */
+  private static async modifyProjectSource(
+    userPrompt: string,
+    existingFiles: ProjectFile[],
+    projectName: string,
+    slug: string,
+    userId: string
+  ): Promise<ProjectFile[]> {
+    const systemPrompt = `You are GPT-5.6 Luna, Ceova's lead principal frontend engineer.
+The user is requesting updates, styling changes, new sections, or modifications to their existing website project '${projectName}'.
+
+CRITICAL RULES:
+1. Carefully inspect the existing files and apply the requested changes (e.g. design styling, layout, theme, color scheme, new sections, features, copy).
+2. Retain all necessary structure and working code from the previous files while applying the new requested improvements.
+3. Return the COMPLETE, full-content files in JSON format.
+4. Return ONLY a valid JSON object matching this structure:
+{
+  "files": [
+    {
+      "path": "filename.ext",
+      "content": "full updated code"
+    }
+  ]
+}`;
+
+    const filesContext = existingFiles.map(f => `=== FILE: ${f.path} ===\n${f.content}\n`).join('\n\n');
+    const userMessage = `Existing Project: "${projectName}"
+User Change Request: "${userPrompt}"
+
+Current Project Files:
+${filesContext}
+
+Please update the project files to incorporate the requested changes and return the complete updated files JSON.`;
+
+    const messages: ChatMessage[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage },
+    ];
+
+    const response = await AIProviderService.generate(messages, userId, {
+      maxTokens: 4000,
+    });
+
+    const parsedFiles = this.parseFilesJson(response.content);
+    return parsedFiles.length > 0 ? parsedFiles : existingFiles;
+  }
+
+  /**
    * Extracts a readable project title from user prompt
    */
   private static extractProjectName(prompt: string): string {
+    // Check if user specified a name like "called Bella Italia", "named Bella Italia", "for Bella Italia"
+    const namedMatch = prompt.match(/(?:called|named|name\s+is|titled)\s+["']?([A-Za-z0-9\s&'-]+?)["']?(?:\s+with|\s+and|\s+that|\s+having|\s+for|$)/i);
+    if (namedMatch && namedMatch[1]?.trim().length >= 2) {
+      return namedMatch[1].trim().slice(0, 35);
+    }
+
+    const forMatch = prompt.match(/(?:website|landing\s+page|page|app|store|portfolio|saas)\s+for\s+(?:my\s+|a\s+|an\s+)?["']?([A-Za-z0-9\s&'-]+?)["']?(?:\s+called|\s+named|\s+with|\s+and|\s+that|$)/i);
+    if (forMatch && forMatch[1]?.trim().length >= 2) {
+      return forMatch[1].trim().slice(0, 35);
+    }
+
     const cleaned = prompt
       .replace(/build\s+(me\s+)?(a\s+)?/i, '')
       .replace(/create\s+(me\s+)?(a\s+)?/i, '')
       .replace(/make\s+(me\s+)?(a\s+)?/i, '')
+      .replace(/develop\s+(me\s+)?(a\s+)?/i, '')
+      .replace(/modern\s+/i, '')
+      .replace(/minimalist\s+/i, '')
+      .replace(/responsive\s+/i, '')
       .replace(/website\s+for\s+/i, '')
       .replace(/landing\s+page\s+for\s+/i, '')
       .trim();
 
     if (!cleaned || cleaned.length < 2) return 'My Cloud Project';
-    return cleaned.slice(0, 35).replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'My Cloud Project';
+    return cleaned.slice(0, 30).replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'My Cloud Project';
   }
 
   /**
