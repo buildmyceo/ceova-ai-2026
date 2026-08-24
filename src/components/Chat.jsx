@@ -374,6 +374,22 @@ function MessageItem({ msg, idx, isUser, editingMsg, editText, setEditText, hand
     } catch(e) {}
   }
 
+  const resolvedCloudProject = useMemo(() => {
+    if (msg.cloudProject) return msg.cloudProject;
+    if (!isUser && rawText && typeof rawText === 'string') {
+      const match = rawText.match(/https:\/\/([a-z0-9-]+)\.ceova\.online/i);
+      if (match) {
+        return {
+          stage: 'READY',
+          slug: match[1],
+          deploymentUrl: match[0],
+          content: rawText
+        };
+      }
+    }
+    return null;
+  }, [msg.cloudProject, isUser, rawText]);
+
   const handleInteraction = () => {
     setShowActions(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -477,8 +493,8 @@ function MessageItem({ msg, idx, isUser, editingMsg, editText, setEditText, hand
               <TypewriterRenderer text={rawText.replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
             )}
 
-            {msg.cloudProject && (
-              <CloudProjectCard project={msg.cloudProject} />
+            {resolvedCloudProject && (
+              <CloudProjectCard project={resolvedCloudProject} />
             )}
 
 

@@ -270,7 +270,6 @@ Ensure index.html is completely self-contained or cleanly references styles.css 
     ];
 
     const response = await AIProviderService.generate(messages, userId, {
-      temperature: 0.3,
       maxTokens: 4000,
     });
 
@@ -324,7 +323,6 @@ Please fix all errors and return the corrected files JSON.`;
     ];
 
     const response = await AIProviderService.generate(messages, userId, {
-      temperature: 0.1,
       maxTokens: 4000,
     });
 

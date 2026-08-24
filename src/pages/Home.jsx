@@ -190,14 +190,18 @@ export default function Home({ session }) {
                         .order('created_at', { ascending: true });
                         
                     if (currentChatMessages) {
-                        const formattedMessages = currentChatMessages.map(msg => ({
-                            id: msg.id,
-                            sender: msg.role === 'user' ? 'user' : 'ai',
-                            text: msg.content,
-                            time: msg.created_at,
-                            mode: msg.mode,
-                            attachments: msg.attachments || []
-                        }));
+                        const formattedMessages = currentChatMessages.map(msg => {
+                            const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
+                            return {
+                                id: msg.id,
+                                sender: msg.role === 'user' ? 'user' : 'ai',
+                                text: msg.content,
+                                time: msg.created_at,
+                                mode: msg.mode,
+                                attachments: msg.attachments || [],
+                                cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null
+                            };
+                        });
                         setChats(prev => ({ ...prev, [activeChatId]: formattedMessages }));
                         // We do NOT await this so the UI doesn't block
                         cacheManager.setMessages(currentChatMessages).catch(console.error);
@@ -217,13 +221,15 @@ export default function Home({ session }) {
                         
                         const grouped = data.reduce((acc, msg) => {
                             if (!acc[msg.chat_id]) acc[msg.chat_id] = [];
+                            const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
                             acc[msg.chat_id].push({
                                 id: msg.id,
                                 sender: msg.role === 'user' ? 'user' : 'ai',
                                 text: msg.content,
                                 time: msg.created_at,
                                 mode: msg.mode,
-                                attachments: msg.attachments || []
+                                attachments: msg.attachments || [],
+                                cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null
                             });
                             return acc;
                         }, {});
@@ -892,6 +898,7 @@ export default function Home({ session }) {
                         role: 'assistant',
                         content: aiRawText,
                         mode: 'ceova',
+                        attachments: currentCloudProject ? [{ type: 'cloud_project', data: currentCloudProject }] : [],
                         created_at: new Date().toISOString()
                     };
                     

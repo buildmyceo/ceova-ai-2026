@@ -86,13 +86,12 @@ export class AIProviderService {
     // Retry loop with exponential backoff (Max 3 attempts)
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        Logger.INFO(`[AIProvider] Requesting ${this.MODEL_NAME} (Attempt ${attempt}/3)`);
+        Logger.INFO(`[AIProvider] Requesting ${resolvedModel} (Attempt ${attempt}/3)`);
 
         const requestBody: Record<string, any> = {
-          model: this.MODEL_NAME,
+          model: resolvedModel,
           messages: messages,
           max_completion_tokens: maxTokens,
-          temperature: temperature,
         };
 
         if (options.tools && options.tools.length > 0) {
@@ -112,11 +111,32 @@ export class AIProviderService {
 
         if (!response.ok) {
           const errText = await response.text();
-          // If the model alias fails with 404/model_not_found, try fallback model gracefully
-          if ((response.status === 404 || errText.includes("model_not_found")) && resolvedModel !== this.FALLBACK_MODEL) {
-            Logger.WARN(`[AIProvider] ${this.MODEL_NAME} not directly supported on current OpenAI key, using ${this.FALLBACK_MODEL}`);
+          
+          // 1. If temperature is unsupported, remove temperature and retry
+          if (errText.includes("temperature") && requestBody.temperature !== undefined) {
+            Logger.WARN(`[AIProvider] Temperature unsupported by model ${resolvedModel}, retrying without temperature.`);
+            delete requestBody.temperature;
+            const retryRes = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(requestBody),
+              signal: AbortSignal.timeout(timeoutMs),
+            });
+            if (retryRes.ok) {
+              const data = await retryRes.json();
+              return this.parseResponse(data, userId, resolvedModel);
+            }
+          }
+
+          // 2. If model not found or does not exist on key, fallback gracefully to FALLBACK_MODEL (gpt-4o)
+          if ((response.status === 404 || response.status === 400 || errText.includes("model_not_found") || errText.includes("does not exist")) && resolvedModel !== this.FALLBACK_MODEL) {
+            Logger.WARN(`[AIProvider] ${resolvedModel} invocation error, falling back to ${this.FALLBACK_MODEL}`);
             resolvedModel = this.FALLBACK_MODEL;
             requestBody.model = this.FALLBACK_MODEL;
+            delete requestBody.temperature;
             
             const fallbackRes = await fetch("https://api.openai.com/v1/chat/completions", {
               method: "POST",
