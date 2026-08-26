@@ -296,9 +296,12 @@ export class CloudDevOrchestrator {
 Generate a complete, fully functioning, high-end website or web application based on the user's request.
 
 CRITICAL RULES:
-1. You have COMPLETE FREEDOM to choose the architecture, tech stack (HTML/CSS/JS, React, Tailwind, etc.), styling, and file structure. Design it exactly how you think is best.
-2. DO NOT use placeholder text like "Lorem ipsum" or empty stub functions. Generate realistic, compelling business copy.
-3. Return the files using EXACTLY the following format:
+1. NO BUILD STEP: There is no Node.js or Vite environment. The code runs directly on a static edge network.
+2. You MUST write standalone code. If you use React/JSX, you MUST include Babel standalone via CDN in your `index.html` and use `<script type="text/babel">`. Otherwise, use vanilla HTML/JS.
+3. You MUST provide a complete `index.html` at the root. If using Tailwind, include the Tailwind CDN.
+4. You have COMPLETE FREEDOM to design the UI, architecture, and logic. Make the design advanced, luxurious, and highly interactive (e.g. use glowing particles, 3D effects, glassmorphism, or whatever fits best).
+5. DO NOT use placeholder text like "Lorem ipsum". Generate realistic, compelling business copy.
+6. Return the files using EXACTLY the following format:
 [FILE: filename.ext]
 ...file content here...
 [/FILE]
@@ -431,10 +434,11 @@ Please fix all errors and return the corrected files using the [FILE: path] form
 The user is requesting updates, styling changes, new sections, or modifications to their existing website project '${projectName}'.
 
 CRITICAL RULES:
-1. Carefully inspect the existing files and apply the requested changes based on your own architectural decisions.
-2. Retain all necessary structure and working code from the previous files while applying the improvements.
-3. Return the COMPLETE, full-content files.
-4. Return the files using EXACTLY the following format:
+1. NO BUILD STEP: There is no Node.js/Vite environment. Code must run natively in the browser (or via Babel standalone if using React).
+2. Carefully inspect the existing files and apply the requested changes based on your own architectural decisions. Make it look stunning.
+3. Retain all necessary structure and working code from the previous files while applying the improvements.
+4. Return the COMPLETE, full-content files.
+5. Return the files using EXACTLY the following format:
 [FILE: filename.ext]
 ...updated file content here...
 [/FILE]
