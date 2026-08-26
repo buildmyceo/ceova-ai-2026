@@ -77,8 +77,9 @@ export class CloudDevOrchestrator {
         content: 'Creating isolated cloud workspace and reserving subdomain...',
       });
 
-      projectName = this.extractProjectName(userPrompt);
-      slug = generateProjectSlug(projectName);
+      const metadata = await this.generateProjectMetadata(userPrompt, userId);
+      projectName = metadata.name;
+      slug = metadata.slug;
 
       // Ensure slug uniqueness
       const { data: existingSlug } = await supabaseAdmin
@@ -109,7 +110,7 @@ export class CloudDevOrchestrator {
         throw new Error(`Failed to create project: ${createErr?.message}`);
       }
       project = newProj;
-      deploymentUrl = `https://${slug}.ceova.online`;
+      deploymentUrl = `https://ceova.online/${slug}`;
     }
 
     onProgress({
@@ -291,15 +292,13 @@ export class CloudDevOrchestrator {
     slug: string,
     userId: string
   ): Promise<ProjectFile[]> {
-    const systemPrompt = `You are GPT-5.6 Luna, Ceova's lead principal frontend engineer.
-Generate a complete, fully functioning, high-end, responsive modern website or web application based on the user's request.
+    const systemPrompt = `You are GPT-5.6 Luna, a Principal Autonomous AI Engineer.
+Generate a complete, fully functioning, high-end website or web application based on the user's request.
 
-CRITICAL ARCHITECTURE RULES:
-1. Produce clean HTML5, modern CSS / Tailwind CSS, and standalone JavaScript / React.
-2. Must include a complete 'index.html' file with responsive meta tags, Google Fonts, and Tailwind CDN ('https://cdn.tailwindcss.com').
-3. Must write rich, interactive, beautiful UI with vibrant gradients, glassmorphism cards, micro-interactions, mobile navigation, hero sections, features, call-to-actions, testimonials/forms, and footer.
-4. DO NOT use placeholder text like "Lorem ipsum" or empty stub functions. Generate realistic, compelling business copy.
-5. Return the files using EXACTLY the following format:
+CRITICAL RULES:
+1. You have COMPLETE FREEDOM to choose the architecture, tech stack (HTML/CSS/JS, React, Tailwind, etc.), styling, and file structure. Design it exactly how you think is best.
+2. DO NOT use placeholder text like "Lorem ipsum" or empty stub functions. Generate realistic, compelling business copy.
+3. Return the files using EXACTLY the following format:
 [FILE: filename.ext]
 ...file content here...
 [/FILE]
@@ -315,11 +314,11 @@ body { margin: 0; }
 
 Do NOT wrap the response in markdown code blocks. Just output the [FILE: path]...[/FILE] blocks directly.`;
 
-    const userMessage = `Create a state-of-the-art web application for: "${userPrompt}"
+    const userMessage = `Create an incredible web application for: "${userPrompt}"
 Project Name: ${projectName}
-Subdomain: ${slug}.ceova.online
+URL: https://ceova.online/${slug}
 
-Ensure index.html is completely self-contained or cleanly references styles.css and app.js. Make it look stunning, luxurious, and extremely polished!`;
+Design it completely from scratch based on your own architectural decisions. Make it look stunning and polished!`;
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -428,12 +427,12 @@ Please fix all errors and return the corrected files using the [FILE: path] form
     slug: string,
     userId: string
   ): Promise<ProjectFile[]> {
-    const systemPrompt = `You are GPT-5.6 Luna, Ceova's lead principal frontend engineer.
+    const systemPrompt = `You are GPT-5.6 Luna, a Principal Autonomous AI Engineer.
 The user is requesting updates, styling changes, new sections, or modifications to their existing website project '${projectName}'.
 
 CRITICAL RULES:
-1. Carefully inspect the existing files and apply the requested changes (e.g. design styling, layout, theme, color scheme, new sections, features, copy).
-2. Retain all necessary structure and working code from the previous files while applying the new requested improvements.
+1. Carefully inspect the existing files and apply the requested changes based on your own architectural decisions.
+2. Retain all necessary structure and working code from the previous files while applying the improvements.
 3. Return the COMPLETE, full-content files.
 4. Return the files using EXACTLY the following format:
 [FILE: filename.ext]
@@ -465,34 +464,31 @@ Please update the project files to incorporate the requested changes and return 
   }
 
   /**
-   * Extracts a readable project title from user prompt
+   * Prompts GPT to generate a catchy project name and slug
    */
-  private static extractProjectName(prompt: string): string {
-    // Check if user specified a name like "called Bella Italia", "named Bella Italia", "for Bella Italia"
-    const namedMatch = prompt.match(/(?:called|named|name\s+is|titled)\s+["']?([A-Za-z0-9\s&'-]+?)["']?(?:\s+with|\s+and|\s+that|\s+having|\s+for|$)/i);
-    if (namedMatch && namedMatch[1]?.trim().length >= 2) {
-      return namedMatch[1].trim().slice(0, 35);
+  private static async generateProjectMetadata(prompt: string, userId: string): Promise<{ name: string, slug: string }> {
+    const systemPrompt = `You are an AI architect. Based on the user's request, generate a concise, catchy Project Name and a URL-friendly slug.
+Return EXACTLY a JSON object: {"name": "Project Name", "slug": "project-slug"}
+Do NOT wrap in markdown blocks.`;
+    const userMessage = `User Request: "${prompt}"\nProvide the JSON metadata.`;
+    
+    try {
+      const response = await AIProviderService.generate([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage }
+      ], userId, { maxTokens: 100 });
+      
+      const clean = response.content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim();
+      const parsed = JSON.parse(clean);
+      return {
+        name: parsed.name || 'My Cloud Project',
+        slug: parsed.slug ? parsed.slug.toLowerCase().replace(/[^a-z0-9-]/g, '') : generateProjectSlug('My Cloud Project')
+      };
+    } catch (e) {
+      Logger.WARN(`[CloudDevOrchestrator] AI Metadata fallback triggered.`);
+      // Fallback if it fails
+      return { name: 'My Cloud Project', slug: generateProjectSlug('My Cloud Project') };
     }
-
-    const forMatch = prompt.match(/(?:website|landing\s+page|page|app|store|portfolio|saas)\s+for\s+(?:my\s+|a\s+|an\s+)?["']?([A-Za-z0-9\s&'-]+?)["']?(?:\s+called|\s+named|\s+with|\s+and|\s+that|$)/i);
-    if (forMatch && forMatch[1]?.trim().length >= 2) {
-      return forMatch[1].trim().slice(0, 35);
-    }
-
-    const cleaned = prompt
-      .replace(/build\s+(me\s+)?(a\s+)?/i, '')
-      .replace(/create\s+(me\s+)?(a\s+)?/i, '')
-      .replace(/make\s+(me\s+)?(a\s+)?/i, '')
-      .replace(/develop\s+(me\s+)?(a\s+)?/i, '')
-      .replace(/modern\s+/i, '')
-      .replace(/minimalist\s+/i, '')
-      .replace(/responsive\s+/i, '')
-      .replace(/website\s+for\s+/i, '')
-      .replace(/landing\s+page\s+for\s+/i, '')
-      .trim();
-
-    if (!cleaned || cleaned.length < 2) return 'My Cloud Project';
-    return cleaned.slice(0, 30).replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'My Cloud Project';
   }
 
   /**
