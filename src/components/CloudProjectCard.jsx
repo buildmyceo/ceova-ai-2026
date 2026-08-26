@@ -12,7 +12,7 @@ export default function CloudProjectCard({ project }) {
     stage = 'CREATING',
     projectId,
     slug,
-    deploymentUrl = slug ? `https://${slug}.ceova.online` : '',
+    deploymentUrl = slug ? `https://ceova.online/${slug}` : '',
     files = [],
     logs = '',
     content = '',
@@ -71,7 +71,7 @@ export default function CloudProjectCard({ project }) {
               </span>
             </div>
             <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
-              {slug ? `${slug}.ceova.online` : 'Provisioning cloud workspace...'}
+              {slug ? `ceova.online/${slug}` : 'Provisioning cloud workspace...'}
             </p>
           </div>
         </div>
