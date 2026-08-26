@@ -58,7 +58,8 @@ export class AIRouter {
                 };
                 
                 // Only add temperature if it's not a model that restricts it
-                if (!currentModel.startsWith('o1-')) {
+                const restrictsTemperature = currentModel.startsWith('o1-') || currentModel.startsWith('o3-') || currentModel.includes('luna');
+                if (!restrictsTemperature) {
                     requestBody.temperature = temperature;
                 }
 
@@ -161,7 +162,8 @@ export class AIRouter {
             stream_options: { include_usage: true }
         };
 
-        if (!model.startsWith('o1-')) {
+        const restrictsTemperature = model.startsWith('o1-') || model.startsWith('o3-') || model.includes('luna');
+        if (!restrictsTemperature) {
             requestBody.temperature = temperature;
         }
 
