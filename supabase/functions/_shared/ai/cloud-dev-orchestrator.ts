@@ -297,33 +297,20 @@ export class CloudDevOrchestrator {
     slug: string,
     userId: string
   ): Promise<ProjectFile[]> {
-    const systemPrompt = `You are an elite autonomous web developer AI. You build incredible, production-ready websites from scratch.
+    const systemPrompt = `You are a senior web developer. Follow the user's instructions exactly.
 
-YOUR ENVIRONMENT:
-- Static edge hosting. NO Node.js, NO npm, NO Vite, NO webpack, NO build step.
-- Code must run DIRECTLY in the browser. Use CDN links for any libraries.
-- If using React: include react.production.min.js, react-dom.production.min.js, and babel-standalone via CDN. Use <script type="text/babel">.
-- If using Tailwind: include https://cdn.tailwindcss.com via <script> tag.
-- You may also use vanilla HTML/CSS/JS if it produces a better result.
+ENVIRONMENT: Static edge hosting. No Node.js, no npm, no build tools. Code runs directly in the browser.
+If you need external libraries, load them via CDN script tags.
 
-YOUR CREATIVE MANDATE:
-- You have TOTAL creative freedom. Design the most stunning, unique, premium website possible.
-- Use advanced CSS: animations, gradients, glassmorphism, parallax, scroll effects, custom cursors, particle effects - whatever makes it extraordinary.
-- Write real, contextual content. NO "Lorem ipsum", NO generic placeholder text.
-- The website must look like it was designed by a top agency, not a template.
-
-OUTPUT FORMAT (MANDATORY):
-Return files using EXACTLY this format:
+OUTPUT FORMAT: Return files using EXACTLY this format:
 [FILE: filename.ext]
 ...file content here...
 [/FILE]
 
-You MUST include an index.html file. You may include additional .css and .js files.
+You MUST include an index.html file.
 Do NOT wrap your response in markdown code blocks. Output ONLY the [FILE: ...] blocks.`;
 
-    const userMessage = `Build this: "${userPrompt}"
-Project: ${projectName}
-URL: https://ceova.online/${slug}`;
+    const userMessage = userPrompt;
 
     for (let retry = 1; retry <= this.MAX_GENERATION_RETRIES; retry++) {
       Logger.INFO(`[CloudDevOrchestrator] Generation attempt ${retry}/${this.MAX_GENERATION_RETRIES}`);
@@ -471,16 +458,12 @@ Fix all errors and return corrected files using the [FILE: path] format.`;
     slug: string,
     userId: string
   ): Promise<ProjectFile[]> {
-    const systemPrompt = `You are an elite autonomous web developer AI modifying an existing website project called '${projectName}'.
+    const systemPrompt = `You are a senior web developer modifying an existing website.
 
-YOUR ENVIRONMENT:
-- Static edge hosting. NO Node.js, NO build step. Code runs directly in the browser.
-- If using React: libraries must be loaded via CDN with Babel standalone.
-- If using Tailwind: must use CDN script tag.
+ENVIRONMENT: Static edge hosting. No Node.js, no build step. Code runs directly in the browser.
 
 INSTRUCTIONS:
-- Apply the user's requested changes with your own creative decisions.
-- Make the result look stunning and polished.
+- Follow the user's change request exactly.
 - Return the COMPLETE updated files (not just diffs).
 
 Return files using EXACTLY this format:
@@ -490,14 +473,11 @@ Return files using EXACTLY this format:
 
 Do NOT wrap the response in markdown code blocks.`;
 
-    const filesContext = existingFiles.map(f => `=== FILE: ${f.path} ===\n${f.content}\n`).join('\n\n');
-    const userMessage = `Project: "${projectName}"
-Change Request: "${userPrompt}"
+    const filesContext = existingFiles.map(f => '=== FILE: ' + f.path + ' ===\n' + f.content + '\n').join('\n\n');
+    const userMessage = `${userPrompt}
 
-Current Files:
-${filesContext}
-
-Apply the changes and return complete updated files using the [FILE: path] format.`;
+Current Project Files:
+${filesContext}`;
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
