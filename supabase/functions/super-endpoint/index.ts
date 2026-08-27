@@ -291,7 +291,7 @@ serve(async (req) => {
                                 }
                             }
                             if (typeof msg.content === 'string') {
-                                const urlMatch = msg.content.match(/https:\/\/([a-z0-9-]+)\.ceova\.online/i);
+                                const urlMatch = msg.content.match(/https:\/\/(?:[a-z0-9-]+\.)?ceova\.online\/([a-z0-9-]+)/i) || msg.content.match(/https:\/\/([a-z0-9-]+)\.ceova\.online/i);
                                 if (urlMatch) {
                                     existingSlug = urlMatch[1];
                                     break;
