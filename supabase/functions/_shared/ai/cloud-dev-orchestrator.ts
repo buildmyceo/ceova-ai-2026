@@ -4,6 +4,8 @@
  * Autonomous full-stack cloud development loop powered by GPT-5.6 Luna.
  * Handles Project Creation -> Architecture Planning -> Code Generation
  * -> Isolated Worker Compilation & Testing -> Self-Healing Error Fixing -> Live Deployment.
+ * 
+ * ZERO HARDCODED TEMPLATES. The AI generates everything from scratch.
  */
 
 import { AIProviderService, ChatMessage } from './ai-provider.ts';
@@ -32,12 +34,10 @@ export interface CloudDevProgressCallback {
 
 export class CloudDevOrchestrator {
   private static readonly MAX_FIX_ATTEMPTS = 3;
+  private static readonly MAX_GENERATION_RETRIES = 3;
 
   /**
    * Executes the full end-to-end cloud development and hosting flow
-   */
-  /**
-   * Executes the full end-to-end cloud development and hosting flow (supports both new projects and updates to existing projects)
    */
   static async buildAndDeployProject(
     userPrompt: string,
@@ -64,13 +64,12 @@ export class CloudDevOrchestrator {
         project = existingProj;
         projectName = existingProj.name;
         slug = existingProj.slug;
-        deploymentUrl = `https://${slug}.ceova.online`;
+        deploymentUrl = `https://ceova.online/${slug}`;
         isUpdate = true;
       }
     }
 
     if (!project) {
-      // ── STAGE 1: CREATING PROJECT ───────────────────────────────────────────
       onProgress({
         type: 'project_progress',
         stage: 'CREATING',
@@ -81,7 +80,6 @@ export class CloudDevOrchestrator {
       projectName = metadata.name;
       slug = metadata.slug;
 
-      // Ensure slug uniqueness
       const { data: existingSlug } = await supabaseAdmin
         .from('projects')
         .select('id')
@@ -99,8 +97,8 @@ export class CloudDevOrchestrator {
           name: projectName,
           slug: slug,
           status: 'CREATING',
-          framework: 'react-vite',
-          runtime: 'nodejs',
+          framework: 'auto',
+          runtime: 'static-edge',
           metadata: { prompt: userPrompt },
         })
         .select()
@@ -124,7 +122,6 @@ export class CloudDevOrchestrator {
         : `Reserved subdomain: ${deploymentUrl}`,
     });
 
-    // ── STAGE 2: ARCHITECTURE PLANNING (GPT-5.6 Luna) ─────────────────────────
     onProgress({
       type: 'project_progress',
       stage: 'PLANNING',
@@ -138,7 +135,6 @@ export class CloudDevOrchestrator {
 
     await supabaseAdmin.from('projects').update({ status: 'PLANNING' }).eq('id', project.id);
 
-    // ── STAGE 3: CODE GENERATION / MODIFICATION (GPT-5.6 Luna) ────────────────
     onProgress({
       type: 'project_progress',
       stage: 'GENERATING',
@@ -147,7 +143,7 @@ export class CloudDevOrchestrator {
       deploymentUrl: deploymentUrl,
       content: isUpdate 
         ? `GPT-5.6 Luna is applying changes to ${projectName}...`
-        : 'GPT-5.6 Luna is generating production-grade React + Tailwind CSS code...',
+        : 'GPT-5.6 Luna is generating your custom website from scratch...',
     });
 
     await supabaseAdmin.from('projects').update({ status: 'GENERATING' }).eq('id', project.id);
@@ -160,7 +156,6 @@ export class CloudDevOrchestrator {
       generatedFiles = await this.generateProjectSource(userPrompt, projectName, slug, userId);
     }
 
-    // Stream writing of each individual file
     const writtenFilesList: string[] = [];
     let fileActivityLog = '';
 
@@ -177,14 +172,11 @@ export class CloudDevOrchestrator {
         logs: fileActivityLog,
         content: `Creating ${file.path}... (${writtenFilesList.length}/${generatedFiles.length})`,
       });
-      // Brief tick for visual stream feedback
       await new Promise(r => setTimeout(r, 80));
     }
 
-    // Write source files to isolated project sandbox
     await CloudWorkerService.writeProjectFiles(project.id, generatedFiles);
 
-    // ── STAGE 4: BUILDING & TESTING IN ISOLATED WORKER ───────────────────────
     onProgress({
       type: 'project_progress',
       stage: 'BUILDING',
@@ -192,15 +184,14 @@ export class CloudDevOrchestrator {
       slug: slug,
       deploymentUrl: deploymentUrl,
       files: generatedFiles.map(f => f.path),
-      logs: fileActivityLog + `[SANDBOX] Validating dependencies and compiling bundle...\n`,
-      content: 'Isolated worker is bundling and testing the project assets in sandbox...',
+      logs: fileActivityLog + `[SANDBOX] Validating and compiling bundle...\n`,
+      content: 'Isolated worker is bundling and testing the project assets...',
     });
 
     await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
 
     let buildResult = await CloudWorkerService.runBuild(project.id, userId);
 
-    // ── STAGE 5: SELF-HEALING ERROR FIXING LOOP ──────────────────────────────
     let fixAttempts = 0;
     while (!buildResult.success && fixAttempts < this.MAX_FIX_ATTEMPTS) {
       fixAttempts++;
@@ -215,15 +206,13 @@ export class CloudDevOrchestrator {
         deploymentUrl: deploymentUrl,
         files: generatedFiles.map(f => f.path),
         logs: buildResult.logs,
-        content: `Build error detected. GPT-5.6 Luna is auto-fixing errors (Attempt ${fixAttempts}/${this.MAX_FIX_ATTEMPTS})...`,
+        content: `Build error detected. Auto-fixing (Attempt ${fixAttempts}/${this.MAX_FIX_ATTEMPTS})...`,
       });
 
       await supabaseAdmin.from('projects').update({ status: 'FIXING' }).eq('id', project.id);
 
-      // Query current files and request Luna to patch the code
       const currentFiles = await CloudWorkerService.getProjectFiles(project.id);
       const fixedFiles = await this.fixProjectErrors(userPrompt, currentFiles, errorMsg, buildResult.logs, userId);
-
       await CloudWorkerService.writeProjectFiles(project.id, fixedFiles);
 
       onProgress({
@@ -253,7 +242,6 @@ export class CloudDevOrchestrator {
       throw new Error(`Project build failed: ${finalError}`);
     }
 
-    // ── STAGE 6: DEPLOYMENT READY ────────────────────────────────────────────
     onProgress({
       type: 'project_progress',
       stage: 'DEPLOYING',
@@ -265,6 +253,8 @@ export class CloudDevOrchestrator {
       content: 'Publishing distribution bundle to edge hosting network...',
     });
 
+    const detectedTech = this.detectTechStack(generatedFiles);
+
     onProgress({
       type: 'cloud_project_ready',
       stage: 'READY',
@@ -273,7 +263,7 @@ export class CloudDevOrchestrator {
       deploymentUrl: deploymentUrl,
       files: generatedFiles.map(f => f.path),
       logs: buildResult.logs + `[READY] Deployed live at: ${deploymentUrl}\n`,
-      content: `🎉 **Your website is live and ready!**\n\n🔗 **[${deploymentUrl}](${deploymentUrl})**\n\n- **Project Name**: ${projectName}\n- **Framework**: React + Tailwind CSS (Vite)\n- **Status**: Live on edge cloud network`,
+      content: `🎉 **Your website is live and ready!**\n\n🔗 **[${deploymentUrl}](${deploymentUrl})**\n\n- **Project Name**: ${projectName}\n- **Tech Stack**: ${detectedTech}\n- **Status**: Live on edge cloud network`,
     });
 
     return {
@@ -284,7 +274,22 @@ export class CloudDevOrchestrator {
   }
 
   /**
-   * Prompts GPT-5.6 Luna to generate full source code files for a project
+   * Detects the tech stack the AI chose based on file contents
+   */
+  private static detectTechStack(files: ProjectFile[]): string {
+    const allContent = files.map(f => f.content).join(' ');
+    const parts: string[] = [];
+    if (allContent.includes('React') || allContent.includes('ReactDOM')) parts.push('React');
+    if (allContent.includes('tailwindcss') || allContent.includes('tailwind')) parts.push('Tailwind CSS');
+    if (allContent.includes('THREE') || allContent.includes('three.js')) parts.push('Three.js');
+    if (allContent.includes('gsap') || allContent.includes('GSAP')) parts.push('GSAP');
+    if (files.some(f => f.path.endsWith('.css'))) parts.push('Custom CSS');
+    if (parts.length === 0) parts.push('Vanilla HTML/CSS/JS');
+    return parts.join(' + ');
+  }
+
+  /**
+   * Generates source code via AI with retry. ZERO hardcoded fallback templates.
    */
   private static async generateProjectSource(
     userPrompt: string,
@@ -292,58 +297,95 @@ export class CloudDevOrchestrator {
     slug: string,
     userId: string
   ): Promise<ProjectFile[]> {
-    const systemPrompt = `You are GPT-5.6 Luna, a Principal Autonomous AI Engineer.
-Generate a complete, fully functioning, high-end website or web application based on the user's request.
+    const systemPrompt = `You are an elite autonomous web developer AI. You build incredible, production-ready websites from scratch.
 
-CRITICAL RULES:
-1. NO BUILD STEP: There is no Node.js or Vite environment. The code runs directly on a static edge network.
-2. You MUST write standalone code. If you use React/JSX, you MUST include Babel standalone via CDN in your 'index.html' and use '<script type="text/babel">'. Otherwise, use vanilla HTML/JS.
-3. You MUST provide a complete 'index.html' at the root. If using Tailwind, include the Tailwind CDN.
-4. You have COMPLETE FREEDOM to design the UI, architecture, and logic. Make the design advanced, luxurious, and highly interactive (e.g. use glowing particles, 3D effects, glassmorphism, or whatever fits best).
-5. DO NOT use placeholder text like "Lorem ipsum". Generate realistic, compelling business copy.
-6. Return the files using EXACTLY the following format:
+YOUR ENVIRONMENT:
+- Static edge hosting. NO Node.js, NO npm, NO Vite, NO webpack, NO build step.
+- Code must run DIRECTLY in the browser. Use CDN links for any libraries.
+- If using React: include react.production.min.js, react-dom.production.min.js, and babel-standalone via CDN. Use <script type="text/babel">.
+- If using Tailwind: include https://cdn.tailwindcss.com via <script> tag.
+- You may also use vanilla HTML/CSS/JS if it produces a better result.
+
+YOUR CREATIVE MANDATE:
+- You have TOTAL creative freedom. Design the most stunning, unique, premium website possible.
+- Use advanced CSS: animations, gradients, glassmorphism, parallax, scroll effects, custom cursors, particle effects - whatever makes it extraordinary.
+- Write real, contextual content. NO "Lorem ipsum", NO generic placeholder text.
+- The website must look like it was designed by a top agency, not a template.
+
+OUTPUT FORMAT (MANDATORY):
+Return files using EXACTLY this format:
 [FILE: filename.ext]
 ...file content here...
 [/FILE]
 
-Example:
-[FILE: index.html]
-<!DOCTYPE html>
-<html>...</html>
-[/FILE]
-[FILE: styles.css]
-body { margin: 0; }
-[/FILE]
+You MUST include an index.html file. You may include additional .css and .js files.
+Do NOT wrap your response in markdown code blocks. Output ONLY the [FILE: ...] blocks.`;
 
-Do NOT wrap the response in markdown code blocks. Just output the [FILE: path]...[/FILE] blocks directly.`;
+    const userMessage = `Build this: "${userPrompt}"
+Project: ${projectName}
+URL: https://ceova.online/${slug}`;
 
-    const userMessage = `Create an incredible web application for: "${userPrompt}"
-Project Name: ${projectName}
-URL: https://ceova.online/${slug}
+    for (let retry = 1; retry <= this.MAX_GENERATION_RETRIES; retry++) {
+      Logger.INFO(`[CloudDevOrchestrator] Generation attempt ${retry}/${this.MAX_GENERATION_RETRIES}`);
 
-Design it completely from scratch based on your own architectural decisions. Make it look stunning and polished!`;
+      const messages: ChatMessage[] = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ];
 
-    const messages: ChatMessage[] = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage },
-    ];
+      const response = await AIProviderService.generate(messages, userId, {
+        maxTokens: 16000,
+      });
 
-    const response = await AIProviderService.generate(messages, userId, {
-      maxTokens: 8000,
-    });
+      const parsedFiles = this.parseFilesFormat(response.content);
 
-    const parsedFiles = this.parseFilesFormat(response.content);
-    if (parsedFiles.length === 0) {
-      Logger.ERROR(`[CloudDevOrchestrator] AI output parsing failed. Falling back to default template. Raw output: ${response.content.substring(0, 500)}...`);
-      // Fallback: Generate template if LLM output was malformed
-      return this.generateDefaultTemplate(projectName, userPrompt);
+      if (parsedFiles.length > 0 && parsedFiles.some(f => f.path === 'index.html' || f.path.endsWith('/index.html'))) {
+        Logger.INFO(`[CloudDevOrchestrator] Successfully parsed ${parsedFiles.length} files on attempt ${retry}`);
+        return parsedFiles;
+      }
+
+      // If parsing failed, try to rescue raw HTML from the output
+      if (parsedFiles.length === 0) {
+        const rescuedFiles = this.rescueFromRawOutput(response.content);
+        if (rescuedFiles.length > 0) {
+          Logger.WARN(`[CloudDevOrchestrator] Rescued ${rescuedFiles.length} files from raw AI output on attempt ${retry}`);
+          return rescuedFiles;
+        }
+      }
+
+      Logger.WARN(`[CloudDevOrchestrator] Attempt ${retry} failed. Raw start: ${response.content.substring(0, 300)}...`);
+
+      if (retry < this.MAX_GENERATION_RETRIES) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
     }
 
-    return parsedFiles;
+    throw new Error('AI generation failed after multiple attempts. Please try again with a different prompt.');
   }
 
   /**
-   * Prompts GPT-5.6 Luna to diagnose and fix compilation errors
+   * Attempts to rescue usable HTML from raw AI output that did not use [FILE:] tags
+   */
+  private static rescueFromRawOutput(raw: string): ProjectFile[] {
+    // Case 1: AI dumped raw HTML directly
+    const htmlMatch = raw.match(/<(!DOCTYPE|html)[^]*<\/html>/is);
+    if (htmlMatch) {
+      Logger.INFO(`[CloudDevOrchestrator] Rescued raw HTML output as index.html`);
+      return [{ path: 'index.html', content: htmlMatch[0].trim() }];
+    }
+
+    // Case 2: AI wrapped HTML in markdown code blocks
+    const codeBlockMatch = raw.match(/```(?:html)?\s*\n([\s\S]*?)\n```/i);
+    if (codeBlockMatch && codeBlockMatch[1]?.includes('<html')) {
+      Logger.INFO(`[CloudDevOrchestrator] Rescued HTML from markdown code block`);
+      return [{ path: 'index.html', content: codeBlockMatch[1].trim() }];
+    }
+
+    return [];
+  }
+
+  /**
+   * Diagnoses and fixes compilation errors
    */
   private static async fixProjectErrors(
     userPrompt: string,
@@ -352,10 +394,10 @@ Design it completely from scratch based on your own architectural decisions. Mak
     buildLogs: string,
     userId: string
   ): Promise<ProjectFile[]> {
-    const systemPrompt = `You are GPT-5.6 Luna. You are diagnosing and fixing a build/validation error in a Ceova cloud project.
-Fix the errors completely and output the corrected full file contents.
+    const systemPrompt = `You are an expert web developer debugging a static website hosted on an edge network.
+Fix the errors completely. Remember: NO build step, NO Node.js. Code runs directly in the browser.
 
-Return the files using EXACTLY the following format:
+Return the corrected files using EXACTLY this format:
 [FILE: filename.ext]
 ...corrected file content here...
 [/FILE]
@@ -372,7 +414,7 @@ ${buildLogs.slice(-1500)}
 Current Project Files:
 ${filesContext}
 
-Please fix all errors and return the corrected files using the [FILE: path] format.`;
+Fix all errors and return corrected files using the [FILE: path] format.`;
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -380,7 +422,7 @@ Please fix all errors and return the corrected files using the [FILE: path] form
     ];
 
     const response = await AIProviderService.generate(messages, userId, {
-      maxTokens: 8000,
+      maxTokens: 16000,
     });
 
     const fixed = this.parseFilesFormat(response.content);
@@ -388,7 +430,7 @@ Please fix all errors and return the corrected files using the [FILE: path] form
   }
 
   /**
-   * Parse robust text delimiter format into ProjectFiles (Truncation Tolerant)
+   * Parse [FILE: path]...[/FILE] format into ProjectFiles (Truncation Tolerant)
    */
   private static parseFilesFormat(raw: string): ProjectFile[] {
     const files: ProjectFile[] = [];
@@ -403,13 +445,12 @@ Please fix all errors and return the corrected files using the [FILE: path] form
       const path = block.substring(0, closeBracketIdx).trim();
       let content = block.substring(closeBracketIdx + 1);
       
-      // Remove trailing [/FILE] if it exists, or just take what we have if truncated
       const endTagIdx = content.indexOf('[/FILE]');
       if (endTagIdx !== -1) {
         content = content.substring(0, endTagIdx);
       }
       
-      // Remove any hallucinated markdown backticks
+      // Remove hallucinated markdown backticks
       content = content.replace(/^```[a-z]*\n?/i, '').replace(/```$/i, '').trim();
       
       if (path && content) {
@@ -421,7 +462,7 @@ Please fix all errors and return the corrected files using the [FILE: path] form
   }
 
   /**
-   * Prompts GPT-5.6 Luna to modify existing project source files based on user feedback
+   * Modifies existing project source files based on user feedback
    */
   private static async modifyProjectSource(
     userPrompt: string,
@@ -430,15 +471,19 @@ Please fix all errors and return the corrected files using the [FILE: path] form
     slug: string,
     userId: string
   ): Promise<ProjectFile[]> {
-    const systemPrompt = `You are GPT-5.6 Luna, a Principal Autonomous AI Engineer.
-The user is requesting updates, styling changes, new sections, or modifications to their existing website project '${projectName}'.
+    const systemPrompt = `You are an elite autonomous web developer AI modifying an existing website project called '${projectName}'.
 
-CRITICAL RULES:
-1. NO BUILD STEP: There is no Node.js/Vite environment. Code must run natively in the browser (or via Babel standalone if using React).
-2. Carefully inspect the existing files and apply the requested changes based on your own architectural decisions. Make it look stunning.
-3. Retain all necessary structure and working code from the previous files while applying the improvements.
-4. Return the COMPLETE, full-content files.
-5. Return the files using EXACTLY the following format:
+YOUR ENVIRONMENT:
+- Static edge hosting. NO Node.js, NO build step. Code runs directly in the browser.
+- If using React: libraries must be loaded via CDN with Babel standalone.
+- If using Tailwind: must use CDN script tag.
+
+INSTRUCTIONS:
+- Apply the user's requested changes with your own creative decisions.
+- Make the result look stunning and polished.
+- Return the COMPLETE updated files (not just diffs).
+
+Return files using EXACTLY this format:
 [FILE: filename.ext]
 ...updated file content here...
 [/FILE]
@@ -446,13 +491,13 @@ CRITICAL RULES:
 Do NOT wrap the response in markdown code blocks.`;
 
     const filesContext = existingFiles.map(f => `=== FILE: ${f.path} ===\n${f.content}\n`).join('\n\n');
-    const userMessage = `Existing Project: "${projectName}"
-User Change Request: "${userPrompt}"
+    const userMessage = `Project: "${projectName}"
+Change Request: "${userPrompt}"
 
-Current Project Files:
+Current Files:
 ${filesContext}
 
-Please update the project files to incorporate the requested changes and return the complete updated files using the [FILE: path] format.`;
+Apply the changes and return complete updated files using the [FILE: path] format.`;
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -460,7 +505,7 @@ Please update the project files to incorporate the requested changes and return 
     ];
 
     const response = await AIProviderService.generate(messages, userId, {
-      maxTokens: 8000,
+      maxTokens: 16000,
     });
 
     const parsedFiles = this.parseFilesFormat(response.content);
@@ -468,13 +513,11 @@ Please update the project files to incorporate the requested changes and return 
   }
 
   /**
-   * Prompts GPT to generate a catchy project name and slug
+   * AI-generated project name and slug
    */
   private static async generateProjectMetadata(prompt: string, userId: string): Promise<{ name: string, slug: string }> {
-    const systemPrompt = `You are an AI architect. Based on the user's request, generate a concise, catchy Project Name and a URL-friendly slug.
-Return EXACTLY a JSON object: {"name": "Project Name", "slug": "project-slug"}
-Do NOT wrap in markdown blocks.`;
-    const userMessage = `User Request: "${prompt}"\nProvide the JSON metadata.`;
+    const systemPrompt = 'Generate a concise, catchy Project Name and a URL-friendly slug for the website described below. Return EXACTLY a JSON object: {"name": "Project Name", "slug": "project-slug"}. Do NOT wrap in markdown blocks.';
+    const userMessage = `Website request: "${prompt}"`;
     
     try {
       const response = await AIProviderService.generate([
@@ -490,120 +533,7 @@ Do NOT wrap in markdown blocks.`;
       };
     } catch (e) {
       Logger.WARN(`[CloudDevOrchestrator] AI Metadata fallback triggered.`);
-      // Fallback if it fails
       return { name: 'My Cloud Project', slug: generateProjectSlug('My Cloud Project') };
     }
-  }
-
-  /**
-   * Generates a robust default React/Tailwind template if LLM output fails parsing
-   */
-  private static generateDefaultTemplate(projectName: string, prompt: string): ProjectFile[] {
-    const indexHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${projectName} - Powered by Ceova</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>
-    body { font-family: 'Plus Jakarta Sans', sans-serif; }
-    .glass-card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); }
-  </style>
-</head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col selection:bg-indigo-500 selection:text-white">
-  <!-- Navigation -->
-  <header class="border-b border-slate-800/80 sticky top-0 bg-slate-950/80 backdrop-blur z-50">
-    <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-violet-500 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25">
-          ⚡
-        </div>
-        <span class="font-bold text-xl tracking-tight text-white">${projectName}</span>
-      </div>
-      <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
-        <a href="#features" class="hover:text-white transition">Features</a>
-        <a href="#about" class="hover:text-white transition">About</a>
-        <a href="#contact" class="hover:text-white transition">Contact</a>
-      </nav>
-      <a href="#contact" class="px-5 py-2.5 rounded-full text-sm font-semibold bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 text-white shadow-md shadow-indigo-500/20 transition-all hover:scale-105 active:scale-95">
-        Get Started
-      </a>
-    </div>
-  </header>
-
-  <!-- Hero Section -->
-  <main class="flex-1">
-    <section class="py-24 px-6 relative overflow-hidden">
-      <div class="absolute inset-0 -z-10 flex items-center justify-center">
-        <div class="w-[600px] h-[600px] bg-indigo-500/10 rounded-full blur-3xl"></div>
-        <div class="w-[400px] h-[400px] bg-violet-500/10 rounded-full blur-3xl -translate-y-20"></div>
-      </div>
-      
-      <div class="max-w-4xl mx-auto text-center space-y-8">
-        <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-card text-xs font-medium text-indigo-300">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          Live Production Cloud Project
-        </div>
-        
-        <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight text-white leading-tight">
-          Welcome to <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400">${projectName}</span>
-        </h1>
-        
-        <p class="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed">
-          ${prompt}
-        </p>
-
-        <div class="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-          <button onclick="alert('Thank you for exploring ${projectName}!')" class="w-full sm:w-auto px-8 py-4 rounded-xl text-base font-semibold bg-white text-slate-950 hover:bg-slate-200 transition-all shadow-xl shadow-white/5 active:scale-95">
-            Explore Experience
-          </button>
-          <a href="#features" class="w-full sm:w-auto px-8 py-4 rounded-xl text-base font-semibold glass-card hover:bg-white/10 text-white transition-all active:scale-95">
-            Learn More
-          </a>
-        </div>
-      </div>
-    </section>
-
-    <!-- Features Section -->
-    <section id="features" class="py-20 px-6 border-t border-slate-800/60 bg-slate-900/30">
-      <div class="max-w-6xl mx-auto">
-        <div class="text-center max-w-2xl mx-auto mb-16 space-y-3">
-          <h2 class="text-3xl font-bold text-white">Engineered for Excellence</h2>
-          <p class="text-slate-400">Everything you need, built natively and optimized for performance.</p>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div class="glass-card p-8 rounded-2xl space-y-4 hover:border-indigo-500/50 transition duration-300">
-            <div class="w-12 h-12 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-2xl font-bold">✨</div>
-            <h3 class="text-xl font-bold text-white">Modern Aesthetics</h3>
-            <p class="text-slate-400 text-sm leading-relaxed">Curated typography, glassmorphism lighting, and responsive fluid layouts.</p>
-          </div>
-          <div class="glass-card p-8 rounded-2xl space-y-4 hover:border-violet-500/50 transition duration-300">
-            <div class="w-12 h-12 rounded-xl bg-violet-500/20 text-violet-400 flex items-center justify-center text-2xl font-bold">⚡</div>
-            <h3 class="text-xl font-bold text-white">Ultra-Fast Performance</h3>
-            <p class="text-slate-400 text-sm leading-relaxed">Built with optimized assets and distributed worldwide via edge hosting.</p>
-          </div>
-          <div class="glass-card p-8 rounded-2xl space-y-4 hover:border-pink-500/50 transition duration-300">
-            <div class="w-12 h-12 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center text-2xl font-bold">🔒</div>
-            <h3 class="text-xl font-bold text-white">Isolated & Secure</h3>
-            <p class="text-slate-400 text-sm leading-relaxed">Fully isolated sandbox execution with enterprise security controls.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <!-- Footer -->
-  <footer class="border-t border-slate-800/80 py-8 px-6 text-center text-sm text-slate-500">
-    <p>© 2026 ${projectName}. Deployed on <a href="https://ceova.online" class="text-indigo-400 hover:underline">Ceova Cloud</a>.</p>
-  </footer>
-</body>
-</html>`;
-
-    return [{ path: 'index.html', content: indexHtml }];
   }
 }
