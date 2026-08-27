@@ -313,30 +313,6 @@ serve(async (req) => {
                         } catch {}
                     }
 
-                    const isCloudBuildRequest = intent.toolIds.includes('create_project') ||
-                        /(build|create|make|develop|generate|deploy|host|publish)\s+.*(website|landing|landing-page|page|app|store|portfolio|saas|site|dashboard|frontend)/i.test(message) ||
-                        /(website|landing page|portfolio|web app|store|frontend)\s+for\s+/i.test(message) ||
-                        (existingProjectId !== undefined && !intent.isCasualChat);
-
-                    if (isCloudBuildRequest) {
-                        try {
-                            await CloudDevOrchestrator.buildAndDeployProject(message, user.id, sendEvent, existingProjectId);
-                            const totalTokens = 3500;
-                            await supabaseAdmin.rpc('increment_daily_metrics', {
-                                p_user_id: user.id,
-                                p_ai_tokens: totalTokens,
-                                p_tool_calls: 1,
-                                p_connector_calls: 0
-                            });
-                            quotaCache.increment(user.id, totalTokens);
-                            return;
-                        } catch (devErr: any) {
-                            console.error("Cloud Dev Execution Error:", devErr.message);
-                            sendEvent({ type: 'error', error: `Cloud project creation error: ${devErr.message}` });
-                            return;
-                        }
-                    }
-
                     // ── Build slim, intent-driven system prompt ───────────────────────────────
                     // Tool schemas are injected ONLY when the intent router selected them.
                     // For casual chat, zero tool tokens are sent to OpenAI.
@@ -345,7 +321,7 @@ serve(async (req) => {
                     const writeFilesExample = `{"tool_call":{"tool":"write_local_files","args":{"files":[{"filename":"index.html","content":"<!DOCTYPE html>\\\\n<html lang=\\\\"en\\\\"><head><meta charset=\\\\"UTF-8\\\\"><title>My Site</title><link rel=\\\\"stylesheet\\\\" href=\\\\"styles.css\\\\"></head><body>...</body></html>"},{"filename":"styles.css","content":"* { box-sizing: border-box; } body { margin: 0; }"},{"filename":"script.js","content":"document.addEventListener(\\\\"DOMContentLoaded\\\\", () => { console.log(\\\\"ready\\\\"); });"}]}}}`;
 
                     const toolsSection = hasTools
-                        ? `\n\nAVAILABLE TOOLS (Use these when needed):\n${JSON.stringify(intent.toolSchemas, null, 2)}\n\nAUTONOMOUS AGENT DIRECTIVES:\n- WORKSPACE FOLDER STATUS: ${has_local_folder ? 'CONNECTED' : 'NOT CONNECTED — The user will be prompted to pick a folder when you call write_local_files.'}\n- You are a FULL-STACK AUTONOMOUS ENGINEER. You take the initiative and make decisions yourself.\n- Feel free to use your tools whenever they are necessary to fulfill the user's request.\n- When asked to build a website or project, GENERATE ALL SOURCE CODE FILES (HTML, CSS, JS, React, etc.) immediately using write_local_files. DO NOT just generate a README or ask for permission to start.\n- NEVER generate dummy files like 'placeholder.txt'. If the user's request is vague (e.g. "make a website"), generate a fully working, beautifully styled template (index.html, styles.css, script.js) with a modern design to impress them!\n\nCRITICAL write_local_files RULE:\nThe 'files' array MUST contain complete code for EVERY file. Example of a CORRECT call:\n${writeFilesExample}\n\nTOOL RULES:\n- gmail_connector: Require a valid '@' email before sending.\n- write_local_files: Please provide the actual file content for all required files. Do not send an empty files array. NEVER send placeholder files.\n- run_terminal_command: Use for npm install, running scripts, shell commands.\n- invoice_generator: Collect all billing details first.\n- image_analysis / background_remover: Only when an image is attached.\nn${hasImage ? '- The user has attached an image.' : ''}\n\nTool call format (output ONLY this JSON — no text before or after):\n{"tool_call":{"tool":"<tool_id>","args":{"key":"value"}}}`
+                        ? `\n\nAVAILABLE TOOLS (Use these when needed):\n${JSON.stringify(intent.toolSchemas, null, 2)}\n\nAUTONOMOUS AGENT DIRECTIVES:\n- WORKSPACE FOLDER STATUS: ${has_local_folder ? 'CONNECTED' : 'NOT CONNECTED — The user will be prompted to pick a folder when you call write_local_files.'}\n- You are a FULL-STACK AUTONOMOUS ENGINEER. You take the initiative and make decisions yourself.\n- Feel free to use your tools whenever they are necessary to fulfill the user's request.\n- NEVER generate dummy files like 'placeholder.txt'.\n\nCRITICAL WEBSITE PLANNING RULES:\n1. If the user asks to build a website and the request is SIMPLE (e.g. "make a gym website"), call \`create_project\` immediately.\n2. If the request is COMPLEX, FIRST create a structured plan in a \`.md\` file (using \`write_local_files\`), discuss it with the user, and wait for their approval.\n3. ONLY AFTER the user approves the plan, call \`create_project\` with the final detailed prompt.\n\nCRITICAL write_local_files RULE:\nThe 'files' array MUST contain complete code for EVERY file. Example of a CORRECT call:\n${writeFilesExample}\n\nTOOL RULES:\n- gmail_connector: Require a valid '@' email before sending.\n- write_local_files: Please provide the actual file content for all required files. Do not send an empty files array. NEVER send placeholder files.\n- run_terminal_command: Use for npm install, running scripts, shell commands.\n- invoice_generator: Collect all billing details first.\n- image_analysis / background_remover: Only when an image is attached.\nn${hasImage ? '- The user has attached an image.' : ''}\n\nTool call format (output ONLY this JSON — no text before or after):\n{"tool_call":{"tool":"<tool_id>","args":{"key":"value"}}}`
                         : `\n\nCEOVA CAPABILITIES (no tools needed for this message):\n${CAPABILITY_SUMMARY}`;
 
                     const baseDirective = is_thinking 
@@ -515,7 +491,8 @@ serve(async (req) => {
                                 attachments: allAttachments,
                                 onStatusUpdate: (stage: string) => {
                                     sendEvent({ type: 'status', stage });
-                                }
+                                },
+                                sendEvent: sendEvent
                             });
 
                             if (toolResult.success) {

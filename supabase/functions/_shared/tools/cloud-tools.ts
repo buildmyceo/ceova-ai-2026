@@ -7,6 +7,7 @@
 
 import { Tool, ToolMetadata, ToolResult, ToolContext } from './types.ts';
 import { CloudWorkerService, ALLOWED_DEPENDENCIES } from '../worker/worker-service.ts';
+import { CloudDevOrchestrator } from '../ai/cloud-dev-orchestrator.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -72,54 +73,35 @@ export class CreateProjectTool implements Tool {
 
   async execute(context: ToolContext): Promise<ToolResult> {
     try {
-      const name = context.args?.name || 'My Web Project';
-      let slug = generateProjectSlug(name);
+      const prompt = context.args?.description || context.args?.name || context.message || 'Create a web project';
+      
+      const onProgress = context.sendEvent || ((event: any) => {
+        if (context.onStatusUpdate && event.stage) {
+          context.onStatusUpdate(event.stage);
+        }
+      });
 
-      // Check slug uniqueness & avoid reserved names
-      const { data: existing } = await supabaseAdmin
-        .from('projects')
-        .select('id')
-        .eq('slug', slug)
-        .maybeSingle();
-
-      if (existing) {
-        slug = `${slug}-${Math.random().toString(36).substring(2, 6)}`;
-      }
-
-      const { data: project, error } = await supabaseAdmin
-        .from('projects')
-        .insert({
-          user_id: context.userId,
-          name: name,
-          slug: slug,
-          status: 'PLANNING',
-          framework: context.args?.framework || 'react-vite',
-          metadata: { description: context.args?.description || '' },
-        })
-        .select()
-        .single();
-
-      if (error) {
-        return { success: false, error: { code: 'DB_ERROR', message: error.message } };
-      }
+      const result = await CloudDevOrchestrator.buildAndDeployProject(
+        prompt,
+        context.userId,
+        onProgress
+      );
 
       // Record audit log
       await supabaseAdmin.from('project_audit_logs').insert({
-        project_id: project.id,
+        project_id: result.projectId,
         user_id: context.userId,
         event_type: 'project.created',
-        details: { name, slug, framework: project.framework },
+        details: { slug: result.slug, url: result.deploymentUrl },
       });
 
       return {
         success: true,
         data: {
-          project_id: project.id,
-          name: project.name,
-          slug: project.slug,
-          deployment_url: `https://${project.slug}.ceova.online`,
-          status: project.status,
-          message: `Created isolated project workspace "${project.name}" (Slug: ${project.slug}).`,
+          project_id: result.projectId,
+          slug: result.slug,
+          deployment_url: result.deploymentUrl,
+          message: `Successfully created and deployed website. URL: ${result.deploymentUrl}`,
         },
       };
     } catch (e: any) {
