@@ -107,7 +107,7 @@ serve(async (req) => {
         // ── Zod Validation ────────────────────────────────────────────────────────
         const { z } = await import("https://deno.land/x/zod@v3.22.4/mod.ts");
         const requestSchema = z.object({
-            message: z.string().max(8000).optional().default(""),
+            message: z.string().max(50000).optional().default(""),
             history: z.array(z.object({
                 role: z.enum(['user', 'assistant', 'system']),
                 content: z.string(),
