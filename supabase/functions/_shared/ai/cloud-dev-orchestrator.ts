@@ -297,10 +297,14 @@ export class CloudDevOrchestrator {
     slug: string,
     userId: string
   ): Promise<ProjectFile[]> {
-    const systemPrompt = `You are a senior web developer. Follow the user's instructions exactly.
+    const systemPrompt = `You are a senior web developer.
 
 ENVIRONMENT: Static edge hosting. No Node.js, no npm, no build tools. Code runs directly in the browser.
-If you need external libraries, load them via CDN script tags.
+If you need external libraries (React, Tailwind, GSAP, etc.), load them via CDN script tags.
+
+INSTRUCTIONS:
+1. If the user provides a brief or vague prompt, use your expertise to build a complete, fully-styled, modern website using your choice of framework (e.g. Tailwind via CDN). Make it look polished and professional.
+2. If the user provides highly specific, detailed instructions (exact CSS, specific fonts, strict layout rules), you MUST follow their instructions EXACTLY. Do NOT inject your own design opinions or generic styles in this case.
 
 OUTPUT FORMAT: Return files using EXACTLY this format:
 [FILE: filename.ext]
@@ -463,7 +467,8 @@ Fix all errors and return corrected files using the [FILE: path] format.`;
 ENVIRONMENT: Static edge hosting. No Node.js, no build step. Code runs directly in the browser.
 
 INSTRUCTIONS:
-- Follow the user's change request exactly.
+1. If the user's change request is brief or vague, use your expertise to improve the design and make it look polished and professional.
+2. If the user provides highly specific, detailed instructions, you MUST follow their instructions EXACTLY. Do NOT inject your own design opinions in this case.
 - Return the COMPLETE updated files (not just diffs).
 
 Return files using EXACTLY this format:
