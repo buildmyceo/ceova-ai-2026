@@ -174,21 +174,34 @@ serve(async (req) => {
         // Use a module-level cache since Edge isolates stay warm for several minutes
         const { quotaCache } = await import("../_shared/quota-cache.ts");
         
-        let aiTokensUsed = 0;
-        let aiTokensLimit = 20000;
+        let aiTokensUsed = 0, aiTokensLimit = 20000;
+        let toolsUsed = 0, toolsLimit = 10;
+        let connectorsUsed = 0, connectorsLimit = 5;
         
         const cachedQuota = quotaCache.get(user.id);
         if (cachedQuota) {
-            aiTokensUsed = cachedQuota.used;
-            aiTokensLimit = cachedQuota.limit;
+            aiTokensUsed = cachedQuota.aiUsed;
+            aiTokensLimit = cachedQuota.aiLimit;
+            toolsUsed = cachedQuota.toolsUsed;
+            toolsLimit = cachedQuota.toolsLimit;
+            connectorsUsed = cachedQuota.connectorsUsed;
+            connectorsLimit = cachedQuota.connectorsLimit;
         } else {
             const { data: quotaData, error: quotaError } = await supabaseAdmin.rpc('get_usage_and_limits', { p_user_id: user.id });
             if (quotaError) console.error("Quota check error:", quotaError.message);
             
             aiTokensUsed = quotaData?.usage?.ai_tokens_used || 0;
             aiTokensLimit = quotaData?.limits?.daily_ai_tokens || 20000;
+            toolsUsed = quotaData?.usage?.tool_calls_used || 0;
+            toolsLimit = quotaData?.limits?.daily_tool_calls || 10;
+            connectorsUsed = quotaData?.usage?.connector_calls_used || 0;
+            connectorsLimit = quotaData?.limits?.daily_connector_calls || 5;
             
-            quotaCache.set(user.id, { used: aiTokensUsed, limit: aiTokensLimit });
+            quotaCache.set(user.id, { 
+                aiUsed: aiTokensUsed, aiLimit: aiTokensLimit,
+                toolsUsed: toolsUsed, toolsLimit: toolsLimit,
+                connectorsUsed: connectorsUsed, connectorsLimit: connectorsLimit
+            });
         }
 
         if (aiTokensUsed >= aiTokensLimit) {
@@ -208,6 +221,18 @@ serve(async (req) => {
                     
                     // ── Intent Router: decide tools + memory categories before calling GPT ──
                     const intent = routeIntent(message || '', hasImage, hasDocument, has_local_folder, history);
+
+                    // ── Enforce Tool and Connector Quotas by removing schemas ───────────────
+                    if (toolsUsed >= toolsLimit) {
+                        intent.toolSchemas = intent.toolSchemas.filter((schema: any) => 
+                            ['write_local_files', 'run_terminal_command', 'read_local_files', 'list_local_files'].includes(schema.id)
+                        );
+                    }
+                    if (connectorsUsed >= connectorsLimit) {
+                        intent.toolSchemas = intent.toolSchemas.filter((schema: any) => 
+                            !['gmail_connector', 'calendar_connector', 'drive_connector'].includes(schema.id)
+                        );
+                    }
 
                     // ── Selective memory fetch: only load categories the intent router chose ──
                     // ── Fetch memory summary from memory_summaries table ─────────────────────
@@ -537,7 +562,11 @@ serve(async (req) => {
                             p_connector_calls: isConnector ? 1 : 0
                         });
 
-                        quotaCache.increment(user.id, totalTokens); // Update local cache
+                        quotaCache.increment(user.id, {
+                            ai: totalTokens,
+                            tools: isTool ? 1 : 0,
+                            connectors: isConnector ? 1 : 0
+                        }); // Update local cache
 
                         await aiRouter.logUsage(user.id, 'chat', totalTokens, true);
                     } catch (e: any) {
