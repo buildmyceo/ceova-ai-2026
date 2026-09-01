@@ -303,6 +303,7 @@ If you need external libraries (React, Tailwind, GSAP, etc.), load them via CDN 
 INSTRUCTIONS:
 1. If the user provides a brief or vague prompt, use your expertise to build a complete, fully-styled, modern website using your choice of framework (e.g. Tailwind via CDN). Make it look polished and professional.
 2. If the user provides highly specific, detailed instructions (exact CSS, specific fonts, strict layout rules), you MUST follow their instructions EXACTLY. Do NOT inject your own design opinions or generic styles in this case.
+3. MULTI-PAGE & NAVIGATION: If the site has navigation links, tabs, or mentions pages/views (e.g. Overview, Events, Calendar, Users, Booking, etc.), make ALL navigation items and buttons 100% interactive! Implement functional tab/view switching in JavaScript or separate HTML files so clicking any nav link dynamically renders the complete, real page content with rich UI (no empty placeholders or broken links).
 
 OUTPUT FORMAT: Return files using EXACTLY this format:
 [FILE: filename.ext]
@@ -467,6 +468,7 @@ ENVIRONMENT: Static edge hosting. No Node.js, no build step. Code runs directly 
 INSTRUCTIONS:
 1. If the user's change request is brief or vague, use your expertise to improve the design and make it look polished and professional.
 2. If the user provides highly specific, detailed instructions, you MUST follow their instructions EXACTLY. Do NOT inject your own design opinions in this case.
+3. MULTI-PAGE & NAVIGATION: If the user asks to add or fix pages/views (e.g. Overview, Events, Calendar, Users, etc.), ensure ALL navigation items switch and render the full requested views cleanly (with functional JS view switching or separate HTML files). Ensure all buttons and links are fully interactive.
 - Return the COMPLETE updated files (not just diffs).
 
 Return files using EXACTLY this format:

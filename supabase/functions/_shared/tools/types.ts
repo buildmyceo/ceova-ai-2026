@@ -25,6 +25,7 @@ export interface ToolContext {
   attachments?: { url?: string; type: string; name: string; content?: string }[];
   onStatusUpdate?: (stage: string) => void; 
   sendEvent?: (event: any) => void; 
+  existingProjectId?: string;
 }
 
 export interface ToolResult {

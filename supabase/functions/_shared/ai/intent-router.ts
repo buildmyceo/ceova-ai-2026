@@ -196,6 +196,19 @@ export function routeIntent(
     if (videoCap && !matchedCapabilities.includes(videoCap)) matchedCapabilities.push(videoCap);
   }
 
+  // ── Existing cloud project in history always enables cloud_dev capability ───
+  const hasCloudProjectInHistory = history && Array.isArray(history) && history.some(m => 
+    (m.attachments && Array.isArray(m.attachments) && m.attachments.some((a: any) => a.type === 'cloud_project')) ||
+    (typeof m.content === 'string' && (m.content.includes('ceova.online') || m.content.includes('Cloud Project') || m.content.includes('Deployment Successful')))
+  );
+
+  if (hasCloudProjectInHistory) {
+    const cloudCap = CAPABILITIES.find(c => c.id === "cloud_dev");
+    if (cloudCap && !matchedCapabilities.includes(cloudCap)) {
+      matchedCapabilities.push(cloudCap);
+    }
+  }
+
   // ── Keyword matching across all capabilities ─────────────────────────────────
   for (const cap of CAPABILITIES) {
     if (matchedCapabilities.includes(cap)) continue; // already added

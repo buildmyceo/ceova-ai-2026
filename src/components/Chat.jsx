@@ -403,6 +403,11 @@ function MessageItem({ msg, idx, isUser, editingMsg, editText, setEditText, hand
         return '✨ **Your website is live and ready on the Ceova Edge Network!**';
       }
     }
+
+    if (!text && rawText && !resolvedCloudProject) {
+      return 'Action completed.';
+    }
+
     return text;
   }, [rawText, resolvedCloudProject]);
 

@@ -65,7 +65,8 @@ export class CreateProjectTool implements Tool {
       properties: {
         name: { type: 'string', description: 'Name of the website/project (e.g. "Bella Italia Restaurant")' },
         framework: { type: 'string', description: 'Framework (default: "react-vite")' },
-        description: { type: 'string', description: 'Short summary of the project purpose' },
+        description: { type: 'string', description: 'Short summary of the project purpose or update instructions' },
+        project_id: { type: 'string', description: 'Optional: Existing Project UUID if updating an existing website' },
       },
       required: ['name'],
     },
@@ -74,6 +75,7 @@ export class CreateProjectTool implements Tool {
   async execute(context: ToolContext): Promise<ToolResult> {
     try {
       const prompt = context.args?.description || context.args?.name || context.message || 'Create a web project';
+      const projectId = context.args?.project_id || context.existingProjectId;
       
       const onProgress = context.sendEvent || ((event: any) => {
         if (context.onStatusUpdate && event.stage) {
@@ -84,7 +86,8 @@ export class CreateProjectTool implements Tool {
       const result = await CloudDevOrchestrator.buildAndDeployProject(
         prompt,
         context.userId,
-        onProgress
+        onProgress,
+        projectId
       );
 
       // Record audit log

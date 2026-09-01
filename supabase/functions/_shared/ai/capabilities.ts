@@ -50,8 +50,8 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "cloud_dev",
-    description: "Build, test, and deploy production web applications, landing pages, SaaS apps, portfolios, and websites to https://<project>.ceova.online in isolated cloud workspaces.",
-    keywords: ["website", "build website", "create website", "make website", "develop website", "web app", "landing page", "landing", "page", "cloud project", "deploy", "ceova.online", "restaurant website", "portfolio", "store", "ecommerce", "saas", "frontend", "build app", "create app", "site", "webpage", "web page", "dashboard", "fullstack app", "build me", "create me"],
+    description: "Build, test, update, and deploy production web applications, landing pages, SaaS apps, portfolios, and websites to https://<project>.ceova.online in isolated cloud workspaces.",
+    keywords: ["website", "build website", "create website", "make website", "develop website", "web app", "landing page", "landing", "page", "pages", "cloud project", "deploy", "ceova.online", "restaurant website", "portfolio", "store", "ecommerce", "saas", "frontend", "build app", "create app", "site", "webpage", "web page", "dashboard", "fullstack app", "build me", "create me", "update", "modify", "change", "add page", "make that pages", "buttons", "tab", "tabs", "navigation", "nav", "overview", "calendar", "event", "user", "fix website", "edit website"],
     toolIds: ["create_project", "write_project_file", "read_project_file", "list_project_files", "install_project_dependency", "run_project_build", "get_build_logs", "deploy_project"],
     memoryCategories: ["coding", "projects", "design_preferences"],
   },
