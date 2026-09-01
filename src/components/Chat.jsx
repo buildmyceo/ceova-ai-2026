@@ -362,7 +362,6 @@ function MessageItem({ msg, idx, isUser, editingMsg, editText, setEditText, hand
   const [showActions, setShowActions] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const hideTimerRef = useRef(null);
-  const longPressTimerRef = useRef(null);
 
   let rawText = msg.text || '';
   let actionMeta = null;
@@ -377,7 +376,7 @@ function MessageItem({ msg, idx, isUser, editingMsg, editText, setEditText, hand
   const resolvedCloudProject = useMemo(() => {
     if (msg.cloudProject) return msg.cloudProject;
     if (!isUser && rawText && typeof rawText === 'string') {
-      const match = rawText.match(/https:\/\/([a-z0-9-]+)\.ceova\.online/i);
+      const match = rawText.match(/https:\/\/([a-z0-9-]+)\.ceova\.online/i) || rawText.match(/https:\/\/ceova\.online\/([a-z0-9-]+)/i);
       if (match) {
         return {
           stage: 'READY',
@@ -389,6 +388,23 @@ function MessageItem({ msg, idx, isUser, editingMsg, editText, setEditText, hand
     }
     return null;
   }, [msg.cloudProject, isUser, rawText]);
+
+  const displayText = useMemo(() => {
+    if (!rawText) return '';
+    let text = rawText
+      .replace(/The tool completed successfully\./gi, '')
+      .replace(/GPT-5\.6\s*Luna/gi, 'Ceova')
+      .replace(/-\s*\*\*Tech Stack\*\*:[^\n]+/gi, '')
+      .replace(/Tech Stack:[^\n]+/gi, '')
+      .trim();
+
+    if (resolvedCloudProject && (text.includes('https://ceova.online/') || text.includes('.ceova.online'))) {
+      if (text.startsWith('🎉') || text.startsWith('✨') || text.includes('**Your website is live')) {
+        return '✨ **Your website is live and ready on the Ceova Edge Network!**';
+      }
+    }
+    return text;
+  }, [rawText, resolvedCloudProject]);
 
   const handleInteraction = () => {
     setShowActions(true);
@@ -486,11 +502,11 @@ function MessageItem({ msg, idx, isUser, editingMsg, editText, setEditText, hand
             ) : (msg.isTyping && !msg.text) ? (
               <CyclingStatus defaultStatus={null} />
             ) : actionMeta && (msg.isTyping || msg.isLive) ? (
-              <CyclingStatus defaultStatus={rawText || "Processing..."} />
+              <CyclingStatus defaultStatus={displayText || "Processing..."} />
             ) : null}
 
-            {(msg.text || !msg.isTyping) && (
-              <TypewriterRenderer text={rawText.replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
+            {(displayText || !msg.isTyping) && (
+              <TypewriterRenderer text={displayText.replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
             )}
 
             {resolvedCloudProject && (

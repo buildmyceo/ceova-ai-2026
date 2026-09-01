@@ -129,8 +129,8 @@ export class CloudDevOrchestrator {
       slug: slug,
       deploymentUrl: deploymentUrl,
       content: isUpdate 
-        ? `GPT-5.6 Luna is planning updates for ${projectName}...`
-        : 'GPT-5.6 Luna is designing the site architecture, theme, and component structure...',
+        ? `Ceova is architecting updates for ${projectName}...`
+        : 'Ceova is designing the application architecture, styling, and components...',
     });
 
     await supabaseAdmin.from('projects').update({ status: 'PLANNING' }).eq('id', project.id);
@@ -142,8 +142,8 @@ export class CloudDevOrchestrator {
       slug: slug,
       deploymentUrl: deploymentUrl,
       content: isUpdate 
-        ? `GPT-5.6 Luna is applying changes to ${projectName}...`
-        : 'GPT-5.6 Luna is generating your custom website from scratch...',
+        ? `Ceova is generating refined assets for ${projectName}...`
+        : 'Ceova is generating your custom application and responsive interface...',
     });
 
     await supabaseAdmin.from('projects').update({ status: 'GENERATING' }).eq('id', project.id);
@@ -185,7 +185,7 @@ export class CloudDevOrchestrator {
       deploymentUrl: deploymentUrl,
       files: generatedFiles.map(f => f.path),
       logs: fileActivityLog + `[SANDBOX] Validating and compiling bundle...\n`,
-      content: 'Isolated worker is bundling and testing the project assets...',
+      content: 'Ceova is compiling and verifying the production bundle...',
     });
 
     await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
@@ -206,7 +206,7 @@ export class CloudDevOrchestrator {
         deploymentUrl: deploymentUrl,
         files: generatedFiles.map(f => f.path),
         logs: buildResult.logs,
-        content: `Build error detected. Auto-fixing (Attempt ${fixAttempts}/${this.MAX_FIX_ATTEMPTS})...`,
+        content: `Build optimization required. Auto-resolving (Attempt ${fixAttempts}/${this.MAX_FIX_ATTEMPTS})...`,
       });
 
       await supabaseAdmin.from('projects').update({ status: 'FIXING' }).eq('id', project.id);
@@ -223,7 +223,7 @@ export class CloudDevOrchestrator {
         deploymentUrl: deploymentUrl,
         files: fixedFiles.map(f => f.path),
         logs: buildResult.logs + `[FIX] Re-testing auto-fixed bundle...\n`,
-        content: `Re-running build verification after auto-fix...`,
+        content: `Re-running verification checks after auto-fix...`,
       });
 
       buildResult = await CloudWorkerService.runBuild(project.id, userId);
@@ -250,10 +250,8 @@ export class CloudDevOrchestrator {
       deploymentUrl: deploymentUrl,
       files: generatedFiles.map(f => f.path),
       logs: buildResult.logs + `[DEPLOY] Published bundle to edge hosting network\n`,
-      content: 'Publishing distribution bundle to edge hosting network...',
+      content: 'Deploying distribution bundle to global edge network...',
     });
-
-    const detectedTech = this.detectTechStack(generatedFiles);
 
     onProgress({
       type: 'cloud_project_ready',
@@ -263,7 +261,7 @@ export class CloudDevOrchestrator {
       deploymentUrl: deploymentUrl,
       files: generatedFiles.map(f => f.path),
       logs: buildResult.logs + `[READY] Deployed live at: ${deploymentUrl}\n`,
-      content: `🎉 **Your website is live and ready!**\n\n🔗 **[${deploymentUrl}](${deploymentUrl})**\n\n- **Project Name**: ${projectName}\n- **Tech Stack**: ${detectedTech}\n- **Status**: Live on edge cloud network`,
+      content: `✨ **Your website is live and ready!**\n\n🔗 **[${deploymentUrl}](${deploymentUrl})**\n\n- **Project**: ${projectName}\n- **Network**: Global Edge CDN\n- **Status**: Active & Secure (SSL)`,
     });
 
     return {

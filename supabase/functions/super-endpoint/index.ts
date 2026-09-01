@@ -529,6 +529,8 @@ serve(async (req) => {
                                     sendEvent({ type: 'text', content: `I've successfully executed the tool.\n\nHere is your processed image:\n\n![Processed Image](${toolResult.data.url})` });
                                 } else if (toolResult.data?.text) {
                                     sendEvent({ type: 'text', content: toolResult.data.text });
+                                } else if (toolId === 'create_project' || toolId === 'update_project' || toolId === 'deploy_project') {
+                                    // Rich cloud project lifecycle events and cards already streamed, no redundant plain text needed
                                 } else {
                                     sendEvent({ type: 'text', content: `The tool completed successfully.` });
                                 }
