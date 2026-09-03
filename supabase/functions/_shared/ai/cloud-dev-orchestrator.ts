@@ -64,7 +64,7 @@ export class CloudDevOrchestrator {
         project = existingProj;
         projectName = existingProj.name;
         slug = existingProj.slug;
-        deploymentUrl = `https://ceova.online/${slug}`;
+        deploymentUrl = `https://www.ceova.online/p/${slug}`;
         isUpdate = true;
       }
     }
@@ -108,7 +108,7 @@ export class CloudDevOrchestrator {
         throw new Error(`Failed to create project: ${createErr?.message}`);
       }
       project = newProj;
-      deploymentUrl = `https://ceova.online/${slug}`;
+      deploymentUrl = `https://www.ceova.online/p/${slug}`;
     }
 
     onProgress({
@@ -176,6 +176,19 @@ export class CloudDevOrchestrator {
     }
 
     await CloudWorkerService.writeProjectFiles(project.id, generatedFiles);
+
+    // Detect if website name changed from the generated index.html <title>
+    const indexFile = generatedFiles.find(f => f.path === 'index.html' || f.path.endsWith('/index.html'));
+    if (indexFile) {
+      const titleMatch = indexFile.content.match(/<title>(.*?)<\/title>/i);
+      if (titleMatch?.[1]) {
+        const cleanTitle = titleMatch[1].split(/[|–—·-]/)[0].trim();
+        if (cleanTitle && cleanTitle.length > 1 && cleanTitle !== projectName) {
+          projectName = cleanTitle;
+          await supabaseAdmin.from('projects').update({ name: projectName }).eq('id', project.id);
+        }
+      }
+    }
 
     onProgress({
       type: 'project_progress',
@@ -257,6 +270,7 @@ export class CloudDevOrchestrator {
       type: 'cloud_project_ready',
       stage: 'READY',
       projectId: project.id,
+      name: projectName,
       slug: slug,
       deploymentUrl: deploymentUrl,
       files: generatedFiles.map(f => f.path),
@@ -467,9 +481,9 @@ ENVIRONMENT: Static edge hosting. No Node.js, no build step. Code runs directly 
 
 INSTRUCTIONS:
 1. If the user's change request is brief or vague, use your expertise to improve the design and make it look polished and professional.
-2. If the user provides highly specific, detailed instructions, you MUST follow their instructions EXACTLY. Do NOT inject your own design opinions in this case.
+2. If the user provides highly specific, detailed instructions, you MUST follow their instructions EXACTLY.
 3. MULTI-PAGE & NAVIGATION: If the user asks to add or fix pages/views (e.g. Overview, Events, Calendar, Users, etc.), ensure ALL navigation items switch and render the full requested views cleanly (with functional JS view switching or separate HTML files). Ensure all buttons and links are fully interactive.
-- Return the COMPLETE updated files (not just diffs).
+4. TOKEN EFFICIENCY: Return ONLY the files that need changes. Do NOT return files that do not need any changes. This conserves tokens and speeds up generation.
 
 Return files using EXACTLY this format:
 [FILE: filename.ext]
@@ -490,11 +504,26 @@ ${filesContext}`;
     ];
 
     const response = await AIProviderService.generate(messages, userId, {
-      maxTokens: 16000,
+      maxTokens: 12000,
     });
 
     const parsedFiles = this.parseFilesFormat(response.content);
-    return parsedFiles.length > 0 ? parsedFiles : existingFiles;
+    if (parsedFiles.length === 0) return existingFiles;
+
+    // Merge modified files with existing files so unchanged files are preserved without wasting tokens
+    const modifiedMap = new Map(parsedFiles.map(f => [f.path, f.content]));
+    const mergedFiles = existingFiles.map(existing => ({
+      path: existing.path,
+      content: modifiedMap.has(existing.path) ? modifiedMap.get(existing.path)! : existing.content
+    }));
+
+    for (const p of parsedFiles) {
+      if (!mergedFiles.some(m => m.path === p.path)) {
+        mergedFiles.push(p);
+      }
+    }
+
+    return mergedFiles;
   }
 
   /**

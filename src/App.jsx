@@ -1,5 +1,5 @@
 import React, { useEffect, useState, Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { supabase } from './services/supabase';
 import { useAuth } from './contexts/AuthProvider';
 import { useTheme } from './contexts/ThemeContext';
@@ -16,6 +16,29 @@ const Landing = lazy(() => import('./pages/Landing'));
 const LegalCenter = lazy(() => import('./pages/LegalCenter'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const Subscription = lazy(() => import('./pages/Subscription'));
+
+const RESERVED_APP_PATHS = new Set([
+    'dashboard', 'legal', 'privacy', 'terms', 'subscription',
+    'auth', 'login', 'signup', 'api', 'p', 'sites', 'assets', 'favicon.ico'
+]);
+
+function NotFoundOrProjectRedirect() {
+    const location = useLocation();
+    const firstSegment = location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
+
+    useEffect(() => {
+        if (firstSegment && !RESERVED_APP_PATHS.has(firstSegment) && !firstSegment.includes('.')) {
+            // Unrecognized path: redirect to /p/:slug so customer websites load seamlessly
+            window.location.replace(`/p/${firstSegment}${location.search}${location.hash}`);
+        }
+    }, [firstSegment, location]);
+
+    if (firstSegment && !RESERVED_APP_PATHS.has(firstSegment) && !firstSegment.includes('.')) {
+        return <LoadingScreen text="Loading website..." />;
+    }
+
+    return <Navigate to="/" replace />;
+}
 
 export default function App() {
     const { session, loading } = useAuth();
@@ -54,7 +77,7 @@ export default function App() {
                     <Route path="/auth/callback" element={<AuthCallback />} />
                     <Route path="/login" element={session ? <Navigate to="/dashboard" replace /> : <Login />} />
                     <Route path="/signup" element={session ? <Navigate to="/dashboard" replace /> : <Signup />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
+                    <Route path="*" element={<NotFoundOrProjectRedirect />} />
                 </Routes>
             </Suspense>
         </div>

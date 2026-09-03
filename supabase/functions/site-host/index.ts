@@ -142,13 +142,16 @@ serve(async (req: Request) => {
     }
 
     const contentType = CloudWorkerService.getContentType(assetPath);
+    const isHtml = contentType.includes('text/html') || assetPath.endsWith('.html');
     const arrayBuffer = await fileBlob.arrayBuffer();
 
     return new Response(arrayBuffer, {
       status: 200,
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
+        'Cache-Control': isHtml ? 'no-cache, no-store, must-revalidate' : 'public, max-age=60, stale-while-revalidate=120',
+        'Pragma': isHtml ? 'no-cache' : 'public',
+        'Expires': isHtml ? '0' : '60',
         'Access-Control-Allow-Origin': '*',
         ...SECURITY_HEADERS,
       },

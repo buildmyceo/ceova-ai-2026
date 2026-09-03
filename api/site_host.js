@@ -79,12 +79,21 @@ export default async function handler(req, res) {
       }
       const buffer = Buffer.from(await indexBlob.arrayBuffer());
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       return res.status(200).send(buffer);
     }
 
     const ext = assetFile.split('.').pop()?.toLowerCase() || 'html';
     res.setHeader('Content-Type', MIME_MAP[ext] || 'text/plain; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    if (ext === 'html') {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60, stale-while-revalidate=120');
+    }
     const buffer = Buffer.from(await fileBlob.arrayBuffer());
     return res.status(200).send(buffer);
 

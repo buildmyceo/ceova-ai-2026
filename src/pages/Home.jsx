@@ -570,6 +570,7 @@ export default function Home({ session }) {
                                         currentCloudProject = {
                                             stage: parsed.stage || (parsed.type === 'cloud_project_ready' ? 'READY' : 'BUILDING'),
                                             projectId: parsed.projectId,
+                                            name: parsed.name || currentCloudProject?.name || null,
                                             slug: parsed.slug,
                                             deploymentUrl: parsed.deploymentUrl,
                                             files: parsed.files || currentCloudProject?.files || [],

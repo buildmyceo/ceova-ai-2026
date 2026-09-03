@@ -79,9 +79,13 @@ export default function CloudProjectCard({ project }) {
 
   const {
     stage = 'CREATING', projectId, slug, name,
-    deploymentUrl = slug ? `https://ceova.online/${slug}` : '',
     files = [], logs = '', content = '', error = null,
   } = project;
+
+  const rawUrl = project.deploymentUrl || (slug ? `https://www.ceova.online/p/${slug}` : '');
+  const deploymentUrl = slug && rawUrl && !rawUrl.includes('/p/')
+    ? rawUrl.replace(/(?:https?:\/\/)?(?:www\.)?ceova\.online\/([^\s/?#]+)/i, 'https://www.ceova.online/p/$1')
+    : (rawUrl || (slug ? `https://www.ceova.online/p/${slug}` : ''));
 
   const isReady = stage === 'READY';
   const isFailed = stage === 'FAILED' || !!error;
@@ -379,7 +383,7 @@ export default function CloudProjectCard({ project }) {
             <div style={s.headerSub}>
               <Globe size={10} color="#52525b" />
               {slug ? (
-                <span style={{ color: '#a1a1aa' }}>ceova.online/{slug}</span>
+                <span style={{ color: '#a1a1aa' }}>ceova.online/p/{slug}</span>
               ) : (
                 <span>Provisioning workspace…</span>
               )}
@@ -534,7 +538,7 @@ export default function CloudProjectCard({ project }) {
                 {copied ? <><Check size={12} color={SUCCESS.secondary} /> <span style={{ color: SUCCESS.secondary }}>Copied</span></> : <><Copy size={12} /> Copy</>}
               </button>
               <a
-                href={slug ? `/p/${slug}` : deploymentUrl}
+                href={deploymentUrl ? `${deploymentUrl}${deploymentUrl.includes('?') ? '&' : '?'}_t=${Date.now()}` : (slug ? `/p/${slug}` : '#')}
                 target="_blank"
                 rel="noreferrer"
                 style={{ ...s.urlBtn('primary'), textDecoration: 'none' }}

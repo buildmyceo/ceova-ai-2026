@@ -4,7 +4,7 @@ export class QRBarcodeTool implements Tool {
   metadata: ToolMetadata = {
     id: 'qr_barcode',
     name: 'QR & Barcode',
-    description: 'Generates high-resolution QR codes for text, urls, phones, wifi, etc., and scans/decodes QR codes and common barcodes (Code 128, Code 39, EAN-13, UPC) from uploaded images. Use this when the user asks to generate a QR code, scan a QR code, or read a barcode.',
+    description: 'Generates high-resolution QR codes for text, urls, phones, wifi, etc., and scans/decodes QR codes and common barcodes (Code 128, Code 39, EAN-13, UPC) from uploaded images. Use this when the user asks to generate a QR code, scan a QR code, or read a barcode. CRITICAL: When generating a QR code for a website or URL, you MUST use the EXACT URL from the conversation context (e.g. the active cloud project deployment URL like https://www.ceova.online/p/<slug>) or the EXACT URL the user explicitly provided. NEVER fabricate, guess, or modify URLs. If the user says "this website", look for the deployment URL in the conversation history or system context.',
     category: 'AI Utilities',
     icon: 'scan',
     requiresImage: false,

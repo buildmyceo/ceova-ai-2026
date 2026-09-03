@@ -51,6 +51,14 @@
       "destination": "/api/site_host.js?slug=:slug"
     },
     {
+      "source": "/p/:slug/:path*",
+      "destination": "/api/site_host.js?slug=:slug&path=:path"
+    },
+    {
+      "source": "/sites/:slug",
+      "destination": "/api/site_host.js?slug=:slug"
+    },
+    {
       "source": "/sites/:slug/:path*",
       "destination": "/api/site_host.js?slug=:slug&path=:path"
     },

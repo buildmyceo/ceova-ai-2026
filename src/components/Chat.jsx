@@ -113,6 +113,16 @@ function MarkdownRenderer({ text, onZoom }) {
   );
 }
 
+const RESERVED_SLUGS = new Set(['dashboard', 'legal', 'privacy', 'terms', 'subscription', 'auth', 'login', 'signup', 'api', 'p', 'sites', 'assets', 'settings', 'admin']);
+
+function normalizeProjectUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  return url.replace(/(https?:\/\/(?:www\.)?ceova\.online\/)([a-zA-Z0-9_-]+)(#.*|\?.*)?/gi, (match, prefix, slug, suffix = '') => {
+    if (RESERVED_SLUGS.has(slug.toLowerCase())) return match;
+    return `https://www.ceova.online/p/${slug}${suffix}`;
+  });
+}
+
 // ── URL sanitizer — blocks javascript:, data:, vbscript: XSS vectors ─────────
 function sanitizeUrl(url) {
   if (!url || typeof url !== 'string') return '#';
@@ -127,7 +137,7 @@ function sanitizeUrl(url) {
   ) {
     return '#';
   }
-  return url.trim();
+  return normalizeProjectUrl(url.trim());
 }
 
 // ── HTML renderer for non-image markdown ─────────────────────────────────────
@@ -165,10 +175,16 @@ function renderHtml(text) {
     .replace(/^---$/gm, '<hr style="border:none;border-top:1px solid var(--border-color);margin:12px 0;">')
     .replace(/\n\n/g, '</p><p style="margin:8px 0;">')
     .replace(/\n/g, '<br />')
-    // Sanitize link URLs to prevent javascript: and data: XSS
+    // Sanitize link URLs to prevent javascript: and data: XSS, and normalize project URLs
     .replace(/(?!!)\[([^\]]+)\]\(([^)]+)\)/g, (_, linkText, rawUrl) => {
       const safeUrl = sanitizeUrl(rawUrl);
-      return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa;text-decoration:underline;">${linkText}</a>`;
+      const display = normalizeProjectUrl(linkText);
+      return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa;text-decoration:underline;">${display}</a>`;
+    })
+    // Autolink plain ceova.online URLs that aren't already part of an anchor tag
+    .replace(/(?<!href=")(https?:\/\/(?:www\.)?ceova\.online\/(?:p\/)?[a-zA-Z0-9_-]+(?:[#?][^\s<"]*)?)/gi, (match) => {
+      const fixedUrl = normalizeProjectUrl(match);
+      return `<a href="${fixedUrl}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa;text-decoration:underline;">${fixedUrl}</a>`;
     });
 
   codeBlocks.forEach((block, i) => {
