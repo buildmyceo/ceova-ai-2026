@@ -47,7 +47,7 @@ export class AgenticCodingEngine {
         type: 'function' as const,
         function: {
           name: 'search_code',
-          description: 'Fast keyword or pattern search across project files. Returns matching line numbers and snippets.',
+          description: 'Searches for keywords or patterns across source files (skips lock files and unrelated assets). Returns matching line numbers and relevant files to locate targeted components.',
           parameters: {
             type: 'object',
             properties: {
@@ -62,7 +62,7 @@ export class AgenticCodingEngine {
         type: 'function' as const,
         function: {
           name: 'read_file',
-          description: 'Reads a line slice of a file (max 80 lines). Specify start_line and end_line.',
+          description: 'Progressively reads a targeted line slice of a specific file (typically 15-30 lines, max 80 lines). Specify start_line and end_line to retrieve the minimum sufficient context. Do not load unrelated files (e.g. Footer, Contact, About, package-lock.json).',
           parameters: {
             type: 'object',
             properties: {
@@ -78,7 +78,7 @@ export class AgenticCodingEngine {
         type: 'function' as const,
         function: {
           name: 'read_files',
-          description: 'Batch reads multiple files at once. Returns the contents or headers of requested files.',
+          description: 'Batch reads targeted slices from directly relevant files. Do not use for unrelated files.',
           parameters: {
             type: 'object',
             properties: {
@@ -298,28 +298,23 @@ ENVIRONMENT & WORKSPACE RULES:
 - Project Slug: "${slug}"
 - Deployment URL: "https://www.ceova.online/p/${slug}"
 
-MANDATORY INSPECT-BEFORE-EDIT WORKFLOW:
-For an existing website, you MUST NOT GUESS where a change belongs or edit blindly.
-Always follow this strict multi-step inspection sequence:
+PROGRESSIVE TARGETED CONTEXT RETRIEVAL (CORE MANDATE):
+The principle: Retrieve ONLY the minimum sufficient context required to safely perform the task.
+You must progressively retrieve context in stages:
+Example: User asks "Change the hero background."
+   1. Search project: Call 'search_code' for the component (e.g. search_code({ query: "hero" })).
+   2. Find Hero component: Locate the component file or line number (e.g. src/components/Hero.jsx or index.html around line 50).
+   3. Read Hero component: Call 'read_file' with tight bounds (e.g. read_file({ path: "index.html", start_line: 45, end_line: 75 })).
+   4. Find associated styles: Identify referenced CSS classes, inline styles, or stylesheets (e.g. class="hero-bg" or styles.css).
+   5. Read relevant CSS: Search or read ONLY the associated CSS styles if defined in a stylesheet.
+   6. Make change: Apply surgical modifications with 'edit_file'.
+   7. Build and verify.
 
-1. SEARCH & LOCATE:
-   - Call 'search_code' with the target keyword, current text, button label, or component name (e.g. search_code({ query: "${projectName}" }) or search_code({ query: "keyword" })).
-   - This determines all exact relevant files and line numbers where the content exists (e.g. index.html, src/data/siteData.js, src/components/Navbar.jsx, src/components/Hero.jsx).
-
-2. RETRIEVE ONLY NECESSARY CONTEXT:
-   - Once relevant files are identified from search results, call 'read_file' with 'start_line' and 'end_line' (or 'read_files') to read ONLY the necessary surrounding lines (15-25 lines).
-   - DO NOT load or read unrelated files.
-   - DO NOT read entire large files when you only need a specific section.
-
-3. SURGICAL EDIT:
-   - Only after reading the exact context and verifying exact characters and indentation, call 'edit_file' with matching 'target_content' and 'replacement_content'.
-   - Never edit a file without inspecting its lines first.
-
-4. BUILD & VERIFY:
-   - Call 'run_command' (command: "build") or 'deploy_website' to verify compilation.
-
-5. FINISH:
-   - Call 'finish_task' with a concise summary once the build succeeds and the changes are verified.
+STRICT RULES - DO NOT RETRIEVE UNRELATED CONTEXT:
+- Do NOT retrieve Footer, Contact, About, Menu, or other unrelated components unless they are actually relevant.
+- Do NOT retrieve lock files (package-lock.json, yarn.lock).
+- Do NOT retrieve unrelated assets or files.
+- Never load or read entire multi-hundred line files when a 20-30 line slice is sufficient.
 
 CRITICAL MODIFICATION RULES:
 - Never overwrite unrelated sections or delete existing functionality (Navigation, About, Menu, Contact, Footer, etc. must remain intact).
@@ -331,7 +326,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
     const isExistingProject = projectFiles.length > 0;
     const initialUserPrompt = isExistingProject
-      ? `User Request: "${userPrompt}"\n\nProject: "${projectName}" (slug: ${slug})\n\nINSPECTION MANDATE: Do not guess where this change belongs. First call 'search_code' to locate all relevant files and line numbers. Then call 'read_file' with start_line and end_line to retrieve only the necessary context around the match. Do NOT load unrelated files. Then edit surgically, verify with build, and finish.`
+      ? `User Request: "${userPrompt}"\n\nProject: "${projectName}" (slug: ${slug})\n\nTARGETED CONTEXT MANDATE:\nRetrieve ONLY the minimum sufficient context required to safely perform this task.\n- Search project to locate the specific component/element (e.g. hero, navbar, button).\n- Read only that component's lines (do NOT retrieve Footer, Contact, About, package-lock.json, or unrelated components/assets).\n- If associated styles or CSS are referenced, progressively inspect only those relevant styles.\n- Make surgical edits with edit_file, verify with build, and finish.`
       : `User Request: "${userPrompt}"\n\nPlease implement this website using your tools. Inspect the structure, write the code, verify with build, and call finish_task when done.`;
 
     const messages: ChatMessage[] = [
@@ -402,14 +397,19 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
         let toolResultText = '';
 
         try {
+          const isLockOrSystemFile = (p: string) => {
+            const lower = p.toLowerCase();
+            return lower.endsWith('package-lock.json') || lower.endsWith('yarn.lock') || lower.endsWith('pnpm-lock.yaml') || lower.includes('node_modules/') || lower.endsWith('.ds_store');
+          };
+
           if (name === 'search_code') {
             const query = (args.query || '').toLowerCase();
             const targetPath = args.path ? CloudWorkerService.sanitizePath(args.path) : null;
             const matches: Array<{ path: string; line: number; text: string }> = [];
 
-            const filesToSearch = targetPath 
+            const filesToSearch = (targetPath 
               ? projectFiles.filter(f => f.path === targetPath) 
-              : projectFiles;
+              : projectFiles).filter(f => !isLockOrSystemFile(f.path));
 
             for (const file of filesToSearch) {
               const lines = file.content.split('\n');
@@ -446,34 +446,43 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             });
           }
           else if (name === 'list_files') {
-            const list = projectFiles.map(f => {
-              const lines = f.content.split('\n').length;
-              return `${f.path} (${f.content.length} bytes, ${lines} lines)`;
-            });
+            const list = projectFiles
+              .filter(f => !isLockOrSystemFile(f.path))
+              .map(f => {
+                const lines = f.content.split('\n').length;
+                return `${f.path} (${f.content.length} bytes, ${lines} lines)`;
+              });
             toolResultText = JSON.stringify({ files: list });
           } 
           else if (name === 'read_file') {
             const path = CloudWorkerService.sanitizePath(args.path);
-            inspectedFiles.add(path);
-            const file = projectFiles.find(f => f.path === path);
-
-            if (!file) {
-              toolResultText = JSON.stringify({ error: `File "${path}" not found.` });
-            } else {
-              const lines = file.content.split('\n');
-              let startLine = Math.max(1, parseInt(args.start_line || '1', 10));
-              let endLine = args.end_line ? parseInt(args.end_line, 10) : startLine + 79;
-              if (endLine - startLine > 80) endLine = startLine + 80;
-              endLine = Math.min(lines.length, endLine);
-
-              const slicedLines = lines.slice(startLine - 1, endLine).map((l, i) => `${startLine + i}: ${l}`).join('\n');
-
+            if (isLockOrSystemFile(path)) {
               toolResultText = JSON.stringify({
-                path,
-                total_lines: lines.length,
-                showing_lines: `${startLine}-${endLine}`,
-                content: slicedLines,
+                error: `Targeted context rule: "${path}" is a lock/system file and is excluded from source context retrieval. Retrieve only the minimum sufficient source code and styles needed for the task.`
               });
+            } else {
+              inspectedFiles.add(path);
+              const file = projectFiles.find(f => f.path === path);
+
+              if (!file) {
+                toolResultText = JSON.stringify({ error: `File "${path}" not found.` });
+              } else {
+                const lines = file.content.split('\n');
+                let startLine = Math.max(1, parseInt(args.start_line || '1', 10));
+                let endLine = args.end_line ? parseInt(args.end_line, 10) : startLine + 79;
+                if (endLine - startLine > 80) endLine = startLine + 80;
+                endLine = Math.min(lines.length, endLine);
+
+                const slicedLines = lines.slice(startLine - 1, endLine).map((l, i) => `${startLine + i}: ${l}`).join('\n');
+
+                toolResultText = JSON.stringify({
+                  path,
+                  total_lines: lines.length,
+                  showing_lines: `${startLine}-${endLine}`,
+                  content: slicedLines,
+                  guidance: 'Retrieve only the minimum sufficient context needed for this change. If referenced CSS classes or styles are in a stylesheet, search or read only those specific styles.'
+                });
+              }
             }
           }
           else if (name === 'read_files') {
@@ -482,6 +491,10 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
             for (const rawPath of paths.slice(0, 10)) {
               const p = CloudWorkerService.sanitizePath(rawPath);
+              if (isLockOrSystemFile(p)) {
+                results.push({ path: p, error: 'Lock/system files are excluded from context retrieval.' });
+                continue;
+              }
               inspectedFiles.add(p);
               const file = projectFiles.find(f => f.path === p);
               if (!file) {
