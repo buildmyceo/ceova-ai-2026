@@ -24,8 +24,65 @@ export interface AgenticCodingResult {
   turns: number;
 }
 
+export interface BaselineSnapshot {
+  filePaths: string[];
+  components: Set<string>;
+  assets: Set<string>;
+  scriptsAndStyles: Set<string>;
+  routesAndAnchors: Set<string>;
+}
+
 export class AgenticCodingEngine {
   private static readonly MAX_AGENT_TURNS = 10;
+
+  /**
+   * Computes structural snapshot of files to verify code preservation (Requirement 6)
+   */
+  public static computeSnapshot(files: ProjectFile[]): BaselineSnapshot {
+    const filePaths = files.map(f => f.path);
+    const components = new Set<string>();
+    const assets = new Set<string>();
+    const scriptsAndStyles = new Set<string>();
+    const routesAndAnchors = new Set<string>();
+
+    for (const f of files) {
+      if (f.path.endsWith('.html') || f.path.endsWith('.jsx') || f.path.endsWith('.js')) {
+        // 1. Components & landmarks
+        const idMatches = f.content.matchAll(/<(?:section|div|header|nav|footer|main|article)\s+[^>]*id=["']([^"']+)["']/gi);
+        for (const m of idMatches) {
+          if (m[1]) components.add(m[1].toLowerCase());
+        }
+        if (/<header[\s>]/i.test(f.content)) components.add('header');
+        if (/<nav[\s>]/i.test(f.content)) components.add('nav');
+        if (/<footer[\s>]/i.test(f.content)) components.add('footer');
+        if (/<main[\s>]/i.test(f.content)) components.add('main');
+
+        // 2. Assets (images & SVGs)
+        const imgMatches = f.content.matchAll(/<img\s+[^>]*src=["']([^"']+)["']/gi);
+        for (const m of imgMatches) {
+          if (m[1]) assets.add(m[1].trim());
+        }
+
+        // 3. Scripts & Stylesheets (dependencies)
+        const scriptMatches = f.content.matchAll(/<script\s+[^>]*src=["']([^"']+)["']/gi);
+        for (const m of scriptMatches) {
+          if (m[1]) scriptsAndStyles.add(m[1].trim());
+        }
+        const linkMatches = f.content.matchAll(/<link\s+[^>]*href=["']([^"']+)["']/gi);
+        for (const m of linkMatches) {
+          if (m[1]) scriptsAndStyles.add(m[1].trim());
+        }
+
+        // 4. Routes & Anchor targets
+        const anchorMatches = f.content.matchAll(/href=["'](#[^"']+)["']/gi);
+        for (const m of anchorMatches) {
+          if (m[1]) routesAndAnchors.add(m[1].trim());
+        }
+      }
+    }
+
+    return { filePaths, components, assets, scriptsAndStyles, routesAndAnchors };
+  }
 
   /**
    * OpenAI Tool Definitions for the Coding Agent
@@ -293,6 +350,8 @@ export class AgenticCodingEngine {
       return `- ${f.path} (${f.content.length} bytes, ${lineCount} lines)`;
     }).join('\n');
 
+    const baselineSnapshot = AgenticCodingEngine.computeSnapshot(projectFiles);
+
     const systemPrompt = `You are GPT-5.6 Luna, an elite autonomous senior coding engineer working inside CEOVA's cloud development environment.
 You are tasked with implementing or modifying a live website according to the user's request.
 
@@ -301,6 +360,19 @@ ENVIRONMENT & WORKSPACE RULES:
 - Project Name: "${projectName}"
 - Project Slug: "${slug}"
 - Deployment URL: "https://www.ceova.online/p/${slug}"
+
+PRESERVE EXISTING CODE (MANDATORY REQUIREMENT 6):
+When modifying an existing website, PRESERVE EVERYTHING that is not related to the requested change.
+The agent MUST AVOID ACCIDENTALLY:
+1. Deleting components (e.g., removing Navbar, Hero, About, Menu, Contact, Footer, Gallery, or Testimonials).
+2. Changing unrelated styling (e.g., altering themes, background colors, fonts, margins, or CSS of untouched sections).
+3. Removing functionality (e.g., breaking form submissions, modals, filter/search buttons, mobile menu toggles, or cart actions).
+4. Changing routes (e.g., altering existing navigation links or anchor targets href="#...").
+5. Changing unrelated content (e.g., modifying text, headlines, descriptions, or prices of untouched sections).
+6. Replacing assets (e.g., removing or replacing existing images, SVGs, icons, and logos unless explicitly requested to change them).
+7. Changing dependencies (e.g., removing or altering CDN scripts, Tailwind links, Lucide icons, fonts, or libraries).
+8. Restructuring the project unnecessarily (e.g., moving files or reorganizing directories without explicit instructions).
+UNLESS the requested task genuinely and explicitly requires it.
 
 PROGRESSIVE TARGETED CONTEXT RETRIEVAL (CORE MANDATE):
 The principle: Retrieve ONLY the minimum sufficient context required to safely perform the task.
@@ -632,7 +704,13 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             const path = CloudWorkerService.sanitizePath(args.path);
             const fileIndex = projectFiles.findIndex(f => f.path === path);
 
-            if (fileIndex === -1) {
+            // Code Preservation Guard: Block accidental deletion of files/components (Requirement 6)
+            const isRemovalExplicitlyRequested = /remove|delete|drop|exclude|trash|purge/i.test(userPrompt);
+            if (!isRemovalExplicitlyRequested) {
+              toolResultText = JSON.stringify({
+                error: `Code Preservation Guard: You cannot delete "${path}" because the user did not explicitly request to delete or remove this file/component. When modifying an existing website, preserve all existing files and components unless genuinely requested.`,
+              });
+            } else if (fileIndex === -1) {
               toolResultText = JSON.stringify({ error: `Cannot delete "${path}": File does not exist.` });
             } else {
               projectFiles.splice(fileIndex, 1);
@@ -648,18 +726,26 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             const oldPath = CloudWorkerService.sanitizePath(args.old_path);
             const newPath = CloudWorkerService.sanitizePath(args.new_path);
 
-            const fileIndex = projectFiles.findIndex(f => f.path === oldPath);
-            if (fileIndex === -1) {
-              toolResultText = JSON.stringify({ error: `Cannot move "${oldPath}": Source file does not exist.` });
-            } else {
-              projectFiles[fileIndex].path = newPath;
-              await CloudWorkerService.moveProjectFile(projectId, oldPath, newPath);
+            // Code Preservation Guard: Block unnecessary project restructuring (Requirement 6)
+            const isRestructuringRequested = /restructure|reorganize|rename file|move file/i.test(userPrompt);
+            if (!isRestructuringRequested) {
               toolResultText = JSON.stringify({
-                success: true,
-                old_path: oldPath,
-                new_path: newPath,
-                message: `Successfully moved "${oldPath}" to "${newPath}".`,
+                error: `Code Preservation Guard: Unnecessary project restructuring is prohibited. Keep existing files in their established paths unless the user explicitly requested file renaming or restructuring.`,
               });
+            } else {
+              const fileIndex = projectFiles.findIndex(f => f.path === oldPath);
+              if (fileIndex === -1) {
+                toolResultText = JSON.stringify({ error: `Cannot move "${oldPath}": Source file does not exist.` });
+              } else {
+                projectFiles[fileIndex].path = newPath;
+                await CloudWorkerService.moveProjectFile(projectId, oldPath, newPath);
+                toolResultText = JSON.stringify({
+                  success: true,
+                  old_path: oldPath,
+                  new_path: newPath,
+                  message: `Successfully moved "${oldPath}" to "${newPath}".`,
+                });
+              }
             }
           }
           else if (name === 'run_command') {
@@ -727,6 +813,31 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
           else if (name === 'finish_task') {
             finishSummary = args.summary || 'Website modifications completed.';
 
+            // Code Preservation Audit (Requirement 6)
+            if (isExistingProject && baselineSnapshot.components.size > 0) {
+              const currentSnapshot = AgenticCodingEngine.computeSnapshot(projectFiles);
+              const isRemovalRequested = /remove|delete|drop|exclude|hide|take out/i.test(userPrompt);
+
+              const droppedComponents = isRemovalRequested
+                ? []
+                : Array.from(baselineSnapshot.components).filter(c => !currentSnapshot.components.has(c));
+              const droppedScripts = Array.from(baselineSnapshot.scriptsAndStyles).filter(s => !currentSnapshot.scriptsAndStyles.has(s));
+              const droppedRoutes = Array.from(baselineSnapshot.routesAndAnchors).filter(r => !currentSnapshot.routesAndAnchors.has(r));
+
+              if (droppedComponents.length > 0 || droppedScripts.length > 0 || droppedRoutes.length > 0) {
+                const issues: string[] = [];
+                if (droppedComponents.length > 0) issues.push(`Dropped component(s)/section(s): [${droppedComponents.join(', ')}]`);
+                if (droppedScripts.length > 0) issues.push(`Dropped script(s)/dependency: [${droppedScripts.join(', ')}]`);
+                if (droppedRoutes.length > 0) issues.push(`Dropped route(s)/anchor: [${droppedRoutes.join(', ')}]`);
+
+                toolResultText = JSON.stringify({
+                  status: 'BLOCKED',
+                  error: `Code Preservation Audit Failed: ${issues.join('; ')}. When modifying an existing website, you must PRESERVE EVERYTHING that is not related to the requested change. Avoid accidentally deleting components, removing functionality, changing routes, replacing assets, or changing dependencies. Please restore the missing element(s) before finishing.`,
+                });
+                continue;
+              }
+            }
+
             // Ensure build is verified before allowing finish
             if (!latestBuildResult.success) {
               onProgress?.({
@@ -744,7 +855,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
               taskFinished = true;
               toolResultText = JSON.stringify({
                 status: 'COMPLETED',
-                message: 'Task completed and verified.',
+                message: 'Task completed, build verified, and code preservation audit passed.',
               });
             } else {
               toolResultText = JSON.stringify({

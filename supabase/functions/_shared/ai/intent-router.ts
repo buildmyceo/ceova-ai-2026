@@ -139,7 +139,8 @@ export function routeIntent(
   hasImage: boolean = false,
   hasDocument: boolean = false,
   hasLocalFolder: boolean = true,
-  history: any[] = []
+  history: any[] = [],
+  hasCloudProject: boolean = false
 ): IntentRouterResult {
   // Use recent conversation context so a simple "yes" doesn't drop the tool schemas
   // If the assistant just asked "Would you like me to send this email?", we want to match "email".
@@ -159,7 +160,7 @@ export function routeIntent(
   // We only treat it as casual if BOTH the message AND the recent context are casual.
   // Or rather, if the user says "yes" but the assistant was asking about an "email", it's NOT casual.
   let isCasual = false;
-  if (!hasImage && !hasDocument && CASUAL_PATTERNS.some(p => p.test(lowerMessage))) {
+  if (!hasImage && !hasDocument && !hasCloudProject && CASUAL_PATTERNS.some(p => p.test(lowerMessage))) {
     // User sent a casual message. Let's see if the context suggests a tool.
     // If context contains keywords for tools, we should NOT treat it as casual.
     isCasual = CASUAL_PATTERNS.some(p => p.test(lowerContext));
@@ -196,11 +197,11 @@ export function routeIntent(
     if (videoCap && !matchedCapabilities.includes(videoCap)) matchedCapabilities.push(videoCap);
   }
 
-  // ── Existing cloud project in history always enables cloud_dev capability ───
-  const hasCloudProjectInHistory = history && Array.isArray(history) && history.some(m => 
+  // ── Existing cloud project in request or history always enables cloud_dev capability ───
+  const hasCloudProjectInHistory = hasCloudProject || (history && Array.isArray(history) && history.some(m => 
     (m.attachments && Array.isArray(m.attachments) && m.attachments.some((a: any) => a.type === 'cloud_project')) ||
     (typeof m.content === 'string' && (m.content.includes('ceova.online') || m.content.includes('Cloud Project') || m.content.includes('Deployment Successful') || m.content.includes('Website Implementation Plan') || m.content.includes('Implementation Plan')))
-  );
+  ));
 
   if (hasCloudProjectInHistory) {
     const cloudCap = CAPABILITIES.find(c => c.id === "cloud_dev");

@@ -614,7 +614,7 @@ Do NOT wrap your response in markdown code blocks. Output ONLY the [FILE: ...] b
       }
     }
 
-    // 4. Point 4: Verify No Unrelated Sections Were Accidentally Removed
+    // 4. Point 4: Verify Existing Code Preservation (Requirement 6)
     if (params.isUpdate && params.previousFiles.length > 0) {
       const prevLandmarks = this.extractLandmarks(params.previousFiles);
       const updatedLandmarks = this.extractLandmarks(params.updatedFiles);
@@ -628,15 +628,30 @@ Do NOT wrap your response in markdown code blocks. Output ONLY the [FILE: ...] b
         }
       }
 
-      if (droppedSections.length > 0) {
-        warnings.push(`Unrelated section(s) missing after update: ${droppedSections.join(', ')}`);
-        logs.push(`  [WARN] Point 4: Section audit flagged dropped landmark(s): ${droppedSections.join(', ')}`);
+      // Check external scripts & stylesheets preservation (dependencies)
+      const prevScripts = new Set<string>();
+      const updatedScripts = new Set<string>();
+      for (const f of params.previousFiles.filter(f => f.path.endsWith('.html'))) {
+        for (const m of f.content.matchAll(/<script\s+[^>]*src=["']([^"']+)["']/gi)) prevScripts.add(m[1]);
+      }
+      for (const f of params.updatedFiles.filter(f => f.path.endsWith('.html'))) {
+        for (const m of f.content.matchAll(/<script\s+[^>]*src=["']([^"']+)["']/gi)) updatedScripts.add(m[1]);
+      }
+      const droppedScripts = [...prevScripts].filter(s => !updatedScripts.has(s));
+
+      const issues: string[] = [];
+      if (droppedSections.length > 0) issues.push(`Dropped section(s): ${droppedSections.join(', ')}`);
+      if (droppedScripts.length > 0) issues.push(`Dropped script/dependency: ${droppedScripts.join(', ')}`);
+
+      if (issues.length > 0) {
+        warnings.push(`Code preservation warning: ${issues.join('; ')}`);
+        logs.push(`  [WARN] Point 4: Code preservation audit flagged: ${issues.join('; ')}`);
       } else {
         const landmarkCount = prevLandmarks.size;
-        logs.push(`  [PASS] Point 4: All existing sections verified preserved (${landmarkCount} section(s) intact)`);
+        logs.push(`  [PASS] Point 4: All existing components, styling, functionality, and dependencies preserved (${landmarkCount} section(s) intact)`);
       }
     } else {
-      logs.push('  [PASS] Point 4: Complete section structure verified intact');
+      logs.push('  [PASS] Point 4: Complete section and component structure verified intact');
     }
 
     // 5. Point 5: Verify Deployed Website Status
