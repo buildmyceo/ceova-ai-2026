@@ -72,6 +72,37 @@ export class CloudDevOrchestrator {
     }
 
     if (!project) {
+      // Fail-safe (Requirement 12): If existingProjectId was not passed directly,
+      // check if user prompt is a modification/update on an existing project
+      const isExplicitNewSite = /^\s*(?:please\s+)?(?:create|build|make|start|generate)\s+(?:a\s+)?(?:completely\s+)?(?:new|different|another|second)\s+(?:website|web\s*app|site|project)/i.test(userPrompt)
+        || /\b(?:start|begin)\s+(?:from\s+scratch|fresh|over|anew)\b/i.test(userPrompt)
+        || /\bcreate\s+a\s+brand\s+new\s+website\b/i.test(userPrompt);
+
+      const isUpdatePrompt = !isExplicitNewSite && (
+        /^(?:please\s+)?(?:change|update|modify|edit|fix|add|remove|make|style|replace|tweak|adjust)\b/i.test(userPrompt) ||
+        /\b(?:navbar|nav|header|footer|hero|button|menu|section|logo|theme|color|text|title|heading)\b/i.test(userPrompt)
+      );
+
+      if (isUpdatePrompt) {
+        const { data: latestProj } = await supabaseAdmin
+          .from('projects')
+          .select('*')
+          .eq('user_id', userId)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (latestProj) {
+          project = latestProj;
+          projectName = latestProj.name;
+          slug = latestProj.slug;
+          deploymentUrl = `https://www.ceova.online/p/${slug}`;
+          isUpdate = true;
+        }
+      }
+    }
+
+    if (!project) {
       onProgress({
         type: 'project_progress',
         stage: 'BUILDING',

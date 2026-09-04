@@ -54,7 +54,7 @@ export class CreateProjectTool implements Tool {
   metadata: ToolMetadata = {
     id: 'create_project',
     name: 'Create Cloud Project',
-    description: 'Creates and deploys a cloud website project workspace on ceova.online. For new websites or major/structural changes on existing sites (new pages, redesigns, major features, navigation changes), present or revise the implementation plan first and wait for user approval. For small/isolated changes on existing sites ("Change the restaurant name", "Make button text Order Now", "Change hero heading", "Change image", "Make button smaller", "Change contact number"), modify directly with project_id, identifying the exact part, preserving everything else, and avoiding full-site regeneration.',
+    description: 'Creates and deploys a cloud website project workspace on ceova.online. For new websites or major/structural changes on existing sites (new pages, redesigns, major features, navigation changes), present or revise the implementation plan first and wait for user approval. For small/isolated changes on existing sites ("Change the navbar", "Change the restaurant name", "Make button text Order Now", "Change hero heading", "Change image", "Make button smaller", "Change contact number"), modify directly with project_id, identifying the exact part, preserving everything else, and avoiding full-site regeneration.',
     category: 'CloudDev',
     icon: 'FolderPlus',
     requiresImage: false,
@@ -69,21 +69,20 @@ export class CreateProjectTool implements Tool {
         project_id: { type: 'string', description: 'Optional: Existing Project UUID if updating an existing website' },
         approved_plan: { type: 'string', description: 'Optional: Approved implementation plan markdown if previously reviewed and approved by user' },
       },
-      required: ['name'],
     },
   };
 
   async execute(context: ToolContext): Promise<ToolResult> {
     try {
-      const prompt = context.args?.description || context.args?.name || context.message || 'Create a web project';
+      const prompt = context.args?.description || context.args?.name || context.message || 'Update web project';
       let projectId = context.args?.project_id || context.existingProjectId;
       const approvedPlan = context.args?.approved_plan;
 
       // Fail-safe: If projectId is missing, check if this is an update request
       // and lookup the user's most recent active project in Supabase
       if (!projectId) {
-        const isUpdateRequest = /change|update|modify|edit|fix|add to|remove from|replace|make the|hero|navbar|menu|footer|heading|button|section|style/i.test(prompt) ||
-                                /change|update|modify|edit|fix|add to|remove from|replace|make the|hero|navbar|menu|footer|heading|button|section|style/i.test(context.message || '');
+        const isUpdateRequest = /change|update|modify|edit|fix|add|remove|replace|make|style|adjust|navbar|nav|hero|menu|footer|heading|button|section|logo/i.test(prompt) ||
+                                /change|update|modify|edit|fix|add|remove|replace|make|style|adjust|navbar|nav|hero|menu|footer|heading|button|section|logo/i.test(context.message || '');
         if (isUpdateRequest) {
           const { data: latestProj } = await supabaseAdmin
             .from('projects')
