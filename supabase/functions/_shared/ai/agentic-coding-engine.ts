@@ -298,20 +298,28 @@ ENVIRONMENT & WORKSPACE RULES:
 - Project Slug: "${slug}"
 - Deployment URL: "https://www.ceova.online/p/${slug}"
 
-CODEX-STYLE AGENTIC CODING WORKFLOW:
-You have access to a full suite of project-level coding tools:
-- Discovery & Navigation: 'list_files', 'search_code', 'read_file', 'read_files', 'inspect_website'
-- Code Manipulation: 'edit_file', 'create_file', 'delete_file', 'move_file'
-- Execution & Verification: 'run_command' (e.g. build, test, lint), 'run_build', 'get_build_status', 'get_build_errors', 'preview_website', 'deploy_website'
-- Task Completion: 'finish_task'
+MANDATORY INSPECT-BEFORE-EDIT WORKFLOW:
+For an existing website, you MUST NOT GUESS where a change belongs or edit blindly.
+Always follow this strict multi-step inspection sequence:
 
-Recommended workflow:
-1. SEARCH & LOCATE: Call 'search_code' to find the exact line numbers of the text, heading, button, or component you need to modify.
-2. RETRIEVE CONTEXT: Call 'read_file' with 'start_line' and 'end_line' (or 'read_files') to inspect exact code and indentation.
-3. SURGICAL EDIT: Call 'edit_file' with matching 'target_content' and 'replacement_content' (or use 'create_file'/'delete_file'/'move_file' if structural).
-4. BUILD & VERIFY: Call 'run_command' (command: "build") or 'run_build' or 'deploy_website' to verify compilation.
-5. INSPECT & FIX: If errors occur, inspect logs or call 'get_build_errors', fix with 'edit_file', and verify again.
-6. FINISH: Call 'finish_task' with a concise summary once the build succeeds and the changes are verified.
+1. SEARCH & LOCATE:
+   - Call 'search_code' with the target keyword, current text, button label, or component name (e.g. search_code({ query: "${projectName}" }) or search_code({ query: "keyword" })).
+   - This determines all exact relevant files and line numbers where the content exists (e.g. index.html, src/data/siteData.js, src/components/Navbar.jsx, src/components/Hero.jsx).
+
+2. RETRIEVE ONLY NECESSARY CONTEXT:
+   - Once relevant files are identified from search results, call 'read_file' with 'start_line' and 'end_line' (or 'read_files') to read ONLY the necessary surrounding lines (15-25 lines).
+   - DO NOT load or read unrelated files.
+   - DO NOT read entire large files when you only need a specific section.
+
+3. SURGICAL EDIT:
+   - Only after reading the exact context and verifying exact characters and indentation, call 'edit_file' with matching 'target_content' and 'replacement_content'.
+   - Never edit a file without inspecting its lines first.
+
+4. BUILD & VERIFY:
+   - Call 'run_command' (command: "build") or 'deploy_website' to verify compilation.
+
+5. FINISH:
+   - Call 'finish_task' with a concise summary once the build succeeds and the changes are verified.
 
 CRITICAL MODIFICATION RULES:
 - Never overwrite unrelated sections or delete existing functionality (Navigation, About, Menu, Contact, Footer, etc. must remain intact).
@@ -321,9 +329,14 @@ CRITICAL MODIFICATION RULES:
 Current Project File Structure:
 ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'}`;
 
+    const isExistingProject = projectFiles.length > 0;
+    const initialUserPrompt = isExistingProject
+      ? `User Request: "${userPrompt}"\n\nProject: "${projectName}" (slug: ${slug})\n\nINSPECTION MANDATE: Do not guess where this change belongs. First call 'search_code' to locate all relevant files and line numbers. Then call 'read_file' with start_line and end_line to retrieve only the necessary context around the match. Do NOT load unrelated files. Then edit surgically, verify with build, and finish.`
+      : `User Request: "${userPrompt}"\n\nPlease implement this website using your tools. Inspect the structure, write the code, verify with build, and call finish_task when done.`;
+
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `User Request: "${userPrompt}"\n\nPlease implement this change using your tools. Search the code, inspect the surrounding lines, make surgical edits, verify with build, and call finish_task when done.` }
+      { role: 'user', content: initialUserPrompt }
     ];
 
     let turns = 0;
@@ -336,6 +349,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
       logs: '',
     };
 
+    const inspectedFiles = new Set<string>();
     const tools = this.getCodingTools();
 
     while (turns < this.MAX_AGENT_TURNS && !taskFinished) {
@@ -412,10 +426,23 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
               if (matches.length >= 10) break;
             }
 
+            for (const match of matches) {
+              inspectedFiles.add(match.path);
+            }
+            if (targetPath) {
+              inspectedFiles.add(targetPath);
+            }
+
+            const relevantFiles = Array.from(new Set(matches.map(m => m.path)));
+
             toolResultText = JSON.stringify({
               query: args.query,
               match_count: matches.length,
+              relevant_files: relevantFiles,
               matches,
+              guidance: matches.length > 0 
+                ? `Matches located in: [${relevantFiles.join(', ')}]. Now call read_file with start_line and end_line for only these files to retrieve the necessary context. Do not load unrelated files.`
+                : `No matches found for "${args.query}". Try searching for alternative keywords or inspect website structure with inspect_website or list_files.`
             });
           }
           else if (name === 'list_files') {
@@ -427,6 +454,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
           } 
           else if (name === 'read_file') {
             const path = CloudWorkerService.sanitizePath(args.path);
+            inspectedFiles.add(path);
             const file = projectFiles.find(f => f.path === path);
 
             if (!file) {
@@ -454,6 +482,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
             for (const rawPath of paths.slice(0, 10)) {
               const p = CloudWorkerService.sanitizePath(rawPath);
+              inspectedFiles.add(p);
               const file = projectFiles.find(f => f.path === p);
               if (!file) {
                 results.push({ path: p, error: 'File not found' });
@@ -477,6 +506,10 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
             if (fileIndex === -1) {
               toolResultText = JSON.stringify({ error: `Cannot edit "${path}": File does not exist.` });
+            } else if (projectFiles.length > 0 && !inspectedFiles.has(path)) {
+              toolResultText = JSON.stringify({
+                error: `Inspection required before editing: You have not inspected "${path}" yet. You must first search the project using 'search_code' to locate relevant files or call 'read_file' on "${path}" to read the surrounding context before editing. Do not guess where changes belong.`,
+              });
             } else {
               let existingContent = projectFiles[fileIndex].content;
               const edits: Array<{ target_content: string; replacement_content: string }> = [];
@@ -526,6 +559,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
           }
           else if (name === 'create_file' || name === 'write_file') {
             const path = CloudWorkerService.sanitizePath(args.path);
+            inspectedFiles.add(path);
             const content = args.content || '';
 
             const fileIndex = projectFiles.findIndex(f => f.path === path);
@@ -616,6 +650,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             });
           }
           else if (name === 'inspect_website') {
+            inspectedFiles.add('index.html');
             const inspection = CloudWorkerService.inspectProjectWebsite(projectFiles);
             toolResultText = JSON.stringify(inspection);
           }
