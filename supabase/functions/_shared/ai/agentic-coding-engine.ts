@@ -12,6 +12,7 @@ import { AIProviderService, ChatMessage } from "./ai-provider.ts";
 import { CloudWorkerService, ProjectFile, BuildResult, ProjectState } from "../worker/worker-service.ts";
 import { determineTaskScope, TaskScope } from "./intent-router.ts";
 import { ContextReconstructionService } from "./context-reconstruction.ts";
+import { TokenOptimizerService } from "./token-optimizer.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -634,6 +635,29 @@ Persistent project state + Project files + Search/read tools + Current task + Ve
 - When you need code details, use 'search_code' to pinpoint the location and 'read_file' to inspect the relevant slice.
 - This allows you to reconstruct whatever context you need for the current task without token bloat.
 
+OPTIMIZE FOR TOKEN EFFICIENCY (MANDATORY REQUIREMENT 15):
+Repeated requests must never unnecessarily resend unchanged code or accumulate token bloat across turns.
+Strictly PREFER:
+  small stable project context
+  +
+  targeted retrieved code
+  +
+  current task
+  +
+  relevant previous result
+INSTEAD OF:
+  entire project
+  +
+  entire chat history
+  +
+  entire build logs
+  +
+  entire previous responses
+- OpenAI prompt caching automatically caches the stable prefix across turns when identical.
+- Never dump complete files into tool outputs or assistant messages.
+- Retrieve only targeted slices (15-30 lines) when inspecting code.
+- Provide only relevant error lines and diagnostics for build failures.
+
 PERSISTENT INTERNAL PROJECT STATE (MANDATORY REQUIREMENT 10):
 This persistent project state describes the website architecture without requiring complete source code to be injected:
 - Project ID: "${projectState.project_id}"
@@ -844,7 +868,11 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
         content: turns === 1 ? 'Inspecting website code...' : 'Building website updates...',
       });
 
-      const response = await AIProviderService.generate(messages, userId, {
+      // Token efficiency: Prune older intermediate tool outputs and verbose logs across turns
+      // while keeping the system prompt + initial task prefix static for OpenAI prompt caching (Requirement 15)
+      const optimizedMessages = TokenOptimizerService.pruneAgentLoopMessages(messages);
+
+      const response = await AIProviderService.generate(optimizedMessages, userId, {
         tools,
         toolChoice: 'auto',
         maxTokens: 1200,

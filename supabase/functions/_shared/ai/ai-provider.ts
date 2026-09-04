@@ -50,6 +50,7 @@ export interface AIProviderResult {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
+    cachedPromptTokens?: number;
   };
   model: string;
   provider: string;
@@ -254,9 +255,15 @@ export class AIProviderService {
     const promptTokens = data.usage?.prompt_tokens || 0;
     const completionTokens = data.usage?.completion_tokens || 0;
     const totalTokens = data.usage?.total_tokens || (promptTokens + completionTokens);
+    const cachedPromptTokens = data.usage?.prompt_tokens_details?.cached_tokens || 0;
 
-    // Estimate cost ($5 / million tokens)
-    const estimatedCost = (totalTokens / 1_000_000) * 5.0;
+    if (cachedPromptTokens > 0) {
+      Logger.INFO(`[AIProvider] OpenAI Prompt Cache Hit: ${cachedPromptTokens} / ${promptTokens} tokens cached (${Math.round(cachedPromptTokens / promptTokens * 100)}%)`);
+    }
+
+    // Estimate cost ($5 / million tokens, with 50% discount for cached prompt tokens per OpenAI pricing)
+    const uncachedPromptTokens = Math.max(0, promptTokens - cachedPromptTokens);
+    const estimatedCost = ((uncachedPromptTokens * 5.0) + (cachedPromptTokens * 2.5) + (completionTokens * 15.0)) / 1_000_000;
 
     if (userId && userId !== 'system') {
       try {
@@ -281,6 +288,7 @@ export class AIProviderService {
         promptTokens,
         completionTokens,
         totalTokens,
+        cachedPromptTokens,
       },
       model,
       provider: AI_PROVIDER,
