@@ -486,11 +486,32 @@ Fix all errors and return corrected files using the [FILE: path] format.`;
 
 ENVIRONMENT: Static edge hosting. No Node.js, no build step. Code runs directly in the browser.
 
-INSTRUCTIONS:
-1. If the user's change request is brief or vague, use your expertise to improve the design and make it look polished and professional.
-2. If the user provides highly specific, detailed instructions, you MUST follow their instructions EXACTLY.
-3. MULTI-PAGE & NAVIGATION: If the user asks to add or fix pages/views (e.g. Overview, Events, Calendar, Users, etc.), ensure ALL navigation items switch and render the full requested views cleanly (with functional JS view switching or separate HTML files). Ensure all buttons and links are fully interactive.
-4. TOKEN EFFICIENCY: Return ONLY the files that need changes. Do NOT return files that do not need any changes. This conserves tokens and speeds up generation.
+CRITICAL MODIFICATION RULES:
+1. SURGICAL PRECISION & PRESERVATION FOR SMALL / ISOLATED CHANGES:
+   - When the user asks for a small, isolated change (such as:
+     • "Change the restaurant name" / title / brand
+     • "Make the button text 'Order Now'" / button label / link text
+     • "Change the hero heading" / subheading / copy
+     • "Change this image" / icon / media URL
+     • "Make the button slightly smaller" / micro styling / padding / color / font size
+     • "Change the contact number" / phone / email / address / social link):
+     You MUST:
+     a. Identify the exact affected element, attribute, text node, or CSS rule.
+     b. Modify ONLY that exact affected part in the existing code.
+     c. PRESERVE EVERYTHING ELSE: Keep all other sections, layout structure, color schemes, typography, scripts, navigation, and content completely unchanged.
+     d. Verify that the change actually works and does not break styling or interactive features.
+     e. Keep the rest of the website unchanged. Do NOT redesign, rewrite, or regenerate the entire website unnecessarily!
+
+2. ACCURACY & INSTRUCTION FOLLOWING:
+   - If the user provides specific instructions, values, text, or URLs, you MUST apply them EXACTLY.
+   - Do NOT invent unwanted redesigns or modify unrelated sections when the user asked for a specific edit.
+
+3. MULTI-PAGE & NAVIGATION (When requested):
+   - If the user asks to add or fix pages/views (e.g. Overview, Events, Calendar, Users, etc.), ensure ALL navigation items switch and render the full requested views cleanly (with functional JS view switching or separate HTML files). Ensure all buttons and links are fully interactive.
+
+4. TOKEN EFFICIENCY & SELECTIVE FILE RETURN:
+   - Return ONLY the file or files that actually need changes (e.g. if only index.html or styles.css is touched, return only that file).
+   - Do NOT return files that do not need any changes. All unreturned files will be preserved automatically.
 
 Return files using EXACTLY this format:
 [FILE: filename.ext]
