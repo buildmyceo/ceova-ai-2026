@@ -433,7 +433,9 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
     return (
       rawText.includes('Website Implementation Plan') ||
       rawText.includes('### Website Implementation Plan') ||
-      (rawText.includes('#### Website Goal') && rawText.includes('#### Pages / Sections'))
+      rawText.includes('Revised Website Implementation Plan') ||
+      rawText.includes('Implementation Plan') ||
+      (rawText.includes('Website Goal') && rawText.includes('Pages / Sections'))
     );
   }, [isUser, rawText, resolvedCloudProject]);
 
@@ -442,7 +444,7 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
     return messages.slice(idx + 1).some(m => 
       m.sender === 'user' || 
       m.cloudProject || 
-      (m.text && (m.text.includes('ceova.online') || m.text.includes('Website Implementation Plan')))
+      (m.text && (m.text.includes('ceova.online') || m.text.includes('Website Implementation Plan') || m.text.includes('Implementation Plan')))
     );
   }, [messages, idx]);
 
