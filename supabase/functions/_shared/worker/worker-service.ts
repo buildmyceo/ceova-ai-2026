@@ -732,6 +732,20 @@ export class CloudWorkerService {
       logs += `  [WARN] Test 3: Minor syntax anomalies flagged\n`;
     }
 
+    // Test 4: HTML structure & script closure integrity
+    testCount++;
+    const indexHtml = sourceFiles.find(f => f.path === 'index.html');
+    if (indexHtml) {
+      const openScripts = (indexHtml.content.match(/<script\b[^>]*>/gi) || []).length;
+      const closeScripts = (indexHtml.content.match(/<\/script>/gi) || []).length;
+      if (openScripts !== closeScripts) {
+        failures.push(`index.html has mismatched <script> tags: ${openScripts} opening vs ${closeScripts} closing. Ensure all <script> tags are closed.`);
+        logs += `  [FAIL] Test 4: Script tag closure check\n`;
+      } else {
+        logs += `  [PASS] Test 4: Script tag closure check\n`;
+      }
+    }
+
     return {
       passed: failures.length === 0,
       testCount,

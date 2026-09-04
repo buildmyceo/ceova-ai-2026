@@ -33,7 +33,7 @@ export interface BaselineSnapshot {
 }
 
 export class AgenticCodingEngine {
-  private static readonly MAX_AGENT_TURNS = 10;
+  private static readonly MAX_AGENT_TURNS = 12;
 
   /**
    * Computes structural snapshot of files to verify code preservation (Requirement 6)
@@ -298,7 +298,7 @@ export class AgenticCodingEngine {
         type: 'function' as const,
         function: {
           name: 'run_build',
-          description: 'Compiles the bundle, runs sanity tests, and verifies code integrity in the isolated sandbox.',
+          description: 'Compiles the project bundle and runs automated sanity tests in the sandbox. Returns PASS or FAIL status with actionable error diagnostics. If FAIL, investigate and fix the code before testing again.',
           parameters: {
             type: 'object',
             properties: {},
@@ -309,7 +309,7 @@ export class AgenticCodingEngine {
         type: 'function' as const,
         function: {
           name: 'finish_task',
-          description: 'Declares that the coding task is complete, build and verification succeed, and summarizes changes made.',
+          description: 'Declares that the coding task is complete after build/tests PASS and verification succeeds. Summarizes the modifications implemented.',
           parameters: {
             type: 'object',
             properties: {
@@ -361,6 +361,61 @@ ENVIRONMENT & WORKSPACE RULES:
 - Project Slug: "${slug}"
 - Deployment URL: "https://www.ceova.online/p/${slug}"
 
+ITERATIVE AGENT LOOP WORKFLOW (MANDATORY REQUIREMENT 7):
+You must execute your work as an iterative coding loop according to this conceptual architecture:
+┌─────────────────────────┐
+│      User Request       │
+└────────────┬────────────┘
+             ↓
+┌─────────────────────────┐
+│     GPT-5.6 Luna        │
+│     Understand Task     │
+└────────────┬────────────┘
+             ↓
+┌─────────────────────────┐
+│     Inspect Project     │
+│   Search / Read / etc.  │
+└────────────┬────────────┘
+             ↓
+┌─────────────────────────┐
+│      Make Changes       │
+│      Create/Edit        │
+└────────────┬────────────┘
+             ↓
+┌─────────────────────────┐
+│       Build/Test        │
+└────────────┬────────────┘
+             ↓
+        ┌────┴────┐
+        │         │
+      PASS       FAIL
+        │         │
+        ↓         ↓
+      Verify   Investigate
+        │         │
+        │         └──────→ Read relevant code
+        │                    ↓
+        │                  Fix
+        │                    ↓
+        │                  Test
+        │                    ↓
+        └────────────────────┘
+                 ↓
+              Deploy
+                 ↓
+               Done
+
+MULTIPLE TOOL CALLS (MANDATORY):
+You are fully enabled and encouraged to perform MULTIPLE TOOL CALLS in a single turn whenever appropriate:
+- When inspecting: Call 'search_code' to locate matches and immediately call 'read_file' in the same turn.
+- When modifying and testing: Call 'edit_file' and immediately call 'run_build' in the same turn.
+- When recovering from failure: Call 'read_file' to examine the error line, call 'edit_file' to patch it, and call 'run_build' to re-test.
+
+BUILD/TEST & SELF-HEALING LOOP:
+- Run 'run_build' to compile and run automated sanity tests.
+- If status is FAIL: Investigate the error log, read the relevant code where the error occurred, fix the code using 'edit_file', and run_build again. Repeat this loop until tests PASS.
+- If status is PASS: Verify website integrity, confirm code preservation, ensure deployment is ready, and call 'finish_task'.
+
 PRESERVE EXISTING CODE (MANDATORY REQUIREMENT 6):
 When modifying an existing website, PRESERVE EVERYTHING that is not related to the requested change.
 The agent MUST AVOID ACCIDENTALLY:
@@ -403,8 +458,8 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
     const isExistingProject = projectFiles.length > 0;
     const initialUserPrompt = isExistingProject
-      ? `User Request: "${userPrompt}"\n\nProject: "${projectName}" (slug: ${slug})\n\nSURGICAL MODIFICATION MANDATE:\nDo NOT regenerate complete files unnecessarily. Do NOT output 800 lines just to change one string.\nMake the smallest safe modification possible using 'edit_file' (target_content -> replacement_content).\n- Search and read only the target lines.\n- Apply surgical edit_file.\n- Verify with build and finish.`
-      : `User Request: "${userPrompt}"\n\nPlease implement this website using your tools. Inspect the structure, write the code, verify with build, and call finish_task when done.`;
+      ? `User Request: "${userPrompt}"\n\nProject: "${projectName}" (slug: ${slug})\n\nITERATIVE AGENT LOOP:\n1. Inspect: search_code & read_file.\n2. Modify: surgical edit_file.\n3. Test: run_build.\n4. Branch: If FAIL -> investigate errors, read code, fix, re-test. If PASS -> verify and call finish_task.\n\nYou may use multiple tool calls in a single turn.`
+      : `User Request: "${userPrompt}"\n\nPlease implement this website using your tools in an iterative loop: inspect, write code, run_build to test (investigate and fix if fail), and call finish_task when verified. You may use multiple tool calls in a single turn.`;
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -470,6 +525,34 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
       for (const toolCall of response.toolCalls) {
         const { name, arguments: args } = toolCall.function;
         Logger.INFO(`[AgenticCodingEngine] Executing tool: ${name}(${JSON.stringify(args).substring(0, 100)})`);
+
+        const hasActiveErrors = !latestBuildResult.success && latestBuildResult.errors && latestBuildResult.errors.length > 0;
+        let progressMessage = '';
+
+        if (name === 'search_code' || name === 'list_files' || name === 'inspect_website') {
+          progressMessage = 'Inspecting website code...';
+        } else if (name === 'read_file' || name === 'read_files') {
+          progressMessage = hasActiveErrors ? 'Investigating build failure & inspecting code...' : 'Reading targeted component...';
+        } else if (name === 'edit_file' || name === 'create_file' || name === 'write_file') {
+          progressMessage = hasActiveErrors ? 'Applying fix for build error...' : 'Applying surgical code modifications...';
+        } else if (name === 'run_build') {
+          progressMessage = 'Running build & automated sanity tests...';
+        } else if (name === 'deploy_website') {
+          progressMessage = 'Deploying website updates...';
+        } else if (name === 'finish_task') {
+          progressMessage = 'Verifying website & code preservation...';
+        }
+
+        if (progressMessage) {
+          onProgress?.({
+            type: 'project_progress',
+            stage: name === 'finish_task' ? 'VERIFYING' : 'BUILDING',
+            projectId,
+            slug,
+            isUpdate: true,
+            content: progressMessage,
+          });
+        }
 
         let toolResultText = '';
 
@@ -753,29 +836,36 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             const cmdRes = await CloudWorkerService.executeProjectCommand(projectId, userId, command, projectFiles);
 
             const lowerCmd = command.trim().toLowerCase();
-            if (lowerCmd === 'build' || lowerCmd === 'npm run build' || lowerCmd === 'npx vite build') {
+            if (lowerCmd === 'build' || lowerCmd === 'npm run build' || lowerCmd === 'npx vite build' || lowerCmd === 'test' || lowerCmd === 'npm test') {
               latestBuildResult = await CloudWorkerService.runBuild(projectId, userId);
             }
 
             toolResultText = JSON.stringify({
               command,
               success: cmdRes.success,
+              status: latestBuildResult.success ? 'PASS' : 'FAIL',
               output: cmdRes.output,
             });
           }
           else if (name === 'get_build_status') {
             toolResultText = JSON.stringify({
-              success: latestBuildResult.success,
+              status: latestBuildResult.success ? 'PASS' : 'FAIL',
+              step: latestBuildResult.success ? 'VERIFY_AND_DEPLOY' : 'INVESTIGATE_AND_FIX',
               buildId: latestBuildResult.buildId || 'none',
               durationMs: latestBuildResult.durationMs || 0,
-              status: latestBuildResult.success ? 'READY' : 'NEEDS_BUILD',
               deploymentUrl: `https://www.ceova.online/p/${slug}`,
+              next_action: latestBuildResult.success ? 'finish_task' : 'investigate_and_fix',
             });
           }
           else if (name === 'get_build_errors') {
             toolResultText = JSON.stringify({
+              status: latestBuildResult.success ? 'PASS' : 'FAIL',
+              step: latestBuildResult.success ? 'VERIFY_AND_DEPLOY' : 'INVESTIGATE_AND_FIX',
               errors: latestBuildResult.errors || [],
               logs: (latestBuildResult.logs || '').slice(-1500),
+              guidance: latestBuildResult.success
+                ? 'No build errors. Ready to verify and call finish_task.'
+                : 'Build errors detected. Inspect the failing file using read_file at the reported line, make corrections with edit_file, and re-test with run_build.',
             });
           }
           else if (name === 'preview_website') {
@@ -790,25 +880,39 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             toolResultText = JSON.stringify(inspection);
           }
           else if (name === 'deploy_website' || name === 'run_build') {
+            const isBuildOnly = name === 'run_build';
             onProgress?.({
               type: 'project_progress',
               stage: 'BUILDING',
               projectId,
               slug,
               isUpdate: true,
-              content: 'Building and deploying website release...',
+              content: isBuildOnly ? 'Running build & automated tests...' : 'Building and deploying website release...',
             });
 
             latestBuildResult = await CloudWorkerService.runBuild(projectId, userId);
 
-            toolResultText = JSON.stringify({
-              success: latestBuildResult.success,
-              deploymentUrl: `https://www.ceova.online/p/${slug}`,
-              version: latestBuildResult.versionNumber,
-              errors: latestBuildResult.errors || [],
-              logs: latestBuildResult.logs.slice(-1200),
-              bundle_ready: latestBuildResult.success,
-            });
+            if (latestBuildResult.success) {
+              toolResultText = JSON.stringify({
+                status: 'PASS',
+                step: 'VERIFY_AND_DEPLOY',
+                message: 'Build and automated verification tests passed successfully.',
+                deploymentUrl: `https://www.ceova.online/p/${slug}`,
+                version: latestBuildResult.versionNumber,
+                bundle_ready: true,
+                guidance: 'Build/test passed! Follow the agent loop: 1) Verify your changes, 2) Ensure all original components and styles remain intact, 3) Call "finish_task" to complete.'
+              });
+            } else {
+              toolResultText = JSON.stringify({
+                status: 'FAIL',
+                step: 'INVESTIGATE_AND_FIX',
+                error: 'Build or test failed.',
+                errors: latestBuildResult.errors || [{ message: 'Build compilation or test failure' }],
+                logs: (latestBuildResult.logs || '').slice(-1200),
+                bundle_ready: false,
+                guidance: 'Build/test failed! Follow the agent loop: 1) Investigate the error logs above, 2) Read the relevant code using "read_file", 3) Apply fixes using "edit_file", 4) Test again using "run_build". Repeat until tests pass.'
+              });
+            }
           } 
           else if (name === 'finish_task') {
             finishSummary = args.summary || 'Website modifications completed.';
@@ -832,37 +936,41 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
                 toolResultText = JSON.stringify({
                   status: 'BLOCKED',
+                  step: 'INVESTIGATE_AND_FIX',
                   error: `Code Preservation Audit Failed: ${issues.join('; ')}. When modifying an existing website, you must PRESERVE EVERYTHING that is not related to the requested change. Avoid accidentally deleting components, removing functionality, changing routes, replacing assets, or changing dependencies. Please restore the missing element(s) before finishing.`,
                 });
-                continue;
               }
             }
 
-            // Ensure build is verified before allowing finish
-            if (!latestBuildResult.success) {
-              onProgress?.({
-                type: 'project_progress',
-                stage: 'VERIFYING',
-                projectId,
-                slug,
-                isUpdate: true,
-                content: 'Verifying website...',
-              });
-              latestBuildResult = await CloudWorkerService.runBuild(projectId, userId);
-            }
+            if (!toolResultText) {
+              // Ensure build is verified before allowing finish
+              if (!latestBuildResult.success) {
+                onProgress?.({
+                  type: 'project_progress',
+                  stage: 'VERIFYING',
+                  projectId,
+                  slug,
+                  isUpdate: true,
+                  content: 'Verifying website build and tests...',
+                });
+                latestBuildResult = await CloudWorkerService.runBuild(projectId, userId);
+              }
 
-            if (latestBuildResult.success) {
-              taskFinished = true;
-              toolResultText = JSON.stringify({
-                status: 'COMPLETED',
-                message: 'Task completed, build verified, and code preservation audit passed.',
-              });
-            } else {
-              toolResultText = JSON.stringify({
-                status: 'BLOCKED',
-                error: 'Build must succeed before task can be finished. Please fix remaining build errors and run_build or deploy_website again.',
-                errors: latestBuildResult.errors,
-              });
+              if (latestBuildResult.success) {
+                taskFinished = true;
+                toolResultText = JSON.stringify({
+                  status: 'COMPLETED',
+                  step: 'DONE',
+                  message: 'Task completed, build verified, automated tests passed, and code preservation audit passed.',
+                });
+              } else {
+                toolResultText = JSON.stringify({
+                  status: 'BLOCKED',
+                  step: 'INVESTIGATE_AND_FIX',
+                  error: 'Build must succeed before task can be finished. Please follow the loop: investigate errors with read_file, fix with edit_file, and test with run_build.',
+                  errors: latestBuildResult.errors,
+                });
+              }
             }
           } 
           else {

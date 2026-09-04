@@ -346,6 +346,12 @@ export class CloudDevOrchestrator {
       description: projectDescription,
       slug: slug,
       deploymentUrl: deploymentUrl,
+      project: {
+        id: project.id,
+        name: projectName,
+        slug: slug,
+        deployment_url: deploymentUrl,
+      },
       isUpdate,
       files: generatedFiles.map(f => f.path),
       logs: fileActivityLog + `[READY] Live at: ${deploymentUrl}\n`,
