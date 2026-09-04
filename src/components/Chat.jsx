@@ -415,8 +415,8 @@ function MessageItem({ msg, idx, isUser, editingMsg, editText, setEditText, hand
       .trim();
 
     if (resolvedCloudProject && (text.includes('https://ceova.online/') || text.includes('.ceova.online'))) {
-      if (text.startsWith('🎉') || text.startsWith('✨') || text.includes('**Your website is live')) {
-        return '✨ **Your website is live and ready on the Ceova Edge Network!**';
+      if (text.startsWith('🎉') || text.startsWith('✨') || text.includes('**Your website is live') || text.includes('Edge Network') || text.includes('Deploying')) {
+        return '';
       }
     }
 

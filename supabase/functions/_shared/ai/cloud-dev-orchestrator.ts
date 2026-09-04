@@ -79,6 +79,7 @@ export class CloudDevOrchestrator {
       const metadata = await this.generateProjectMetadata(userPrompt, userId);
       projectName = metadata.name;
       slug = metadata.slug;
+      let projectDescription = metadata.description;
 
       const { data: existingSlug } = await supabaseAdmin
         .from('projects')
@@ -99,7 +100,7 @@ export class CloudDevOrchestrator {
           status: 'CREATING',
           framework: 'auto',
           runtime: 'static-edge',
-          metadata: { prompt: userPrompt },
+          metadata: { prompt: userPrompt, description: projectDescription },
         })
         .select()
         .single();
@@ -266,20 +267,26 @@ export class CloudDevOrchestrator {
       content: 'Deploying distribution bundle to global edge network...',
     });
 
+    const projectDescription = project.metadata?.description || `A responsive website created with custom sections and navigation.`;
+    const resultSummary = `${projectName}\n${projectDescription}\n\nLive: ${deploymentUrl}`;
+
     onProgress({
       type: 'cloud_project_ready',
       stage: 'READY',
       projectId: project.id,
       name: projectName,
+      description: projectDescription,
       slug: slug,
       deploymentUrl: deploymentUrl,
       files: generatedFiles.map(f => f.path),
       logs: buildResult.logs + `[READY] Deployed live at: ${deploymentUrl}\n`,
-      content: `✨ **Your website is live and ready!**\n\n🔗 **[${deploymentUrl}](${deploymentUrl})**\n\n- **Project**: ${projectName}\n- **Network**: Global Edge CDN\n- **Status**: Active & Secure (SSL)`,
+      content: resultSummary,
     });
 
     return {
       projectId: project.id,
+      name: projectName,
+      description: projectDescription,
       slug: slug,
       deploymentUrl: deploymentUrl,
     };
@@ -529,25 +536,30 @@ ${filesContext}`;
   /**
    * AI-generated project name and slug
    */
-  private static async generateProjectMetadata(prompt: string, userId: string): Promise<{ name: string, slug: string }> {
-    const systemPrompt = 'Generate a concise, catchy Project Name and a URL-friendly slug for the website described below. Return EXACTLY a JSON object: {"name": "Project Name", "slug": "project-slug"}. Do NOT wrap in markdown blocks.';
+  private static async generateProjectMetadata(prompt: string, userId: string): Promise<{ name: string, slug: string, description: string }> {
+    const systemPrompt = 'Generate a concise Project Name, a URL-friendly slug, and a 1-sentence description of what will be created (e.g. "A responsive restaurant website with menu, about, contact and reservation sections."). Return EXACTLY a JSON object: {"name": "Project Name", "slug": "project-slug", "description": "Short description"}. Do NOT wrap in markdown blocks.';
     const userMessage = `Website request: "${prompt}"`;
     
     try {
       const response = await AIProviderService.generate([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage }
-      ], userId, { maxTokens: 100 });
+      ], userId, { maxTokens: 120 });
       
       const clean = response.content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim();
       const parsed = JSON.parse(clean);
       return {
         name: parsed.name || 'My Cloud Project',
-        slug: parsed.slug ? parsed.slug.toLowerCase().replace(/[^a-z0-9-]/g, '') : generateProjectSlug('My Cloud Project')
+        slug: parsed.slug ? parsed.slug.toLowerCase().replace(/[^a-z0-9-]/g, '') : generateProjectSlug('My Cloud Project'),
+        description: parsed.description || 'A responsive website with modern styling and interactive sections.'
       };
     } catch (e) {
       Logger.WARN(`[CloudDevOrchestrator] AI Metadata fallback triggered.`);
-      return { name: 'My Cloud Project', slug: generateProjectSlug('My Cloud Project') };
+      return { 
+        name: 'My Cloud Project', 
+        slug: generateProjectSlug('My Cloud Project'),
+        description: 'A responsive website with modern styling and interactive sections.'
+      };
     }
   }
 }
