@@ -387,10 +387,18 @@ serve(async (req) => {
 
                         // 4. Fail-safe DB check: If still not resolved, check if message is an update to an existing website
                         if (!existingProjectId) {
-                            const isUpdateRequest = /change|update|modify|edit|fix|add|remove|hero|heading|button|menu|section|footer|navbar|styles|color/i.test(rawMessage) ||
-                                (history && history.some((m: any) => typeof m.content === 'string' && (m.content.includes('ceova.online') || m.content.includes('Website Implementation Plan'))));
+                            const hasLiveDeploymentInChat = history && history.some((m: any) => 
+                                typeof m.content === 'string' && /https?:\/\/(?:www\.)?ceova\.online\/p\/[a-z0-9-]+/i.test(m.content)
+                            );
+                            const isExplicitUpdateVerb = /^(?:please\s+)?(?:change|update|modify|edit|fix|tweak|replace)\b/i.test(rawMessage);
 
-                            if (isUpdateRequest) {
+                            // Do NOT treat a new site creation flow as an update to an existing project
+                            const isNewSiteCreationFlow = history && history.length > 0 && 
+                                typeof history[0]?.content === 'string' && 
+                                /\b(?:create|build|make)\s+(?:a\s+)?(?:new\s+)?(?:website|site|landing|app|store|portfolio|restaurant|bakery)\b/i.test(history[0].content) && 
+                                !hasLiveDeploymentInChat;
+
+                            if (!isNewSiteCreationFlow && (hasLiveDeploymentInChat || isExplicitUpdateVerb)) {
                                 try {
                                     const { data: latestProj } = await supabaseAdmin
                                         .from('projects')
