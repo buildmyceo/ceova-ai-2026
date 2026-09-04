@@ -492,6 +492,13 @@ export default function Home({ session }) {
         const activeProjectId = activeCloudProject?.cloudProject?.projectId || 
             activeCloudProject?.attachments?.find(a => a.type === 'cloud_project')?.data?.projectId;
 
+        // Step 9: If user explicitly asks for a new website, do not bind existing project_id.
+        // Otherwise, all follow-up requests preserve and operate on the existing project.
+        const isExplicitNewSite = /^\s*(?:please\s+)?(?:create|build|make|start|generate)\s+(?:a\s+)?(?:completely\s+)?(?:new|different|another|second)\s+(?:website|web\s*app|site|project)/i.test(text)
+            || /\b(?:start|begin)\s+(?:from\s+scratch|fresh|over|anew)\b/i.test(text)
+            || /\bcreate\s+a\s+brand\s+new\s+website\b/i.test(text);
+        const effectiveProjectId = isExplicitNewSite ? undefined : activeProjectId;
+
         try {
             const token = session?.access_token || SUPABASE_KEY;
             let aiRawText = "";
@@ -501,7 +508,7 @@ export default function Home({ session }) {
             // Cloud fetch directly to super-endpoint
                 const reqBody = {
                     message: text,
-                    project_id: activeProjectId || undefined,
+                    project_id: effectiveProjectId || undefined,
                     history: historyForAI,
                     attachments: currentAttachments.length > 0 ? currentAttachments : [],
                     is_temporary: isTemporary,

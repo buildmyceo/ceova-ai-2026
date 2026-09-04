@@ -306,97 +306,137 @@ serve(async (req) => {
                     let existingProjectId: string | undefined = clientProjectId;
                     let existingSlug: string | undefined;
 
-                    // 1. If client sent a valid project_id, fetch slug from database
-                    if (existingProjectId) {
-                        try {
-                            const { data: proj } = await supabaseAdmin
-                                .from('projects')
-                                .select('id, slug, name')
-                                .eq('id', existingProjectId)
-                                .maybeSingle();
-                            if (proj) {
-                                existingSlug = proj.slug;
-                            } else {
-                                existingProjectId = undefined;
-                            }
-                        } catch {}
-                    }
+                    // Step 9: Check if user explicitly requests a brand-new website
+                    const isExplicitNewSiteRequest = /^\s*(?:please\s+)?(?:create|build|make|start|generate)\s+(?:a\s+)?(?:completely\s+)?(?:new|different|another|second)\s+(?:website|web\s*app|site|project)/i.test(rawMessage)
+                        || /\b(?:start|begin)\s+(?:from\s+scratch|fresh|over|anew)\b/i.test(rawMessage)
+                        || /\bcreate\s+a\s+brand\s+new\s+website\b/i.test(rawMessage);
 
-                    // 2. Scan attachments in history
-                    if (!existingProjectId) {
-                        if (history && Array.isArray(history) && history.length > 0) {
-                            for (const msg of history.slice().reverse()) {
-                                if (msg.attachments && Array.isArray(msg.attachments)) {
-                                    const cloudProj = msg.attachments.find((a: any) => a.type === 'cloud_project');
-                                    if (cloudProj?.data?.projectId) {
-                                        existingProjectId = cloudProj.data.projectId;
-                                        existingSlug = cloudProj.data.slug;
-                                        break;
+                    if (isExplicitNewSiteRequest) {
+                        existingProjectId = undefined;
+                        existingSlug = undefined;
+                    } else {
+                        // 1. If client sent a valid project_id, fetch slug from database
+                        if (existingProjectId) {
+                            try {
+                                const { data: proj } = await supabaseAdmin
+                                    .from('projects')
+                                    .select('id, slug, name')
+                                    .eq('id', existingProjectId)
+                                    .maybeSingle();
+                                if (proj) {
+                                    existingSlug = proj.slug;
+                                } else {
+                                    existingProjectId = undefined;
+                                }
+                            } catch {}
+                        }
+
+                        // 2. Scan attachments in history
+                        if (!existingProjectId) {
+                            if (history && Array.isArray(history) && history.length > 0) {
+                                for (const msg of history.slice().reverse()) {
+                                    if (msg.attachments && Array.isArray(msg.attachments)) {
+                                        const cloudProj = msg.attachments.find((a: any) => a.type === 'cloud_project');
+                                        if (cloudProj?.data?.projectId) {
+                                            existingProjectId = cloudProj.data.projectId;
+                                            existingSlug = cloudProj.data.slug;
+                                            break;
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    // 3. Scan URLs in current message and history
-                    if (!existingSlug && !existingProjectId) {
-                        const allTexts = [rawMessage];
-                        if (history && Array.isArray(history)) {
-                            for (const msg of history.slice().reverse()) {
-                                if (typeof msg.content === 'string') allTexts.push(msg.content);
+                        // 3. Scan URLs in current message and history
+                        if (!existingSlug && !existingProjectId) {
+                            const allTexts = [rawMessage];
+                            if (history && Array.isArray(history)) {
+                                for (const msg of history.slice().reverse()) {
+                                    if (typeof msg.content === 'string') allTexts.push(msg.content);
+                                }
+                            }
+                            for (const txt of allTexts) {
+                                if (!txt) continue;
+                                const pathMatch = txt.match(/https?:\/\/(?:www\.)?ceova\.online\/p\/([a-z0-9-]+)/i);
+                                const subMatch = txt.match(/https?:\/\/([a-z0-9-]+)\.ceova\.online/i);
+                                const legacyMatch = txt.match(/https?:\/\/(?:www\.)?ceova\.online\/([a-z0-9-]+)/i);
+
+                                const foundSlug = pathMatch ? pathMatch[1] : 
+                                    (subMatch && subMatch[1] !== 'www' && subMatch[1] !== 'app' ? subMatch[1] : 
+                                    (legacyMatch && !['p', 'api', 'auth', 'app'].includes(legacyMatch[1].toLowerCase()) ? legacyMatch[1] : null));
+
+                                if (foundSlug) {
+                                    existingSlug = foundSlug;
+                                    break;
+                                }
                             }
                         }
-                        for (const txt of allTexts) {
-                            if (!txt) continue;
-                            const pathMatch = txt.match(/https?:\/\/(?:www\.)?ceova\.online\/p\/([a-z0-9-]+)/i);
-                            const subMatch = txt.match(/https?:\/\/([a-z0-9-]+)\.ceova\.online/i);
-                            const legacyMatch = txt.match(/https?:\/\/(?:www\.)?ceova\.online\/([a-z0-9-]+)/i);
 
-                            const foundSlug = pathMatch ? pathMatch[1] : 
-                                (subMatch && subMatch[1] !== 'www' && subMatch[1] !== 'app' ? subMatch[1] : 
-                                (legacyMatch && !['p', 'api', 'auth', 'app'].includes(legacyMatch[1].toLowerCase()) ? legacyMatch[1] : null));
-
-                            if (foundSlug) {
-                                existingSlug = foundSlug;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (existingSlug && !existingProjectId) {
-                        try {
-                            const { data: proj } = await supabaseAdmin
-                                .from('projects')
-                                .select('id, slug, name')
-                                .eq('slug', existingSlug)
-                                .maybeSingle();
-                            if (proj) {
-                                existingProjectId = proj.id;
-                            }
-                        } catch {}
-                    }
-
-                    // 4. Fail-safe DB check: If still not resolved, check if message is an update to an existing website
-                    if (!existingProjectId) {
-                        const isUpdateRequest = /change|update|modify|edit|fix|add|remove|hero|heading|button|menu|section|footer|navbar|styles|color/i.test(rawMessage) ||
-                            (history && history.some((m: any) => typeof m.content === 'string' && (m.content.includes('ceova.online') || m.content.includes('Website Implementation Plan'))));
-
-                        if (isUpdateRequest) {
+                        if (existingSlug && !existingProjectId) {
                             try {
-                                const { data: latestProj } = await supabaseAdmin
+                                const { data: proj } = await supabaseAdmin
                                     .from('projects')
                                     .select('id, slug, name')
-                                    .eq('user_id', user.id)
-                                    .order('updated_at', { ascending: false })
-                                    .limit(1)
+                                    .eq('slug', existingSlug)
                                     .maybeSingle();
-
-                                if (latestProj) {
-                                    existingProjectId = latestProj.id;
-                                    existingSlug = latestProj.slug;
+                                if (proj) {
+                                    existingProjectId = proj.id;
                                 }
                             } catch {}
                         }
+
+                        // 4. Fail-safe DB check: If still not resolved, check if message is an update to an existing website
+                        if (!existingProjectId) {
+                            const isUpdateRequest = /change|update|modify|edit|fix|add|remove|hero|heading|button|menu|section|footer|navbar|styles|color/i.test(rawMessage) ||
+                                (history && history.some((m: any) => typeof m.content === 'string' && (m.content.includes('ceova.online') || m.content.includes('Website Implementation Plan'))));
+
+                            if (isUpdateRequest) {
+                                try {
+                                    const { data: latestProj } = await supabaseAdmin
+                                        .from('projects')
+                                        .select('id, slug, name')
+                                        .eq('user_id', user.id)
+                                        .order('updated_at', { ascending: false })
+                                        .limit(1)
+                                        .maybeSingle();
+
+                                    if (latestProj) {
+                                        existingProjectId = latestProj.id;
+                                        existingSlug = latestProj.slug;
+                                    }
+                                } catch {}
+                            }
+                        }
+                    }
+
+                    // ── Step 9: Retrieve Full Conceptual Project Hierarchy ────────────────────
+                    let existingProjectRecord: any = null;
+                    let projectFilesList: string[] = [];
+                    let projectVersionNum = 1;
+
+                    if (existingProjectId) {
+                        try {
+                            const { data: pRec } = await supabaseAdmin
+                                .from('projects')
+                                .select('id, slug, name, status, metadata, current_deployment_id, created_at, updated_at')
+                                .eq('id', existingProjectId)
+                                .maybeSingle();
+                            if (pRec) {
+                                existingProjectRecord = pRec;
+                                existingSlug = pRec.slug;
+                                if (pRec.metadata?.current_version) {
+                                    projectVersionNum = pRec.metadata.current_version;
+                                }
+
+                                const { data: pFiles } = await supabaseAdmin
+                                    .from('project_files')
+                                    .select('path')
+                                    .eq('project_id', existingProjectId);
+                                if (pFiles && pFiles.length > 0) {
+                                    projectFilesList = pFiles.map((f: any) => f.path);
+                                }
+                            }
+                        } catch {}
                     }
 
                     // ── Build slim, intent-driven system prompt ───────────────────────────────
@@ -406,100 +446,26 @@ serve(async (req) => {
 
                     const writeFilesExample = `{"tool_call":{"tool":"write_local_files","args":{"files":[{"filename":"index.html","content":"<!DOCTYPE html>\\\\n<html lang=\\\\"en\\\\"><head><meta charset=\\\\"UTF-8\\\\"><title>My Site</title><link rel=\\\\"stylesheet\\\\" href=\\\\"styles.css\\\\"></head><body>...</body></html>"},{"filename":"styles.css","content":"* { box-sizing: border-box; } body { margin: 0; }"},{"filename":"script.js","content":"document.addEventListener(\\\\"DOMContentLoaded\\\\", () => { console.log(\\\\"ready\\\\"); });"}]}}}`;
 
+                    const requirementsSummary = existingProjectRecord?.metadata?.requirements 
+                        ? (Array.isArray(existingProjectRecord.metadata.requirements) 
+                            ? existingProjectRecord.metadata.requirements.slice(-3).map((r: string) => `"${r}"`).join(', ')
+                            : `"${existingProjectRecord.metadata.requirements}"`)
+                        : (existingProjectRecord?.metadata?.prompt ? `"${existingProjectRecord.metadata.prompt}"` : 'Website requirements defined');
+
+                    const approvedPlanSummary = existingProjectRecord?.metadata?.approved_plan 
+                        ? 'Plan previously approved by user' 
+                        : 'Active baseline plan';
+
+                    const filesListSummary = projectFilesList.length > 0 
+                        ? projectFilesList.join(', ') 
+                        : 'index.html, styles.css, script.js';
+
                     const existingProjectContext = existingProjectId
-                        ? `\n- ACTIVE CLOUD PROJECT: Project ID "${existingProjectId}", slug "${existingSlug}", live URL: "https://www.ceova.online/p/${existingSlug}".\n  CRITICAL: This website ALREADY EXISTS. When the user asks to modify, update, change sections (e.g. "Change the hero section"), or add pages:\n  • You MUST EDIT THIS EXISTING PROJECT by calling \`create_project\` with 'project_id': "${existingProjectId}".\n  • DO NOT create a second or new website.\n  • The existing URL ("https://www.ceova.online/p/${existingSlug}") MUST remain the same.\n  • Modify only the relevant files/components. Preserve all other existing sections, styles, navigation, and functionality.\n  • When generating a QR code for this website, use the deployment URL: https://www.ceova.online/p/${existingSlug}`
+                        ? `\n- ACTIVE CLOUD PROJECT (Preserve & Continue Existing Project):\n  • Project ID: "${existingProjectId}"\n  • Project Name: "${existingProjectRecord?.name || 'Website'}"\n  • Slug: "${existingSlug}"\n  • Live URL: "https://www.ceova.online/p/${existingSlug}"\n  • Current Version: v${projectVersionNum}\n  • Existing Files: ${filesListSummary}\n\n  CONCEPTUAL PROJECT ARCHITECTURE:\n  CEOVA Project\n  │\n  ├── Website requirements: ${requirementsSummary}\n  ├── Approved plan: ${approvedPlanSummary}\n  ├── Source code & Assets: [${filesListSummary}]\n  ├── Current version: v${projectVersionNum}\n  └── Live deployment: https://www.ceova.online/p/${existingSlug}\n\n  CRITICAL: This website ALREADY EXISTS. Treat it as an existing project.\n  All future user requests operate on this existing project unless the user explicitly asks for a new website.\n  • You MUST EDIT THIS EXISTING PROJECT by calling \`create_project\` with 'project_id': "${existingProjectId}".\n  • DO NOT create a second or new website.\n  • The existing URL ("https://www.ceova.online/p/${existingSlug}") MUST remain the same.\n  • Modify only the relevant files/components. Preserve all other existing sections, styles, navigation, and functionality.\n  • When generating a QR code for this website, use the deployment URL: https://www.ceova.online/p/${existingSlug}`
                         : '';
 
                     const toolsSection = hasTools
-                        ? `\n\nAVAILABLE TOOLS (Use these when needed):\n${JSON.stringify(intent.toolSchemas, null, 2)}\n\nAUTONOMOUS AGENT DIRECTIVES:\n- WORKSPACE FOLDER STATUS: ${has_local_folder ? 'CONNECTED' : 'NOT CONNECTED — The user will be prompted to pick a folder when you call write_local_files.'}\n- You are a FULL-STACK AUTONOMOUS ENGINEER. You take the initiative and execute changes directly.\n- Feel free to use your tools whenever they are necessary to fulfill the user's request.\n- NEVER generate dummy files like 'placeholder.txt'.${existingProjectContext}\n\nCRITICAL CLOUD WEBSITE & WEB APP RULES (CEOVA Website Creation Workflow):\n1. MANDATORY PLANNING FIRST: When the user asks to create or build a website or web app, DO NOT immediately start generating or building the website. DO NOT call \`create_project\` on the initial request.\n2. CREATE AN IMPLEMENTATION PLAN: First analyze the user's request and present a clear, step-by-step implementation plan containing exactly these sections:\n\n### Website Implementation Plan\n\n#### Website Goal\n[What website CEOVA understands the user wants]\n\n#### Pages / Sections\n[List only what is actually required by the user's request, e.g.:\n- Home\n- About\n- Services\n- Menu\n- Contact]\n\n#### Design Direction\n- Visual style: [e.g., modern, warm, minimalist, editorial]\n- Layout: [e.g., hero section, clean grid layout, interactive sections]\n- Typography direction: [e.g., elegant modern typography]\n- General UI structure: [e.g., sticky navigation, prominent call-to-actions, content cards]\n- Responsive behavior: [e.g., fully responsive across mobile, tablet, and desktop screens]\n\n#### Functionality\n[List the specific functionality CEOVA intends to implement]\n\n#### Technical Implementation\n[Briefly describe how the frontend will be structured without unnecessary jargon: clean semantic HTML5, modern CSS styling, interactive client-side JavaScript]\n\n#### Deployment\n[Explain briefly that the completed frontend will be deployed and a live URL will be provided upon completion]\n\n(Do not expose unnecessary technical jargon to normal users. Conclude with: "Would you like me to proceed with building this website based on this plan, or would you like to make any adjustments?")\n\n3. USER MUST APPROVE THE PLAN BEFORE WORK STARTS (STRICT WORKFLOW):
-- Workflow:
-  User Request -> Understand request -> Create implementation plan -> Show plan to user -> User reviews plan:
-  - If the user clicks Proceed or says "Proceed", "Yes", "Build it", "Go ahead", "Approved": Immediately start building the website by calling \`create_project\`.
-  - If the user requests edits, changes, or adjustments: Follow Rule 4 below. DO NOT start building yet.
-- NEVER start the actual website-building process before the user approves the plan.
-4. IF THE USER CHANGES THE PLAN (PLAN REVISION WORKFLOW):
-If the user requests changes to the plan (for example: "Add a gallery", "I don't want a reservation section", "Make it dark and premium", or any adjustments affecting sections, design direction, or functionality):
-- DO NOT immediately start modifying or building the website.
-- DO NOT call \`create_project\`.
-- DO NOT make the user rewrite the entire request.
-- Follow this exact process:
-  1. Understand the requested change.
-  2. Modify the existing plan: PRESERVE the existing plan and modify ONLY the affected parts.
-  3. Generate the complete revised plan containing all 6 standard sections:
-     ### Revised Website Implementation Plan
-     #### Website Goal
-     [Preserved goal updated with requested changes]
-     #### Pages / Sections
-     [Preserved sections with items added or removed as requested]
-     #### Design Direction
-     [Preserved design direction with requested style/color adjustments]
-     #### Functionality
-     [Preserved functionality with requested feature adjustments]
-     #### Technical Implementation
-     [Frontend structure description]
-     #### Deployment
-     [Deployment description]
-  4. Conclude with: "Would you like me to proceed with building this website based on this revised plan, or would you like to make any further adjustments?"
-  5. Show the revised plan to the user and wait for user approval again.
-- NEVER start the actual website-building process before the user approves the revised plan.
-5. PLAN APPROVAL IS REQUIRED ONLY WHEN APPROPRIATE (EXISTING SITES):
-When an ACTIVE CLOUD PROJECT ID is present (the website already exists):
-DO NOT force the user through a complete planning process for every tiny change!
-Use the planning/approval workflow ONLY for major / structural changes:
-Examples of major/structural changes:
-• Adding or removing major pages (e.g. adding an About page, removing blog)
-• Changing the overall design (e.g. changing entire theme, visual style, or color palette)
-• Changing the website architecture
-• Adding a major feature (e.g. shopping cart, booking system, search/filter)
-• Changing navigation (e.g. restructuring navbar, adding dropdown menus)
-• Reworking the homepage structure
-• Adding a large new section (e.g. testimonials carousel, pricing grid)
-• Changing important functionality
-• Any change that could affect multiple parts of the website
-Workflow for major changes:
-User requests major change -> Update/revise plan -> Show revised plan with all 6 sections -> User approves (clicks Proceed) -> Implement by calling \`create_project\`.
-
-6. SMALL CHANGES SHOULD BE HANDLED DIRECTLY:
-If the user asks for a small, isolated change that does not require a new plan, CEOVA should directly modify the website.
-Examples:
-• "Change the restaurant name."
-• "Make the button text 'Order Now'."
-• "Change the hero heading."
-• "Change this image."
-• "Make the button slightly smaller."
-• "Change the contact number."
-For these small changes, CEOVA must:
-1. Identify the exact affected part.
-2. Directly call \`create_project\` with 'project_id': "${existingProjectId}" and the exact update description. DO NOT create an implementation plan or ask for approval first.
-3. Modify the existing website code with surgical precision.
-4. Preserve everything else.
-5. Verify that the change actually works.
-6. Keep the rest of the website unchanged.
-7. Do not regenerate the entire website unnecessarily.
-
-7. CHANGES MUST ACTUALLY PERSIST CORRECTLY:
-When the user asks CEOVA to modify an existing website, the system must edit the existing project, not create an unrelated replacement website.
-For example:
-Existing Website -> User: "Change the hero section" -> Identify existing project -> Modify only relevant files/components -> Build -> Verify -> Deploy updated version -> Same website URL.
-The existing URL ("https://www.ceova.online/p/${existingSlug}") must remain the same unless the user explicitly asks to change it.
-Do not accidentally:
-• create a second website
-• lose existing sections (e.g. when changing the hero section, KEEP Navbar, About, Services, Menu, Contact, Footer intact)
-• overwrite unrelated code
-• remove existing functionality
-• reset the design
-• regenerate everything unnecessarily
-
-8. VERIFY EVERY MODIFICATION:
-After making a requested change, CEOVA must verify that:
-• The website builds successfully.
-• The requested change is actually present in the codebase.
-• Existing important functionality still works (navigation links, buttons, interactive features, forms).
-• No unrelated sections were accidentally removed (e.g. Header, About, Menu, Services, Contact, Footer remain intact).
-• The deployed website reflects the latest changes at the live URL.
-Only after successful verification should CEOVA tell the user that the change is complete.
-
-9. 'write_local_files' is ONLY for saving files directly to local folders on user's machine. For websites on ceova.online, ALWAYS use \`create_project\`.\n\nCRITICAL write_local_files RULE:\nThe 'files' array MUST contain complete code for EVERY file. Example of a CORRECT call:\n${writeFilesExample}\n\nTOOL RULES:\n- gmail_connector: Require a valid '@' email before sending.\n- write_local_files: Please provide the actual file content for all required files. Do not send an empty files array. NEVER send placeholder files.\n- run_terminal_command: Use for npm install, running scripts, shell commands.\n- qr_barcode: When generating a QR code for a website, use the EXACT deployment URL from the ACTIVE CLOUD PROJECT context (e.g. https://www.ceova.online/p/<slug>) or the EXACT URL the user explicitly provided. NEVER invent, guess, or modify the URL. If the user provides a specific URL, use it EXACTLY as given including any path and fragment (e.g. #section).\n- invoice_generator: Collect all billing details first.\n- image_analysis / background_remover: Only when an image is attached.\nn${hasImage ? '- The user has attached an image.' : ''}\n\nTool call format (output ONLY this JSON — no text before or after):\n{"tool_call":{"tool":"<tool_id>","args":{"key":"value"}}}`
+                        ? `\n\nAVAILABLE TOOLS (Use these when needed):\n${JSON.stringify(intent.toolSchemas, null, 2)}\n\nAUTONOMOUS AGENT DIRECTIVES:\n- WORKSPACE FOLDER STATUS: ${has_local_folder ? 'CONNECTED' : 'NOT CONNECTED — The user will be prompted to pick a folder when you call write_local_files.'}\n- You are a FULL-STACK AUTONOMOUS ENGINEER. You take the initiative and execute changes directly.\n- Feel free to use your tools whenever they are necessary to fulfill the user's request.\n- NEVER generate dummy files like 'placeholder.txt'.${existingProjectContext}\n\nCRITICAL CLOUD WEBSITE & WEB APP RULES (CEOVA Website Creation Workflow):\n1. MANDATORY PLANNING FIRST (NEW WEBSITES ONLY): When the user asks to create or build a brand-new website from scratch, DO NOT immediately start generating or building the website. DO NOT call \`create_project\` on the initial request. First analyze the user's request and present a clear, step-by-step implementation plan.\nNOTE: When an ACTIVE CLOUD PROJECT exists, this rule does NOT apply to follow-up requests. All follow-up requests operate on the existing project according to Rule 5 (major changes -> revise plan) and Rule 6 (small changes -> direct modification).\n\n2. CREATE AN IMPLEMENTATION PLAN: First analyze the user's request and present a clear, step-by-step implementation plan containing exactly these sections:\n\n### Website Implementation Plan\n\n#### Website Goal\n[What website CEOVA understands the user wants]\n\n#### Pages / Sections\n[List only what is actually required by the user's request, e.g.:\n- Home\n- About\n- Services\n- Menu\n- Contact]\n\n#### Design Direction\n- Visual style: [e.g., modern, warm, minimalist, editorial]\n- Layout: [e.g., hero section, clean grid layout, interactive sections]\n- Typography direction: [e.g., elegant modern typography]\n- General UI structure: [e.g., sticky navigation, prominent call-to-actions, content cards]\n- Responsive behavior: [e.g., fully responsive across mobile, tablet, and desktop screens]\n\n#### Functionality\n[List the specific functionality CEOVA intends to implement]\n\n#### Technical Implementation\n[Briefly describe how the frontend will be structured without unnecessary jargon: clean semantic HTML5, modern CSS styling, interactive client-side JavaScript]\n\n#### Deployment\n[Explain briefly that the completed frontend will be deployed and a live URL will be provided upon completion]\n\n(Do not expose unnecessary technical jargon to normal users. Conclude with: "Would you like me to proceed with building this website based on this plan, or would you like to make any adjustments?")\n\n3. USER MUST APPROVE THE PLAN BEFORE WORK STARTS (STRICT WORKFLOW):\n- Workflow:\n  User Request -> Understand request -> Create implementation plan -> Show plan to user -> User reviews plan:\n  - If the user clicks Proceed or says "Proceed", "Yes", "Build it", "Go ahead", "Approved": Immediately start building the website by calling \`create_project\`.\n  - If the user requests edits, changes, or adjustments: Follow Rule 4 below. DO NOT start building yet.\n- NEVER start the actual website-building process before the user approves the plan.\n4. IF THE USER CHANGES THE PLAN (PLAN REVISION WORKFLOW):\nIf the user requests changes to the plan (for example: "Add a gallery", "I don't want a reservation section", "Make it dark and premium", or any adjustments affecting sections, design direction, or functionality):\n- DO NOT immediately start modifying or building the website.\n- DO NOT call \`create_project\`.\n- DO NOT make the user rewrite the entire request.\n- Follow this exact process:\n  1. Understand the requested change.\n  2. Modify the existing plan: PRESERVE the existing plan and modify ONLY the affected parts.\n  3. Generate the complete revised plan containing all 6 standard sections:\n     ### Revised Website Implementation Plan\n     #### Website Goal\n     [Preserved goal updated with requested changes]\n     #### Pages / Sections\n     [Preserved sections with items added or removed as requested]\n     #### Design Direction\n     [Preserved design direction with requested style/color adjustments]\n     #### Functionality\n     [Preserved functionality with requested feature adjustments]\n     #### Technical Implementation\n     [Frontend structure description]\n     #### Deployment\n     [Deployment description]\n  4. Conclude with: "Would you like me to proceed with building this website based on this revised plan, or would you like to make any further adjustments?"\n  5. Show the revised plan to the user and wait for user approval again.\n- NEVER start the actual website-building process before the user approves the revised plan.\n5. PLAN APPROVAL IS REQUIRED ONLY WHEN APPROPRIATE (EXISTING SITES):\nWhen an ACTIVE CLOUD PROJECT ID is present (the website already exists):\nDO NOT force the user through a complete planning process for every tiny change!\nUse the planning/approval workflow ONLY for major / structural changes:\nExamples of major/structural changes:\n• Adding or removing major pages (e.g. adding an About page, removing blog)\n• Changing the overall design (e.g. changing entire theme, visual style, or color palette)\n• Changing the website architecture\n• Adding a major feature (e.g. shopping cart, booking system, search/filter)\n• Changing navigation (e.g. restructuring navbar, adding dropdown menus)\n• Reworking the homepage structure\n• Adding a large new section (e.g. testimonials carousel, pricing grid)\n• Changing important functionality\n• Any change that could affect multiple parts of the website\nWorkflow for major changes:\nUser requests major change -> Update/revise plan -> Show revised plan with all 6 sections -> User approves (clicks Proceed) -> Implement by calling \`create_project\`.\n\n6. SMALL CHANGES SHOULD BE HANDLED DIRECTLY:\nIf the user asks for a small, isolated change that does not require a new plan, CEOVA should directly modify the website.\nExamples:\n• "Change the restaurant name."\n• "Make the button text 'Order Now'."\n• "Change the hero heading."\n• "Change this image."\n• "Make the button slightly smaller."\n• "Change the contact number."\nFor these small changes, CEOVA must:\n1. Identify the exact affected part.\n2. Directly call \`create_project\` with 'project_id': "${existingProjectId}" and the exact update description. DO NOT create an implementation plan or ask for approval first.\n3. Modify the existing website code with surgical precision.\n4. Preserve everything else.\n5. Verify that the change actually works.\n6. Keep the rest of the website unchanged.\n7. Do not regenerate the entire website unnecessarily.\n\n7. CHANGES MUST ACTUALLY PERSIST CORRECTLY:\nWhen the user asks CEOVA to modify an existing website, the system must edit the existing project, not create an unrelated replacement website.\nFor example:\nExisting Website -> User: "Change the hero section" -> Identify existing project -> Modify only relevant files/components -> Build -> Verify -> Deploy updated version -> Same website URL.\nThe existing URL ("https://www.ceova.online/p/${existingSlug}") must remain the same unless the user explicitly asks to change it.\nDo not accidentally:\n• create a second website\n• lose existing sections (e.g. when changing the hero section, KEEP Navbar, About, Services, Menu, Contact, Footer intact)\n• overwrite unrelated code\n• remove existing functionality\n• reset the design\n• regenerate everything unnecessarily\n\n8. VERIFY EVERY MODIFICATION:\nAfter making a requested change, CEOVA must verify that:\n• The website builds successfully.\n• The requested change is actually present in the codebase.\n• Existing important functionality still works (navigation links, buttons, interactive features, forms).\n• No unrelated sections were accidentally removed (e.g. Header, About, Menu, Services, Contact, Footer remain intact).\n• The deployed website reflects the latest changes at the live URL.\nOnly after successful verification should CEOVA tell the user that the change is complete.\n\n9. PRESERVE THE EXISTING PROJECT:\nEvery generated website MUST be treated as an existing project after its first creation.\nConceptually:\nCEOVA Project\n│\n├── Website requirements\n├── Approved plan\n├── Source code\n├── Assets\n├── Current version\n└── Live deployment\nFuture user requests should operate on this existing project.\nDO NOT treat every new user message as a completely new website unless the user explicitly asks for a new website (e.g. \"create a new website for X\", \"build another website\", \"start from scratch\").\n• Always target the existing project ID (\"${existingProjectId || '<project_id>'}\") and preserve the existing live deployment URL (\"https://www.ceova.online/p/${existingSlug || '<slug>'}\").\n• If the change is small or isolated: Modify directly via \`create_project\` with 'project_id' (Rule 6).\n• If the change is major or structural: Revise the existing plan, show revised plan to user, wait for user approval, then execute via \`create_project\` with 'project_id' (Rule 4 & 5).\n• Never accidentally create a second website, wipe out existing sections, lose functionality, or regenerate everything unnecessarily.\n\n10. 'write_local_files' is ONLY for saving files directly to local folders on user's machine. For websites on ceova.online, ALWAYS use \`create_project\`.\n\nCRITICAL write_local_files RULE:\nThe 'files' array MUST contain complete code for EVERY file. Example of a CORRECT call:\n${writeFilesExample}\n\nTOOL RULES:\n- gmail_connector: Require a valid '@' email before sending.\n- write_local_files: Please provide the actual file content for all required files. Do not send an empty files array. NEVER send placeholder files.\n- run_terminal_command: Use for npm install, running scripts, shell commands.\n- qr_barcode: When generating a QR code for a website, use the EXACT deployment URL from the ACTIVE CLOUD PROJECT context (e.g. https://www.ceova.online/p/<slug>) or the EXACT URL the user explicitly provided. NEVER invent, guess, or modify the URL. If the user provides a specific URL, use it EXACTLY as given including any path and fragment (e.g. #section).\n- invoice_generator: Collect all billing details first.\n- image_analysis / background_remover: Only when an image is attached.\nn${hasImage ? '- The user has attached an image.' : ''}\n\nTool call format (output ONLY this JSON — no text before or after):\n{"tool_call":{"tool":"<tool_id>","args":{"key":"value"}}}`
                         : `\n\nCEOVA CAPABILITIES (no tools needed for this message):\n${CAPABILITY_SUMMARY}`;
 
                     const baseDirective = is_thinking 

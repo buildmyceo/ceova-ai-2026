@@ -43,8 +43,9 @@ export class CloudDevOrchestrator {
     userPrompt: string,
     userId: string,
     onProgress: CloudDevProgressCallback,
-    existingProjectId?: string
-  ): Promise<{ projectId: string; slug: string; deploymentUrl: string }> {
+    existingProjectId?: string,
+    approvedPlan?: string
+  ): Promise<{ projectId: string; name: string; description: string; slug: string; deploymentUrl: string }> {
     Logger.INFO(`[CloudDevOrchestrator] Starting cloud development for user: ${userId} (existingProjectId: ${existingProjectId || 'none'})`);
 
     let project: any;
@@ -100,7 +101,15 @@ export class CloudDevOrchestrator {
           status: 'CREATING',
           framework: 'auto',
           runtime: 'static-edge',
-          metadata: { prompt: userPrompt, description: projectDescription },
+          metadata: {
+            prompt: userPrompt,
+            description: projectDescription,
+            requirements: [userPrompt],
+            approved_plan: approvedPlan || null,
+            current_version: 1,
+            deployment_url: `https://www.ceova.online/p/${slug}`,
+            source_files: [],
+          },
         })
         .select()
         .single();
@@ -303,6 +312,52 @@ export class CloudDevOrchestrator {
     });
 
     const projectDescription = project.metadata?.description || `A responsive website created with custom sections and navigation.`;
+
+    // ── STEP 6: SNAPSHOT PROJECT METADATA (Requirements, Approved Plan, Files, Version, Live URL) ──
+    const existingMeta = project.metadata || {};
+    const reqs = Array.isArray(existingMeta.requirements)
+      ? [...existingMeta.requirements]
+      : [existingMeta.prompt || userPrompt];
+    if (userPrompt && !reqs.includes(userPrompt)) {
+      reqs.push(userPrompt);
+    }
+    const currentApprovedPlan = approvedPlan || existingMeta.approved_plan || null;
+
+    let finalVersionNumber = 1;
+    try {
+      const { data: latestVer } = await supabaseAdmin
+        .from('project_versions')
+        .select('version_number')
+        .eq('project_id', project.id)
+        .order('version_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestVer?.version_number) {
+        finalVersionNumber = latestVer.version_number;
+      }
+    } catch {}
+
+    const updatedMetadata = {
+      ...existingMeta,
+      prompt: existingMeta.prompt || userPrompt,
+      requirements: reqs,
+      approved_plan: currentApprovedPlan,
+      current_version: finalVersionNumber,
+      source_files: generatedFiles.map(f => f.path),
+      deployment_url: deploymentUrl,
+      description: projectDescription,
+      last_deployed_at: new Date().toISOString(),
+    };
+
+    try {
+      await supabaseAdmin.from('projects').update({
+        metadata: updatedMetadata,
+        updated_at: new Date().toISOString(),
+      }).eq('id', project.id);
+    } catch (e: any) {
+      Logger.WARN(`[CloudDevOrchestrator] Non-fatal error saving project metadata: ${e.message}`);
+    }
+
     const resultSummary = `${projectName}\n${projectDescription}\n\nLive: ${deploymentUrl}`;
 
     onProgress({

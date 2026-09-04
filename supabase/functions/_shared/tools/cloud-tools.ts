@@ -67,6 +67,7 @@ export class CreateProjectTool implements Tool {
         framework: { type: 'string', description: 'Framework (default: "react-vite")' },
         description: { type: 'string', description: 'Short summary of the project purpose or update instructions' },
         project_id: { type: 'string', description: 'Optional: Existing Project UUID if updating an existing website' },
+        approved_plan: { type: 'string', description: 'Optional: Approved implementation plan markdown if previously reviewed and approved by user' },
       },
       required: ['name'],
     },
@@ -76,6 +77,7 @@ export class CreateProjectTool implements Tool {
     try {
       const prompt = context.args?.description || context.args?.name || context.message || 'Create a web project';
       let projectId = context.args?.project_id || context.existingProjectId;
+      const approvedPlan = context.args?.approved_plan;
 
       // Fail-safe: If projectId is missing, check if this is an update request
       // and lookup the user's most recent active project in Supabase
@@ -107,7 +109,8 @@ export class CreateProjectTool implements Tool {
         prompt,
         context.userId,
         onProgress,
-        projectId
+        projectId,
+        approvedPlan
       );
 
       // Record audit log
