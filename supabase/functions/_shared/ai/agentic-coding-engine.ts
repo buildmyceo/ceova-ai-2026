@@ -85,6 +85,109 @@ export class AgenticCodingEngine {
   }
 
   /**
+   * Extracts targeted diagnostic information (File, Line, Error, and code slice) from build failure.
+   * Requirement 8: Never send the entire project to GPT on build failure. Extract useful info.
+   */
+  public static extractBuildDiagnostics(
+    buildResult: BuildResult,
+    projectFiles: ProjectFile[]
+  ): {
+    file: string;
+    line: number;
+    column?: number;
+    error: string;
+    relevantSlice?: {
+      path: string;
+      startLine: number;
+      endLine: number;
+      content: string;
+    };
+    formattedText: string;
+  } {
+    let targetFile = 'index.html';
+    let targetLine = 1;
+    let targetColumn: number | undefined;
+    let errorMessage = 'Build failed';
+
+    // 1. Check structured errors on buildResult
+    if (buildResult.errors && buildResult.errors.length > 0) {
+      const err = buildResult.errors[0];
+      if (err.file) targetFile = err.file;
+      if (err.line) targetLine = err.line;
+      if (err.column) targetColumn = err.column;
+      if (err.message) errorMessage = err.message;
+    }
+
+    // 2. Scan error message & logs for TypeScript / syntax / bundler error patterns
+    const fullLogText = `${errorMessage}\n${buildResult.logs || ''}`;
+    
+    // Pattern A: TypeScript error (e.g. src/components/Hero.jsx(42,15): error TS2304... or src/components/Hero.jsx:42:15)
+    const tsMatch = fullLogText.match(/([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)(?:\((\d+),(\d+)\)|:(\d+)(?::(\d+))?)\s*[-:]?\s*(?:error\s*(?:TS\d+)?:?)?\s*([^\n\r]+)/i);
+    if (tsMatch) {
+      targetFile = tsMatch[1];
+      targetLine = parseInt(tsMatch[2] || tsMatch[4], 10);
+      if (tsMatch[3] || tsMatch[5]) {
+        targetColumn = parseInt(tsMatch[3] || tsMatch[5], 10);
+      }
+      if (tsMatch[6]) {
+        errorMessage = tsMatch[6].trim();
+      }
+    } else {
+      // Pattern B: e.g. "index.html:42 - HTML syntax error: ..."
+      const syntaxMatch = fullLogText.match(/([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+):(\d+)\s*[-:]?\s*([^\n\r]+)/i);
+      if (syntaxMatch) {
+        targetFile = syntaxMatch[1];
+        targetLine = parseInt(syntaxMatch[2], 10);
+        if (syntaxMatch[3]) errorMessage = syntaxMatch[3].trim();
+      } else {
+        // Pattern C: Vite / Rollup error
+        const rollupMatch = fullLogText.match(/\[(?:vite|rollup|esbuild)\]\s*([^\n\r]+)/i);
+        if (rollupMatch) {
+          errorMessage = rollupMatch[1].trim();
+        }
+      }
+    }
+
+    // Clean and sanitize file path
+    targetFile = CloudWorkerService.sanitizePath(targetFile);
+
+    // 3. Extract relevant slice from project files
+    let relevantSlice: { path: string; startLine: number; endLine: number; content: string } | undefined;
+    const file = projectFiles.find(f => f.path === targetFile);
+    if (file) {
+      const lines = file.content.split('\n');
+      targetLine = Math.min(lines.length, Math.max(1, targetLine));
+      const startLine = Math.max(1, targetLine - 5);
+      const endLine = Math.min(lines.length, targetLine + 6);
+      const sliceLines = lines.slice(startLine - 1, endLine).map((l, idx) => {
+        const lineNum = startLine + idx;
+        const marker = lineNum === targetLine ? ' > ' : '   ';
+        return `${marker}${lineNum}: ${l}`;
+      }).join('\n');
+
+      relevantSlice = {
+        path: targetFile,
+        startLine,
+        endLine,
+        content: sliceLines,
+      };
+    }
+
+    const formattedText = `Build failed\n\nFile:\n${targetFile}\n\nLine:\n${targetLine}\n\nError:\n${errorMessage}${
+      relevantSlice ? `\n\nRelevant Code (Lines ${relevantSlice.startLine}-${relevantSlice.endLine}):\n${relevantSlice.content}` : ''
+    }`;
+
+    return {
+      file: targetFile,
+      line: targetLine,
+      column: targetColumn,
+      error: errorMessage,
+      relevantSlice,
+      formattedText,
+    };
+  }
+
+  /**
    * OpenAI Tool Definitions for the Coding Agent
    */
   private static getCodingTools() {
@@ -415,6 +518,26 @@ BUILD/TEST & SELF-HEALING LOOP:
 - Run 'run_build' to compile and run automated sanity tests.
 - If status is FAIL: Investigate the error log, read the relevant code where the error occurred, fix the code using 'edit_file', and run_build again. Repeat this loop until tests PASS.
 - If status is PASS: Verify website integrity, confirm code preservation, ensure deployment is ready, and call 'finish_task'.
+
+DO NOT REWRITE CODE JUST BECAUSE A BUILD FAILS (MANDATORY REQUIREMENT 8):
+If a build or test fails:
+- DO NOT rewrite or regenerate the entire project or file.
+- DO NOT request or dump the entire project into context.
+- The engine will extract and provide useful diagnostic information:
+  Build failed
+
+  File:
+  <file>
+
+  Line:
+  <line>
+
+  Error:
+  <error>
+- You will receive this targeted error and a small relevant code slice around the failing line.
+- Investigate the specific line and surrounding context using 'read_file' with tight bounds if needed.
+- Fix the actual problem surgically using 'edit_file' (the smallest safe modification).
+- Run 'run_build' to test again. Repeat until tests pass.
 
 PRESERVE EXISTING CODE (MANDATORY REQUIREMENT 6):
 When modifying an existing website, PRESERVE EVERYTHING that is not related to the requested change.
@@ -858,15 +981,28 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             });
           }
           else if (name === 'get_build_errors') {
-            toolResultText = JSON.stringify({
-              status: latestBuildResult.success ? 'PASS' : 'FAIL',
-              step: latestBuildResult.success ? 'VERIFY_AND_DEPLOY' : 'INVESTIGATE_AND_FIX',
-              errors: latestBuildResult.errors || [],
-              logs: (latestBuildResult.logs || '').slice(-1500),
-              guidance: latestBuildResult.success
-                ? 'No build errors. Ready to verify and call finish_task.'
-                : 'Build errors detected. Inspect the failing file using read_file at the reported line, make corrections with edit_file, and re-test with run_build.',
-            });
+            if (latestBuildResult.success) {
+              toolResultText = JSON.stringify({
+                status: 'PASS',
+                step: 'VERIFY_AND_DEPLOY',
+                errors: [],
+                guidance: 'No build errors. Ready to verify and call finish_task.'
+              });
+            } else {
+              const diag = AgenticCodingEngine.extractBuildDiagnostics(latestBuildResult, projectFiles);
+              toolResultText = JSON.stringify({
+                status: 'FAIL',
+                step: 'INVESTIGATE_AND_FIX',
+                build_failure: {
+                  file: diag.file,
+                  line: diag.line,
+                  error: diag.error,
+                },
+                diagnostic_summary: diag.formattedText,
+                relevant_code_slice: diag.relevantSlice,
+                guidance: `DO NOT rewrite the entire project or file. Investigate line ${diag.line} of "${diag.file}". Apply a surgical fix using 'edit_file' and re-test with 'run_build'.`,
+              });
+            }
           }
           else if (name === 'preview_website') {
             toolResultText = JSON.stringify({
@@ -903,14 +1039,18 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
                 guidance: 'Build/test passed! Follow the agent loop: 1) Verify your changes, 2) Ensure all original components and styles remain intact, 3) Call "finish_task" to complete.'
               });
             } else {
+              const diag = AgenticCodingEngine.extractBuildDiagnostics(latestBuildResult, projectFiles);
               toolResultText = JSON.stringify({
                 status: 'FAIL',
                 step: 'INVESTIGATE_AND_FIX',
-                error: 'Build or test failed.',
-                errors: latestBuildResult.errors || [{ message: 'Build compilation or test failure' }],
-                logs: (latestBuildResult.logs || '').slice(-1200),
-                bundle_ready: false,
-                guidance: 'Build/test failed! Follow the agent loop: 1) Investigate the error logs above, 2) Read the relevant code using "read_file", 3) Apply fixes using "edit_file", 4) Test again using "run_build". Repeat until tests pass.'
+                build_failure: {
+                  file: diag.file,
+                  line: diag.line,
+                  error: diag.error,
+                },
+                diagnostic_summary: diag.formattedText,
+                relevant_code_slice: diag.relevantSlice,
+                guidance: `DO NOT rewrite the entire project or file. Investigate the failure at line ${diag.line} of "${diag.file}". Use 'read_file' if you need surrounding context, and apply a surgical fix using 'edit_file' (smallest safe modification). Then run 'run_build' to test again.`
               });
             }
           } 
@@ -964,11 +1104,14 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
                   message: 'Task completed, build verified, automated tests passed, and code preservation audit passed.',
                 });
               } else {
+                const diag = AgenticCodingEngine.extractBuildDiagnostics(latestBuildResult, projectFiles);
                 toolResultText = JSON.stringify({
                   status: 'BLOCKED',
                   step: 'INVESTIGATE_AND_FIX',
-                  error: 'Build must succeed before task can be finished. Please follow the loop: investigate errors with read_file, fix with edit_file, and test with run_build.',
-                  errors: latestBuildResult.errors,
+                  error: 'Build must succeed before task can be finished.',
+                  diagnostic_summary: diag.formattedText,
+                  relevant_code_slice: diag.relevantSlice,
+                  guidance: `DO NOT rewrite the entire project or file. Fix line ${diag.line} in "${diag.file}" using 'edit_file' and re-test with 'run_build'.`
                 });
               }
             }

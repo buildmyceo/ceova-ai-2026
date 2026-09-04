@@ -200,8 +200,9 @@ export class CloudDevOrchestrator {
 
         await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
 
+        const diag = AgenticCodingEngine.extractBuildDiagnostics(buildResult, generatedFiles);
         const agentFixResult = await AgenticCodingEngine.runModificationSession({
-          userPrompt: `Fix the following build compilation error:\nError: ${errorMsg}\nRecent logs:\n${buildResult.logs.slice(-1000)}`,
+          userPrompt: `Fix the following build failure:\n\n${diag.formattedText}\n\nDo not rewrite the entire project or file. Investigate line ${diag.line} of "${diag.file}" and apply a surgical fix using edit_file.`,
           projectId: project.id,
           projectName,
           slug,

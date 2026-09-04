@@ -612,12 +612,33 @@ export class CloudWorkerService {
         },
       });
 
+      // Extract structured error diagnostics (File, Line, Column, Message)
+      const parsedErrors: Array<{ file?: string; line?: number; column?: number; message: string }> = [];
+      const rawError = error.message || 'Build failed';
+
+      const fileLineMatch = rawError.match(/([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)(?:\((\d+),(\d+)\)|:(\d+)(?::(\d+))?)/);
+      if (fileLineMatch) {
+        parsedErrors.push({
+          file: fileLineMatch[1],
+          line: parseInt(fileLineMatch[2] || fileLineMatch[4], 10),
+          column: fileLineMatch[3] || fileLineMatch[5] ? parseInt(fileLineMatch[3] || fileLineMatch[5], 10) : undefined,
+          message: rawError.replace(fileLineMatch[0], '').replace(/^[\s\-:]+/, '').trim() || rawError,
+        });
+      } else {
+        const fileMatch = rawError.match(/\b([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)\b/);
+        parsedErrors.push({
+          file: fileMatch ? fileMatch[1] : 'index.html',
+          line: 1,
+          message: rawError,
+        });
+      }
+
       return {
         success: false,
         buildId,
         durationMs,
         logs,
-        errors: [{ message: error.message }],
+        errors: parsedErrors,
       };
     }
   }
@@ -722,7 +743,17 @@ export class CloudWorkerService {
       const openBraces = (file.content.match(/\{/g) || []).length;
       const closeBraces = (file.content.match(/\}/g) || []).length;
       if (Math.abs(openBraces - closeBraces) > 10) {
-        failures.push(`Syntax warning: Unbalanced braces in ${file.path}`);
+        const lines = file.content.split('\n');
+        let errorLine = 1;
+        let balance = 0;
+        for (let i = 0; i < lines.length; i++) {
+          balance += (lines[i].match(/\{/g) || []).length - (lines[i].match(/\}/g) || []).length;
+          if (Math.abs(balance) > 3) {
+            errorLine = i + 1;
+            break;
+          }
+        }
+        failures.push(`${file.path}:${errorLine} - Syntax error: Unbalanced braces detected.`);
         syntaxPassed = false;
       }
     }
@@ -739,8 +770,15 @@ export class CloudWorkerService {
       const openScripts = (indexHtml.content.match(/<script\b[^>]*>/gi) || []).length;
       const closeScripts = (indexHtml.content.match(/<\/script>/gi) || []).length;
       if (openScripts !== closeScripts) {
-        failures.push(`index.html has mismatched <script> tags: ${openScripts} opening vs ${closeScripts} closing. Ensure all <script> tags are closed.`);
-        logs += `  [FAIL] Test 4: Script tag closure check\n`;
+        const lines = indexHtml.content.split('\n');
+        let errorLine = 1;
+        for (let i = 0; i < lines.length; i++) {
+          if (/<script\b/i.test(lines[i])) {
+            errorLine = i + 1;
+          }
+        }
+        failures.push(`index.html:${errorLine} - HTML syntax error: mismatched <script> tags (${openScripts} opening vs ${closeScripts} closing). Ensure all <script> tags are closed.`);
+        logs += `  [FAIL] Test 4: Script tag closure check at line ${errorLine}\n`;
       } else {
         logs += `  [PASS] Test 4: Script tag closure check\n`;
       }
