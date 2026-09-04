@@ -16,6 +16,7 @@ export default function CloudProjectCard({ project }) {
     description,
     content = '',
     error = null,
+    isUpdate = false,
   } = project;
 
   const rawUrl = project.deploymentUrl || (slug ? `https://www.ceova.online/p/${slug}` : '');
@@ -38,7 +39,7 @@ export default function CloudProjectCard({ project }) {
       }
     }
     if (slug) return slug.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
-    return 'Cloud Application';
+    return 'Website';
   }, [name, content, slug]);
 
   const displayDescription = useMemo(() => {
@@ -52,7 +53,7 @@ export default function CloudProjectCard({ project }) {
 
       const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
       for (const l of lines) {
-        if (!l.startsWith('✨') && !l.startsWith('🎉') && !l.startsWith('**') && !l.startsWith('-') && !l.startsWith('🔗') && !l.startsWith('Live:') && !l.includes('http') && l.length > 15) {
+        if (!l.startsWith('✨') && !l.startsWith('🎉') && !l.startsWith('**') && !l.startsWith('-') && !l.startsWith('🔗') && !l.startsWith('Live:') && !l.startsWith('✓') && !l.includes('http') && l.length > 15) {
           return l;
         }
       }
@@ -64,7 +65,7 @@ export default function CloudProjectCard({ project }) {
     }
 
     const cleanName = displayProjectName.replace(/^(?:My\s+)?Cloud\s+Project$/i, 'website');
-    return `A responsive ${cleanName.toLowerCase().includes('website') || cleanName.toLowerCase().includes('app') ? cleanName : `${cleanName} website`} with menu, about, contact and custom interactive sections.`;
+    return `Responsive ${cleanName.toLowerCase().includes('website') || cleanName.toLowerCase().includes('app') ? cleanName : `${cleanName} website`} with menu, about, contact and custom interactive sections.`;
   }, [description, project.description, project.metadata, content, displayProjectName]);
 
   const openUrl = useMemo(() => {
@@ -73,7 +74,7 @@ export default function CloudProjectCard({ project }) {
     return `${deploymentUrl}${sep}_t=${Date.now()}`;
   }, [deploymentUrl, slug]);
 
-  // ─── 1. Completed State: Simple, clean website result message (v1) ───────────
+  // ─── 1. Completed State: Simple, clean website result message (Step 10) ───────────
   if (isReady) {
     return (
       <div
@@ -92,6 +93,22 @@ export default function CloudProjectCard({ project }) {
           boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
         }}
       >
+        {/* Status Header: ✓ Website updated or ✓ Website created */}
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '0.86rem',
+            fontWeight: 600,
+            color: '#10b981',
+            letterSpacing: '0.01em',
+          }}
+        >
+          <span style={{ fontSize: '0.95rem' }}>✓</span>
+          <span>{isUpdate ? 'Website updated' : 'Website created'}</span>
+        </div>
+
         {/* Website name */}
         <div
           style={{
@@ -128,7 +145,6 @@ export default function CloudProjectCard({ project }) {
             paddingTop: '2px',
           }}
         >
-          <span style={{ color: '#d4d4d8', fontWeight: 500 }}>Live:</span>
           <a
             href={openUrl}
             target="_blank"
@@ -162,7 +178,7 @@ export default function CloudProjectCard({ project }) {
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '8px 16px',
+              padding: '8px 18px',
               borderRadius: '8px',
               background: 'linear-gradient(135deg, #7c5cfc 0%, #6366f1 100%)',
               color: '#ffffff',
@@ -188,11 +204,12 @@ export default function CloudProjectCard({ project }) {
     );
   }
 
-  // ─── 2. In-Progress State: Clean, compact progress indicator ─────────────────
+  // ─── 2. In-Progress State: Simple, clean progress indicator (Step 10) ─────────────────
   if (inProgress) {
-    const statusNarrative = content
-      ? content.replace(/^[\s*#🎉✨🔗-]+/, '').split('\n')[0].trim()
-      : 'Ceova is generating your website...';
+    const isVerifying = stage === 'VERIFYING';
+    const statusNarrative = isVerifying
+      ? 'Verifying website...'
+      : (isUpdate ? 'Building website updates...' : 'Building website...');
 
     return (
       <div
@@ -213,10 +230,10 @@ export default function CloudProjectCard({ project }) {
         <Loader2 size={16} color="#a78bfa" style={{ animation: 'spin 1.2s linear infinite', flexShrink: 0 }} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '0.92rem', fontWeight: 600, color: '#ffffff' }}>
-            {displayProjectName || 'Creating Website…'}
+            {displayProjectName || 'Website'}
           </div>
           <div style={{ fontSize: '0.82rem', color: '#a1a1aa', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {statusNarrative || 'Ceova is generating your website...'}
+            {statusNarrative}
           </div>
         </div>
       </div>

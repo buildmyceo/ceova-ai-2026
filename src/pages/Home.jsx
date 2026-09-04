@@ -588,6 +588,7 @@ export default function Home({ session }) {
                                             description: parsed.description || currentCloudProject?.description || null,
                                             slug: parsed.slug,
                                             deploymentUrl: parsed.deploymentUrl,
+                                            isUpdate: parsed.isUpdate !== undefined ? parsed.isUpdate : (currentCloudProject?.isUpdate || false),
                                             files: parsed.files || currentCloudProject?.files || [],
                                             logs: parsed.logs || currentCloudProject?.logs || '',
                                             content: parsed.content || '',

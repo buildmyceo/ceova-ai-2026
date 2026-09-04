@@ -73,8 +73,9 @@ export class CloudDevOrchestrator {
     if (!project) {
       onProgress({
         type: 'project_progress',
-        stage: 'CREATING',
-        content: 'Creating isolated cloud workspace and reserving subdomain...',
+        stage: 'BUILDING',
+        isUpdate: false,
+        content: 'Building website...',
       });
 
       const metadata = await this.generateProjectMetadata(userPrompt, userId);
@@ -123,40 +124,15 @@ export class CloudDevOrchestrator {
 
     onProgress({
       type: 'project_progress',
-      stage: isUpdate ? 'PLANNING' : 'CREATING',
+      stage: 'BUILDING',
       projectId: project.id,
       slug: slug,
       deploymentUrl: deploymentUrl,
-      content: isUpdate 
-        ? `Updating existing website: ${deploymentUrl}` 
-        : `Reserved subdomain: ${deploymentUrl}`,
+      isUpdate,
+      content: isUpdate ? 'Building website updates...' : 'Building website...',
     });
 
-    onProgress({
-      type: 'project_progress',
-      stage: 'PLANNING',
-      projectId: project.id,
-      slug: slug,
-      deploymentUrl: deploymentUrl,
-      content: isUpdate 
-        ? `Ceova is architecting updates for ${projectName}...`
-        : 'Ceova is designing the application architecture, styling, and components...',
-    });
-
-    await supabaseAdmin.from('projects').update({ status: 'PLANNING' }).eq('id', project.id);
-
-    onProgress({
-      type: 'project_progress',
-      stage: 'GENERATING',
-      projectId: project.id,
-      slug: slug,
-      deploymentUrl: deploymentUrl,
-      content: isUpdate 
-        ? `Ceova is generating refined assets for ${projectName}...`
-        : 'Ceova is generating your custom application and responsive interface...',
-    });
-
-    await supabaseAdmin.from('projects').update({ status: 'GENERATING' }).eq('id', project.id);
+    await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
 
     let generatedFiles: ProjectFile[];
     let currentFiles: ProjectFile[] = [];
@@ -175,13 +151,14 @@ export class CloudDevOrchestrator {
       fileActivityLog += `[FILE] Created & wrote: ${file.path} (${file.content.length} bytes)\n`;
       onProgress({
         type: 'project_progress',
-        stage: 'GENERATING',
+        stage: 'BUILDING',
         projectId: project.id,
         slug: slug,
         deploymentUrl: deploymentUrl,
+        isUpdate,
         files: [...writtenFilesList],
         logs: fileActivityLog,
-        content: `Creating ${file.path}... (${writtenFilesList.length}/${generatedFiles.length})`,
+        content: isUpdate ? 'Building website updates...' : 'Building website...',
       });
       await new Promise(r => setTimeout(r, 80));
     }
@@ -207,9 +184,10 @@ export class CloudDevOrchestrator {
       projectId: project.id,
       slug: slug,
       deploymentUrl: deploymentUrl,
+      isUpdate,
       files: generatedFiles.map(f => f.path),
-      logs: fileActivityLog + `[SANDBOX] Validating and compiling bundle...\n`,
-      content: 'Ceova is compiling and verifying the production bundle...',
+      logs: fileActivityLog,
+      content: isUpdate ? 'Building website updates...' : 'Building website...',
     });
 
     await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
@@ -220,20 +198,21 @@ export class CloudDevOrchestrator {
     while (!buildResult.success && fixAttempts < this.MAX_FIX_ATTEMPTS) {
       fixAttempts++;
       const errorMsg = buildResult.errors?.[0]?.message || 'Build compilation error';
-      Logger.WARN(`[CloudDevOrchestrator] Build failed (attempt ${fixAttempts}/${this.MAX_FIX_ATTEMPTS}): ${errorMsg}`);
+      Logger.WARN(`[CloudDevOrchestrator] Build auto-optimizing (attempt ${fixAttempts}/${this.MAX_FIX_ATTEMPTS}): ${errorMsg}`);
 
       onProgress({
         type: 'project_progress',
-        stage: 'FIXING',
+        stage: 'BUILDING',
         projectId: project.id,
         slug: slug,
         deploymentUrl: deploymentUrl,
+        isUpdate,
         files: generatedFiles.map(f => f.path),
         logs: buildResult.logs,
-        content: `Build optimization required. Auto-resolving (Attempt ${fixAttempts}/${this.MAX_FIX_ATTEMPTS})...`,
+        content: isUpdate ? 'Building website updates...' : 'Building website...',
       });
 
-      await supabaseAdmin.from('projects').update({ status: 'FIXING' }).eq('id', project.id);
+      await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
 
       const currentFiles = await CloudWorkerService.getProjectFiles(project.id);
       const fixedFiles = await this.fixProjectErrors(userPrompt, currentFiles, errorMsg, buildResult.logs, userId);
@@ -245,16 +224,17 @@ export class CloudDevOrchestrator {
         projectId: project.id,
         slug: slug,
         deploymentUrl: deploymentUrl,
+        isUpdate,
         files: fixedFiles.map(f => f.path),
-        logs: buildResult.logs + `[FIX] Re-testing auto-fixed bundle...\n`,
-        content: `Re-running verification checks after auto-fix...`,
+        logs: buildResult.logs,
+        content: isUpdate ? 'Building website updates...' : 'Building website...',
       });
 
       buildResult = await CloudWorkerService.runBuild(project.id, userId);
     }
 
     if (!buildResult.success) {
-      const finalError = buildResult.errors?.[0]?.message || 'Build could not be resolved automatically.';
+      const finalError = buildResult.errors?.[0]?.message || 'Website building could not be completed.';
       await supabaseAdmin.from('projects').update({ status: 'FAILED' }).eq('id', project.id);
       onProgress({
         type: 'error',
@@ -266,16 +246,17 @@ export class CloudDevOrchestrator {
       throw new Error(`Project build failed: ${finalError}`);
     }
 
-    // ── STEP 5: COMPREHENSIVE 5-POINT VERIFICATION ──
+    // ── STEP 5: COMPREHENSIVE 5-POINT VERIFICATION (Internal check) ──
     onProgress({
       type: 'project_progress',
       stage: 'VERIFYING',
       projectId: project.id,
       slug: slug,
       deploymentUrl: deploymentUrl,
+      isUpdate,
       files: generatedFiles.map(f => f.path),
-      logs: fileActivityLog + `[VERIFY] Initiating 5-point modification verification...\n`,
-      content: 'Verifying modification integrity, change presence, and section preservation...',
+      logs: fileActivityLog,
+      content: 'Verifying website...',
     });
 
     const verification = await this.verifyModification({
@@ -302,16 +283,17 @@ export class CloudDevOrchestrator {
 
     onProgress({
       type: 'project_progress',
-      stage: 'DEPLOYING',
+      stage: 'VERIFYING',
       projectId: project.id,
       slug: slug,
       deploymentUrl: deploymentUrl,
+      isUpdate,
       files: generatedFiles.map(f => f.path),
-      logs: fileActivityLog + `[DEPLOY] Published bundle to edge hosting network\n`,
-      content: 'Deploying distribution bundle to global edge network...',
+      logs: fileActivityLog,
+      content: 'Verifying website...',
     });
 
-    const projectDescription = project.metadata?.description || `A responsive website created with custom sections and navigation.`;
+    const projectDescription = project.metadata?.description || `Responsive website with custom sections and navigation.`;
 
     // ── STEP 6: SNAPSHOT PROJECT METADATA (Requirements, Approved Plan, Files, Version, Live URL) ──
     const existingMeta = project.metadata || {};
@@ -358,7 +340,8 @@ export class CloudDevOrchestrator {
       Logger.WARN(`[CloudDevOrchestrator] Non-fatal error saving project metadata: ${e.message}`);
     }
 
-    const resultSummary = `${projectName}\n${projectDescription}\n\nLive: ${deploymentUrl}`;
+    const statusHeader = isUpdate ? '✓ Website updated' : '✓ Website created';
+    const resultSummary = `${statusHeader}\n\n${projectName}\n\n${projectDescription}\n\n${deploymentUrl}`;
 
     onProgress({
       type: 'cloud_project_ready',
@@ -368,8 +351,9 @@ export class CloudDevOrchestrator {
       description: projectDescription,
       slug: slug,
       deploymentUrl: deploymentUrl,
+      isUpdate,
       files: generatedFiles.map(f => f.path),
-      logs: fileActivityLog + `[READY] Verified and deployed live at: ${deploymentUrl}\n`,
+      logs: fileActivityLog + `[READY] Live at: ${deploymentUrl}\n`,
       content: resultSummary,
     });
 
