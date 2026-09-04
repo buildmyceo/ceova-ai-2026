@@ -184,7 +184,7 @@ export class CloudDevOrchestrator {
       while (!buildResult.success && fixAttempts < this.MAX_FIX_ATTEMPTS) {
         fixAttempts++;
         const errorMsg = buildResult.errors?.[0]?.message || 'Build compilation error';
-        Logger.WARN(`[CloudDevOrchestrator] Build auto-optimizing (attempt ${fixAttempts}/${this.MAX_FIX_ATTEMPTS}): ${errorMsg}`);
+        Logger.WARN(`[CloudDevOrchestrator] Build auto-optimizing via AgenticCodingEngine (attempt ${fixAttempts}/${this.MAX_FIX_ATTEMPTS}): ${errorMsg}`);
 
         onProgress({
           type: 'project_progress',
@@ -200,10 +200,18 @@ export class CloudDevOrchestrator {
 
         await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
 
-        const current = await CloudWorkerService.getProjectFiles(project.id);
-        const fixedFiles = await this.fixProjectErrors(userPrompt, current, errorMsg, buildResult.logs, userId);
-        await CloudWorkerService.writeProjectFiles(project.id, fixedFiles);
-        buildResult = await CloudWorkerService.runBuild(project.id, userId);
+        const agentFixResult = await AgenticCodingEngine.runModificationSession({
+          userPrompt: `Fix the following build compilation error:\nError: ${errorMsg}\nRecent logs:\n${buildResult.logs.slice(-1000)}`,
+          projectId: project.id,
+          projectName,
+          slug,
+          userId,
+          onProgress,
+        });
+
+        generatedFiles = agentFixResult.files;
+        buildResult = agentFixResult.buildResult;
+        if (buildResult.success) break;
       }
     }
 
@@ -456,50 +464,6 @@ Do NOT wrap your response in markdown code blocks. Output ONLY the [FILE: ...] b
     return [];
   }
 
-  /**
-   * Diagnoses and fixes compilation errors
-   */
-  private static async fixProjectErrors(
-    userPrompt: string,
-    files: ProjectFile[],
-    errorMessage: string,
-    buildLogs: string,
-    userId: string
-  ): Promise<ProjectFile[]> {
-    const systemPrompt = `You are an expert web developer debugging a static website hosted on an edge network.
-Fix the errors completely. Remember: NO build step, NO Node.js. Code runs directly in the browser.
-
-Return the corrected files using EXACTLY this format:
-[FILE: filename.ext]
-...corrected file content here...
-[/FILE]
-
-Do NOT wrap the response in markdown code blocks.`;
-
-    const filesContext = files.map(f => `=== FILE: ${f.path} ===\n${f.content}\n`).join('\n\n');
-    const userMessage = `Project prompt: "${userPrompt}"
-Build Error: ${errorMessage}
-
-Recent Build Logs:
-${buildLogs.slice(-1500)}
-
-Current Project Files:
-${filesContext}
-
-Fix all errors and return corrected files using the [FILE: path] format.`;
-
-    const messages: ChatMessage[] = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage },
-    ];
-
-    const response = await AIProviderService.generate(messages, userId, {
-      maxTokens: 16000,
-    });
-
-    const fixed = this.parseFilesFormat(response.content);
-    return fixed.length > 0 ? fixed : files;
-  }
 
   /**
    * Parse [FILE: path]...[/FILE] format into ProjectFiles (Truncation Tolerant)
@@ -533,102 +497,7 @@ Fix all errors and return corrected files using the [FILE: path] format.`;
     return files;
   }
 
-  /**
-   * Modifies existing project source files based on user feedback
-   */
-  private static async modifyProjectSource(
-    userPrompt: string,
-    existingFiles: ProjectFile[],
-    projectName: string,
-    slug: string,
-    userId: string
-  ): Promise<ProjectFile[]> {
-    const systemPrompt = `You are a senior web developer modifying an existing website.
 
-ENVIRONMENT: Static edge hosting. No Node.js, no build step. Code runs directly in the browser.
-
-CRITICAL PERSISTENCE & MODIFICATION RULES (NEVER REGENERATE UNNECESSARILY):
-1. EDIT THE EXISTING PROJECT — NEVER RESET OR CREATE AN UNRELATED REPLACEMENT:
-   - You are editing an ALREADY DEPLOYED website.
-   - You MUST work strictly within the existing codebase provided below in "Current Project Files".
-   - Do NOT rewrite or regenerate the website from scratch.
-   - Do NOT reset the design, typography, color palette, theme, or general styling.
-   - The website URL and slug remain IDENTICAL.
-
-2. MODIFY ONLY RELEVANT FILES & SECTIONS (SECTION-LEVEL EDITS):
-   - When the user asks to modify a specific section (such as "Change the hero section", "Update the menu", "Change the about section", "Update contact section"):
-     • Identify the exact file and component/section containing that content.
-     • Modify ONLY that target section according to the user's instructions.
-     • STRICTLY PRESERVE ALL OTHER SECTIONS IN FULL:
-       - Header / Navigation bar
-       - About section
-       - Services / Features section
-       - Menu / Products / Pricing section
-       - Testimonials / Reviews section
-       - Gallery / Media section
-       - Contact / Reservation form
-       - Footer
-       Every other existing section MUST REMAIN 100% INTACT in its entirety. Do NOT drop, truncate, or omit any existing sections!
-
-3. PRESERVE UNRELATED CODE & EXISTING FUNCTIONALITY:
-   - Do NOT overwrite unrelated code, styles, or helper scripts.
-   - Retain ALL existing interactive functionality: navigation links, smooth scroll anchors, mobile menu toggles, modal dialogs, form handling, carts, etc.
-   - Keep all existing IDs, CSS classes, and semantic structures unless directly asked to modify them.
-
-4. SURGICAL PRECISION FOR SMALL & ISOLATED EDITS:
-   - For small edits (e.g. "Change the restaurant name", "Make button text Order Now", "Change hero heading", "Change this image", "Make button slightly smaller", "Change contact number"):
-     • Identify the exact affected element, attribute, text node, or CSS rule.
-     • Modify ONLY that exact affected part in the existing code.
-     • PRESERVE EVERYTHING ELSE: Keep all other sections, layout structure, color schemes, typography, scripts, navigation, and content completely unchanged.
-     • Verify that the change actually works and does not break styling or interactive features.
-
-5. MULTI-PAGE & NAVIGATION (When requested):
-   - If the user asks to add or fix pages/views (e.g. Overview, Events, Calendar, Users, etc.), ensure ALL navigation items switch and render the full requested views cleanly (with functional JS view switching or separate HTML files). Ensure all buttons and links are fully interactive.
-
-6. TOKEN EFFICIENCY & SELECTIVE FILE RETURN:
-   - Return ONLY the file or files that actually need changes (e.g. if only index.html or styles.css is touched, return only that file).
-   - Do NOT return files that do not need any changes. All unreturned files will be preserved automatically.
-
-Return files using EXACTLY this format:
-[FILE: filename.ext]
-...updated file content here...
-[/FILE]
-
-Do NOT wrap the response in markdown code blocks.`;
-
-    const filesContext = existingFiles.map(f => '=== FILE: ' + f.path + ' ===\n' + f.content + '\n').join('\n\n');
-    const userMessage = `${userPrompt}
-
-Current Project Files:
-${filesContext}`;
-
-    const messages: ChatMessage[] = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage },
-    ];
-
-    const response = await AIProviderService.generate(messages, userId, {
-      maxTokens: 12000,
-    });
-
-    const parsedFiles = this.parseFilesFormat(response.content);
-    if (parsedFiles.length === 0) return existingFiles;
-
-    // Merge modified files with existing files so unchanged files are preserved without wasting tokens
-    const modifiedMap = new Map(parsedFiles.map(f => [f.path, f.content]));
-    const mergedFiles = existingFiles.map(existing => ({
-      path: existing.path,
-      content: modifiedMap.has(existing.path) ? modifiedMap.get(existing.path)! : existing.content
-    }));
-
-    for (const p of parsedFiles) {
-      if (!mergedFiles.some(m => m.path === p.path)) {
-        mergedFiles.push(p);
-      }
-    }
-
-    return mergedFiles;
-  }
 
   /**
    * AI-generated project name and slug
