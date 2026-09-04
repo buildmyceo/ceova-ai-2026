@@ -806,17 +806,34 @@ The agent MUST AVOID ACCIDENTALLY:
 8. Restructuring the project unnecessarily (e.g., moving files or reorganizing directories without explicit instructions).
 UNLESS the requested task genuinely and explicitly requires it.
 
-PROGRESSIVE TARGETED CONTEXT RETRIEVAL (CORE MANDATE):
-The principle: Retrieve ONLY the minimum sufficient context required to safely perform the task.
-You must progressively retrieve context in stages:
-Example: User asks "Change the hero background."
-   1. Search project: Call 'search_code' for the component (e.g. search_code({ query: "hero" })).
-   2. Find Hero component: Locate the component file or line number (e.g. src/components/Hero.jsx or index.html around line 50).
-   3. Read Hero component: Call 'read_file' with tight bounds (e.g. read_file({ path: "index.html", start_line: 45, end_line: 75 })).
-   4. Find associated styles: Identify referenced CSS classes, inline styles, or stylesheets (e.g. class="hero-bg" or styles.css).
-   5. Read relevant CSS: Search or read ONLY the associated CSS styles if defined in a stylesheet.
-   6. Make change: Apply surgical modifications with 'edit_file'.
-   7. Build and verify.
+THE MODEL CONTROLS THE INVESTIGATION (MANDATORY REQUIREMENT 16):
+The model (GPT-5.6 Luna) controls the investigation and decides the depth of investigation based on the task.
+Do NOT hard-code or follow a fixed sequence such as:
+- Always read App.jsx
+- Always read index.html
+- Always read package.json
+- Always read all CSS
+Instead, GPT-5.6 Luna autonomously determines what tools to call and what files to inspect.
+
+Examples:
+1. Targeted / Isolated Task (e.g. "Change footer copyright text."):
+   search → footer
+   read → Footer.jsx (or relevant footer section)
+   edit → Footer.jsx
+   build → success
+   done
+   (Do NOT read App.jsx, index.html, package.json, or CSS unless the task genuinely requires them).
+
+2. Architectural / Structural Task (e.g. "Convert the entire website to a different layout."):
+   inspect architecture (get_project_state / list_files)
+   → read relevant pages/components/styles
+   → plan changes
+   → edit multiple files
+   → build
+   → inspect
+   → fix
+   → verify
+   (The agent autonomously decides the depth of investigation).
 
 STRICT RULES - DO NOT RETRIEVE UNRELATED CONTEXT:
 - Do NOT retrieve Footer, Contact, About, Menu, or other unrelated components unless they are actually relevant.
@@ -834,7 +851,7 @@ Current Project File Structure:
 ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'}`;
 
     const initialUserPrompt = isExistingProject
-      ? `User Request: "${userPrompt}"\n\nProject: "${projectName}" (slug: ${slug})\nTask Scope: ${taskScope.toUpperCase()}\n\nWORKFLOW:\n${taskScope === 'simple' ? '1. Search: search_code\n2. Read: read_file (relevant code only)\n3. Edit: targeted edit_file\n4. Verify: run_build & finish_task (No unnecessary planning or broad context)' : '1. Understand & Inspect: inspect architecture & identify affected files\n2. Context: retrieve relevant context (may retrieve more files when genuinely needed)\n3. Implement: edit_file\n4. Build & Test: run_build (fix errors if failed)\n5. Verify: finish_task'}\n\nYou may use multiple tool calls in a single turn.`
+      ? `User Request: "${userPrompt}"\n\nProject: "${projectName}" (slug: ${slug})\nTask Scope: ${taskScope.toUpperCase()}\n\nNote: You control the depth and sequence of investigation based on the task. Do not follow a hard-coded sequence.\n\nYou may use multiple tool calls in a single turn.`
       : `User Request: "${userPrompt}"\n\nPlease implement this website using your tools in an iterative loop: inspect, write code, run_build to test (investigate and fix if fail), and call finish_task when verified. You may use multiple tool calls in a single turn.`;
 
     const messages: ChatMessage[] = [
@@ -1059,10 +1076,6 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
             if (fileIndex === -1) {
               toolResultText = JSON.stringify({ error: `Cannot edit "${path}": File does not exist.` });
-            } else if (projectFiles.length > 0 && !inspectedFiles.has(path)) {
-              toolResultText = JSON.stringify({
-                error: `Inspection required before editing: You have not inspected "${path}" yet. You must first search the project using 'search_code' to locate relevant files or call 'read_file' on "${path}" to read the surrounding context before editing. Do not guess where changes belong.`,
-              });
             } else {
               let existingContent = projectFiles[fileIndex].content;
               const edits: Array<{ target_content: string; replacement_content: string }> = [];
@@ -1103,8 +1116,11 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
                 let errorOccurred = false;
                 for (const edit of edits) {
                   if (!existingContent.includes(edit.target_content)) {
+                    const inspectHint = !inspectedFiles.has(path)
+                      ? ` You have not inspected "${path}" yet. Call 'search_code' or 'read_file' to locate exact lines and whitespace before editing.`
+                      : '';
                     toolResultText = JSON.stringify({
-                      error: `target_content was not found in "${path}". Ensure target_content matches exact characters including whitespace.`,
+                      error: `target_content was not found in "${path}". Ensure target_content matches exact characters including whitespace.${inspectHint}`,
                     });
                     errorOccurred = true;
                     break;
@@ -1122,6 +1138,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
                 if (!errorOccurred) {
                   projectFiles[fileIndex].content = existingContent;
+                  inspectedFiles.add(path);
                   // Persist to worker DB
                   await CloudWorkerService.writeProjectFiles(projectId, [{ path, content: existingContent }]);
                   toolResultText = JSON.stringify({
