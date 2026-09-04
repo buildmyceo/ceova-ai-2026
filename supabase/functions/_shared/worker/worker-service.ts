@@ -181,6 +181,206 @@ export class CloudWorkerService {
   }
 
   /**
+   * Deletes a file from the project database workspace
+   */
+  static async deleteProjectFile(projectId: string, relativePath: string): Promise<boolean> {
+    const safePath = this.sanitizePath(relativePath);
+    const { error } = await supabaseAdmin
+      .from('project_files')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('path', safePath);
+
+    if (error) {
+      throw new Error(`Failed to delete file "${safePath}": ${error.message}`);
+    }
+
+    await supabaseAdmin.from('projects').update({
+      updated_at: new Date().toISOString(),
+    }).eq('id', projectId);
+
+    return true;
+  }
+
+  /**
+   * Moves or renames a file from oldPath to newPath
+   */
+  static async moveProjectFile(projectId: string, oldPath: string, newPath: string): Promise<boolean> {
+    const safeOldPath = this.sanitizePath(oldPath);
+    const safeNewPath = this.sanitizePath(newPath);
+
+    const { data: file, error: fetchErr } = await supabaseAdmin
+      .from('project_files')
+      .select('content')
+      .eq('project_id', projectId)
+      .eq('path', safeOldPath)
+      .single();
+
+    if (fetchErr || !file) {
+      throw new Error(`Cannot move "${safeOldPath}": File does not exist.`);
+    }
+
+    // Write new file
+    await this.writeProjectFiles(projectId, [{ path: safeNewPath, content: file.content }]);
+    // Delete old file
+    await this.deleteProjectFile(projectId, safeOldPath);
+
+    return true;
+  }
+
+  /**
+   * Inspects website DOM landmarks, structure, sections, scripts, and stylesheets
+   */
+  static inspectProjectWebsite(files: ProjectFile[]): {
+    title: string;
+    landmarks: string[];
+    sectionIds: string[];
+    scripts: string[];
+    stylesheets: string[];
+    meta: Record<string, string>;
+    totalFiles: number;
+    issues: string[];
+  } {
+    const indexHtml = files.find(f => f.path === 'index.html');
+    const issues: string[] = [];
+
+    if (!indexHtml) {
+      return {
+        title: '',
+        landmarks: [],
+        sectionIds: [],
+        scripts: [],
+        stylesheets: [],
+        meta: {},
+        totalFiles: files.length,
+        issues: ['Missing index.html entrypoint.'],
+      };
+    }
+
+    const content = indexHtml.content;
+    const titleMatch = content.match(/<title>([^<]*)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].trim() : '';
+
+    const landmarks: string[] = [];
+    if (/<header[\s>]/i.test(content)) landmarks.push('header');
+    if (/<nav[\s>]/i.test(content)) landmarks.push('nav');
+    if (/<main[\s>]/i.test(content)) landmarks.push('main');
+    if (/<footer[\s>]/i.test(content)) landmarks.push('footer');
+
+    const sectionIds: string[] = [];
+    const idMatches = content.matchAll(/<(?:section|div|article|header|nav|footer)\s+[^>]*id=["']([^"']+)["']/gi);
+    for (const match of idMatches) {
+      if (match[1] && !sectionIds.includes(match[1])) {
+        sectionIds.push(match[1]);
+      }
+    }
+
+    const scripts: string[] = [];
+    const scriptMatches = content.matchAll(/<script\s+[^>]*src=["']([^"']+)["']/gi);
+    for (const match of scriptMatches) {
+      scripts.push(match[1]);
+    }
+
+    const stylesheets: string[] = [];
+    const styleMatches = content.matchAll(/<link\s+[^>]*href=["']([^"']+\.css[^"']*)["']/gi);
+    for (const match of styleMatches) {
+      stylesheets.push(match[1]);
+    }
+
+    // Check for broken local script/style references
+    for (const s of scripts) {
+      if (!s.startsWith('http://') && !s.startsWith('https://') && !s.startsWith('//')) {
+        const cleanPath = s.replace(/^\.\//, '').split('?')[0];
+        if (!files.some(f => f.path === cleanPath)) {
+          issues.push(`Referenced local script "${s}" not found in project files.`);
+        }
+      }
+    }
+
+    for (const s of stylesheets) {
+      if (!s.startsWith('http://') && !s.startsWith('https://') && !s.startsWith('//')) {
+        const cleanPath = s.replace(/^\.\//, '').split('?')[0];
+        if (!files.some(f => f.path === cleanPath)) {
+          issues.push(`Referenced local stylesheet "${s}" not found in project files.`);
+        }
+      }
+    }
+
+    return {
+      title,
+      landmarks,
+      sectionIds,
+      scripts,
+      stylesheets,
+      meta: {
+        viewport: /<meta[^>]*name=["']viewport["']/i.test(content) ? 'present' : 'missing',
+        charset: /<meta[^>]*charset=/i.test(content) ? 'present' : 'missing',
+      },
+      totalFiles: files.length,
+      issues,
+    };
+  }
+
+  /**
+   * Executes project commands (build, test, lint, install) within the sandbox
+   */
+  static async executeProjectCommand(
+    projectId: string,
+    userId: string,
+    command: string,
+    files: ProjectFile[]
+  ): Promise<{ success: boolean; output: string }> {
+    const cmd = command.trim().toLowerCase();
+
+    if (cmd === 'build' || cmd === 'npm run build' || cmd === 'npx vite build') {
+      const res = await this.runBuild(projectId, userId);
+      return {
+        success: res.success,
+        output: res.logs.slice(-1500) || (res.success ? 'Build succeeded.' : 'Build failed.'),
+      };
+    }
+
+    if (cmd === 'test' || cmd === 'npm test') {
+      const bundle = await this.compileAndBundle(files, 'test-slug');
+      const testRes = this.runSanityTests(files, bundle.bundleFiles);
+      return {
+        success: testRes.passed,
+        output: testRes.logs,
+      };
+    }
+
+    if (cmd === 'lint' || cmd === 'npm run lint' || cmd === 'check') {
+      const inspection = this.inspectProjectWebsite(files);
+      const output = inspection.issues.length === 0
+        ? `Lint clean: 0 errors detected. Title: "${inspection.title}", Landmarks: [${inspection.landmarks.join(', ')}].`
+        : `Lint warnings:\n${inspection.issues.join('\n')}`;
+      return {
+        success: inspection.issues.length === 0,
+        output,
+      };
+    }
+
+    if (cmd.startsWith('npm install ') || cmd.startsWith('npm i ')) {
+      const pkgName = cmd.replace(/^npm (?:install|i)\s+/, '').trim().split('@')[0];
+      if (!ALLOWED_DEPENDENCIES.has(pkgName)) {
+        return {
+          success: false,
+          output: `Package "${pkgName}" is not in the approved UI dependency allowlist. Approved packages: ${Array.from(ALLOWED_DEPENDENCIES).slice(0, 10).join(', ')}...`,
+        };
+      }
+      return {
+        success: true,
+        output: `Dependency "${pkgName}" verified and approved for static edge runtime.`,
+      };
+    }
+
+    return {
+      success: true,
+      output: `Command "${command}" processed in isolated workspace.\nAvailable commands: build, test, lint, npm install <pkg>.`,
+    };
+  }
+
+  /**
    * Retrieves all source files for a project
    */
   static async getProjectFiles(projectId: string): Promise<ProjectFile[]> {

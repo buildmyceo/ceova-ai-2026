@@ -35,8 +35,19 @@ export class AgenticCodingEngine {
       {
         type: 'function' as const,
         function: {
+          name: 'list_files',
+          description: 'Lists all files in the project workspace with their relative paths, sizes, and line counts.',
+          parameters: {
+            type: 'object',
+            properties: {},
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
           name: 'search_code',
-          description: 'Fast keyword search across project files. Returns matching line numbers and snippets to locate exact code.',
+          description: 'Fast keyword or pattern search across project files. Returns matching line numbers and snippets.',
           parameters: {
             type: 'object',
             properties: {
@@ -44,17 +55,6 @@ export class AgenticCodingEngine {
               path: { type: 'string', description: 'Optional relative path to search within (e.g. "index.html")' },
             },
             required: ['query'],
-          },
-        },
-      },
-      {
-        type: 'function' as const,
-        function: {
-          name: 'list_files',
-          description: 'Lists all files in the project workspace with their path and size.',
-          parameters: {
-            type: 'object',
-            properties: {},
           },
         },
       },
@@ -77,29 +77,31 @@ export class AgenticCodingEngine {
       {
         type: 'function' as const,
         function: {
-          name: 'edit_file',
-          description: 'Performs a surgical replacement of an exact snippet of text within an existing file. Avoids rewriting the entire file.',
+          name: 'read_files',
+          description: 'Batch reads multiple files at once. Returns the contents or headers of requested files.',
           parameters: {
             type: 'object',
             properties: {
-              path: { type: 'string', description: 'Relative path of the file to edit' },
-              target_content: { type: 'string', description: 'The exact character sequence to replace. Must match the existing file content uniquely.' },
-              replacement_content: { type: 'string', description: 'The new replacement code to insert in place of target_content.' },
+              paths: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Array of relative file paths to read',
+              },
             },
-            required: ['path', 'target_content', 'replacement_content'],
+            required: ['paths'],
           },
         },
       },
       {
         type: 'function' as const,
         function: {
-          name: 'write_file',
-          description: 'Writes a complete file (creates a new file or replaces entire content of an existing file). Use edit_file instead for small edits.',
+          name: 'create_file',
+          description: 'Creates a new file in the project with the specified content.',
           parameters: {
             type: 'object',
             properties: {
-              path: { type: 'string', description: 'Relative path of the file' },
-              content: { type: 'string', description: 'Complete content of the file' },
+              path: { type: 'string', description: 'Relative path of the new file (e.g. "src/components/Gallery.jsx")' },
+              content: { type: 'string', description: 'Content to write to the file' },
             },
             required: ['path', 'content'],
           },
@@ -108,8 +110,134 @@ export class AgenticCodingEngine {
       {
         type: 'function' as const,
         function: {
+          name: 'edit_file',
+          description: 'Performs a surgical replacement of an exact snippet of text within an existing file. Avoids rewriting the entire file.',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'Relative path of the file to edit' },
+              target_content: { type: 'string', description: 'The exact character sequence to replace. Must match the existing file content uniquely.' },
+              replacement_content: { type: 'string', description: 'The new replacement code to insert in place of target_content.' },
+              changes: {
+                type: 'array',
+                description: 'Optional array of changes [{ target_content, replacement_content }]',
+                items: {
+                  type: 'object',
+                  properties: {
+                    target_content: { type: 'string' },
+                    replacement_content: { type: 'string' },
+                  },
+                  required: ['target_content', 'replacement_content'],
+                },
+              },
+            },
+            required: ['path'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'delete_file',
+          description: 'Deletes an unwanted or obsolete file from the project workspace.',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'Relative path of the file to delete' },
+            },
+            required: ['path'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'move_file',
+          description: 'Moves or renames a file from old_path to new_path.',
+          parameters: {
+            type: 'object',
+            properties: {
+              old_path: { type: 'string', description: 'Current relative path of the file' },
+              new_path: { type: 'string', description: 'New relative path for the file' },
+            },
+            required: ['old_path', 'new_path'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'run_command',
+          description: 'Executes a project command in the isolated workspace (e.g. "build", "test", "lint", "npm install <pkg>").',
+          parameters: {
+            type: 'object',
+            properties: {
+              command: { type: 'string', description: 'Command to run (e.g. "build", "test", "lint")' },
+            },
+            required: ['command'],
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_build_status',
+          description: 'Checks the status of the current project build, compilation duration, and deployment status.',
+          parameters: {
+            type: 'object',
+            properties: {},
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_build_errors',
+          description: 'Retrieves detailed compilation errors, test failures, and recent compiler diagnostic logs.',
+          parameters: {
+            type: 'object',
+            properties: {},
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'preview_website',
+          description: 'Gets the current live sandbox preview URL and deployment readiness status.',
+          parameters: {
+            type: 'object',
+            properties: {},
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'inspect_website',
+          description: 'Inspects website HTML structure, DOM landmarks, section IDs, linked scripts, and stylesheets for integrity.',
+          parameters: {
+            type: 'object',
+            properties: {},
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'deploy_website',
+          description: 'Runs final build verification, packages a new release version, and activates it on the live URL.',
+          parameters: {
+            type: 'object',
+            properties: {},
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
           name: 'run_build',
-          description: 'Runs the isolated build compiler and tests. Returns compilation success, build logs, and any compiler/runtime errors.',
+          description: 'Compiles the bundle, runs sanity tests, and verifies code integrity in the isolated sandbox.',
           parameters: {
             type: 'object',
             properties: {},
@@ -171,25 +299,31 @@ ENVIRONMENT & WORKSPACE RULES:
 - Deployment URL: "https://www.ceova.online/p/${slug}"
 
 CODEX-STYLE AGENTIC CODING WORKFLOW:
-You work strictly through tools:
+You have access to a full suite of project-level coding tools:
+- Discovery & Navigation: 'list_files', 'search_code', 'read_file', 'read_files', 'inspect_website'
+- Code Manipulation: 'edit_file', 'create_file', 'delete_file', 'move_file'
+- Execution & Verification: 'run_command' (e.g. build, test, lint), 'run_build', 'get_build_status', 'get_build_errors', 'preview_website', 'deploy_website'
+- Task Completion: 'finish_task'
+
+Recommended workflow:
 1. SEARCH & LOCATE: Call 'search_code' to find the exact line numbers of the text, heading, button, or component you need to modify.
-2. RETRIEVE SURROUNDING CONTEXT: Call 'read_file' with 'start_line' and 'end_line' (e.g. 15-20 lines around the match) to inspect the exact syntax and indentation.
-3. SURGICAL EDIT: Call 'edit_file' with the exact matching 'target_content' and 'replacement_content'.
-4. RUN BUILD: Call 'run_build' to compile the bundle in the isolated sandbox.
-5. VERIFY & FIX: If run_build reports an error, inspect the log, fix it with 'edit_file', and run_build again.
-6. FINISH: Call 'finish_task' with a concise summary once 'run_build' succeeds.
+2. RETRIEVE CONTEXT: Call 'read_file' with 'start_line' and 'end_line' (or 'read_files') to inspect exact code and indentation.
+3. SURGICAL EDIT: Call 'edit_file' with matching 'target_content' and 'replacement_content' (or use 'create_file'/'delete_file'/'move_file' if structural).
+4. BUILD & VERIFY: Call 'run_command' (command: "build") or 'run_build' or 'deploy_website' to verify compilation.
+5. INSPECT & FIX: If errors occur, inspect logs or call 'get_build_errors', fix with 'edit_file', and verify again.
+6. FINISH: Call 'finish_task' with a concise summary once the build succeeds and the changes are verified.
 
 CRITICAL MODIFICATION RULES:
 - Never overwrite unrelated sections or delete existing functionality (Navigation, About, Menu, Contact, Footer, etc. must remain intact).
 - Make precise, surgical modifications.
-- Always call 'run_build' and ensure it passes before calling 'finish_task'.
+- Ensure the project builds cleanly before calling 'finish_task'.
 
 Current Project File Structure:
 ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'}`;
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `User Request: "${userPrompt}"\n\nPlease implement this change using your tools. Search the code, inspect the surrounding lines, make surgical edits, verify with run_build, and call finish_task when done.` }
+      { role: 'user', content: `User Request: "${userPrompt}"\n\nPlease implement this change using your tools. Search the code, inspect the surrounding lines, make surgical edits, verify with build, and call finish_task when done.` }
     ];
 
     let turns = 0;
@@ -241,7 +375,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
         }
         messages.push({
           role: 'user',
-          content: 'Please use your available tools (edit_file, read_file, run_build, or finish_task) to execute this task.',
+          content: 'Please use your available tools (search_code, read_file, edit_file, create_file, run_command, deploy_website, or finish_task) to execute this task.',
         });
         continue;
       }
@@ -313,42 +447,84 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
                 content: slicedLines,
               });
             }
-          } 
+          }
+          else if (name === 'read_files') {
+            const paths: string[] = Array.isArray(args.paths) ? args.paths : [];
+            const results: any[] = [];
+
+            for (const rawPath of paths.slice(0, 10)) {
+              const p = CloudWorkerService.sanitizePath(rawPath);
+              const file = projectFiles.find(f => f.path === p);
+              if (!file) {
+                results.push({ path: p, error: 'File not found' });
+              } else {
+                const lines = file.content.split('\n');
+                const lineSlice = lines.slice(0, 80).map((l, i) => `${i + 1}: ${l}`).join('\n');
+                results.push({
+                  path: p,
+                  total_lines: lines.length,
+                  showing_lines: `1-${Math.min(80, lines.length)}`,
+                  content: lineSlice,
+                });
+              }
+            }
+
+            toolResultText = JSON.stringify({ files: results });
+          }
           else if (name === 'edit_file') {
             const path = CloudWorkerService.sanitizePath(args.path);
-            const targetContent = args.target_content;
-            const replacementContent = args.replacement_content;
-
             const fileIndex = projectFiles.findIndex(f => f.path === path);
+
             if (fileIndex === -1) {
               toolResultText = JSON.stringify({ error: `Cannot edit "${path}": File does not exist.` });
             } else {
-              const existingContent = projectFiles[fileIndex].content;
-              if (!existingContent.includes(targetContent)) {
-                toolResultText = JSON.stringify({
-                  error: `target_content was not found in "${path}". Ensure target_content matches exact characters including whitespace.`,
-                });
+              let existingContent = projectFiles[fileIndex].content;
+              const edits: Array<{ target_content: string; replacement_content: string }> = [];
+
+              if (Array.isArray(args.changes) && args.changes.length > 0) {
+                edits.push(...args.changes);
+              } else if (args.target_content !== undefined && args.replacement_content !== undefined) {
+                edits.push({ target_content: args.target_content, replacement_content: args.replacement_content });
+              }
+
+              if (edits.length === 0) {
+                toolResultText = JSON.stringify({ error: 'Missing target_content and replacement_content, or changes array.' });
               } else {
-                const occurrences = existingContent.split(targetContent).length - 1;
-                if (occurrences > 1) {
-                  toolResultText = JSON.stringify({
-                    error: `target_content matches ${occurrences} places in "${path}". Provide more surrounding context so it matches uniquely.`,
-                  });
-                } else {
-                  const updatedContent = existingContent.replace(targetContent, replacementContent);
-                  projectFiles[fileIndex].content = updatedContent;
+                let errorOccurred = false;
+                for (const edit of edits) {
+                  if (!existingContent.includes(edit.target_content)) {
+                    toolResultText = JSON.stringify({
+                      error: `target_content was not found in "${path}". Ensure target_content matches exact characters including whitespace.`,
+                    });
+                    errorOccurred = true;
+                    break;
+                  }
+                  const occurrences = existingContent.split(edit.target_content).length - 1;
+                  if (occurrences > 1) {
+                    toolResultText = JSON.stringify({
+                      error: `target_content matches ${occurrences} places in "${path}". Provide more surrounding context so it matches uniquely.`,
+                    });
+                    errorOccurred = true;
+                    break;
+                  }
+                  existingContent = existingContent.replace(edit.target_content, edit.replacement_content);
+                }
+
+                if (!errorOccurred) {
+                  projectFiles[fileIndex].content = existingContent;
                   // Persist to worker DB
-                  await CloudWorkerService.writeProjectFiles(projectId, [{ path, content: updatedContent }]);
+                  await CloudWorkerService.writeProjectFiles(projectId, [{ path, content: existingContent }]);
                   toolResultText = JSON.stringify({
                     success: true,
                     path,
+                    edits_applied: edits.length,
                     message: `Successfully edited "${path}" with surgical replacement.`,
                   });
                 }
               }
             }
-          } 
-          else if (name === 'write_file') {
+          }
+          else if (name === 'create_file' || name === 'write_file') {
             const path = CloudWorkerService.sanitizePath(args.path);
             const content = args.content || '';
 
@@ -368,21 +544,97 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
               bytes_written: content.length,
               message: `Successfully written "${path}".`,
             });
-          } 
-          else if (name === 'run_build') {
+          }
+          else if (name === 'delete_file') {
+            const path = CloudWorkerService.sanitizePath(args.path);
+            const fileIndex = projectFiles.findIndex(f => f.path === path);
+
+            if (fileIndex === -1) {
+              toolResultText = JSON.stringify({ error: `Cannot delete "${path}": File does not exist.` });
+            } else {
+              projectFiles.splice(fileIndex, 1);
+              await CloudWorkerService.deleteProjectFile(projectId, path);
+              toolResultText = JSON.stringify({
+                success: true,
+                path,
+                message: `Successfully deleted "${path}".`,
+              });
+            }
+          }
+          else if (name === 'move_file') {
+            const oldPath = CloudWorkerService.sanitizePath(args.old_path);
+            const newPath = CloudWorkerService.sanitizePath(args.new_path);
+
+            const fileIndex = projectFiles.findIndex(f => f.path === oldPath);
+            if (fileIndex === -1) {
+              toolResultText = JSON.stringify({ error: `Cannot move "${oldPath}": Source file does not exist.` });
+            } else {
+              projectFiles[fileIndex].path = newPath;
+              await CloudWorkerService.moveProjectFile(projectId, oldPath, newPath);
+              toolResultText = JSON.stringify({
+                success: true,
+                old_path: oldPath,
+                new_path: newPath,
+                message: `Successfully moved "${oldPath}" to "${newPath}".`,
+              });
+            }
+          }
+          else if (name === 'run_command') {
+            const command = args.command || '';
+            const cmdRes = await CloudWorkerService.executeProjectCommand(projectId, userId, command, projectFiles);
+
+            const lowerCmd = command.trim().toLowerCase();
+            if (lowerCmd === 'build' || lowerCmd === 'npm run build' || lowerCmd === 'npx vite build') {
+              latestBuildResult = await CloudWorkerService.runBuild(projectId, userId);
+            }
+
+            toolResultText = JSON.stringify({
+              command,
+              success: cmdRes.success,
+              output: cmdRes.output,
+            });
+          }
+          else if (name === 'get_build_status') {
+            toolResultText = JSON.stringify({
+              success: latestBuildResult.success,
+              buildId: latestBuildResult.buildId || 'none',
+              durationMs: latestBuildResult.durationMs || 0,
+              status: latestBuildResult.success ? 'READY' : 'NEEDS_BUILD',
+              deploymentUrl: `https://www.ceova.online/p/${slug}`,
+            });
+          }
+          else if (name === 'get_build_errors') {
+            toolResultText = JSON.stringify({
+              errors: latestBuildResult.errors || [],
+              logs: (latestBuildResult.logs || '').slice(-1500),
+            });
+          }
+          else if (name === 'preview_website') {
+            toolResultText = JSON.stringify({
+              deploymentUrl: `https://www.ceova.online/p/${slug}`,
+              status: latestBuildResult.success ? 'READY' : 'BUILD_REQUIRED',
+            });
+          }
+          else if (name === 'inspect_website') {
+            const inspection = CloudWorkerService.inspectProjectWebsite(projectFiles);
+            toolResultText = JSON.stringify(inspection);
+          }
+          else if (name === 'deploy_website' || name === 'run_build') {
             onProgress?.({
               type: 'project_progress',
               stage: 'BUILDING',
               projectId,
               slug,
               isUpdate: true,
-              content: 'Building website updates...',
+              content: 'Building and deploying website release...',
             });
 
             latestBuildResult = await CloudWorkerService.runBuild(projectId, userId);
 
             toolResultText = JSON.stringify({
               success: latestBuildResult.success,
+              deploymentUrl: `https://www.ceova.online/p/${slug}`,
+              version: latestBuildResult.versionNumber,
               errors: latestBuildResult.errors || [],
               logs: latestBuildResult.logs.slice(-1200),
               bundle_ready: latestBuildResult.success,
@@ -413,7 +665,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             } else {
               toolResultText = JSON.stringify({
                 status: 'BLOCKED',
-                error: 'Build must succeed before task can be finished. Please fix remaining build errors and run_build again.',
+                error: 'Build must succeed before task can be finished. Please fix remaining build errors and run_build or deploy_website again.',
                 errors: latestBuildResult.errors,
               });
             }
