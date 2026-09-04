@@ -43,8 +43,17 @@ async function checkOpenAI(): Promise<CheckResult> {
     if (!key) return { status: 'degraded', error: 'No OpenAI key configured' };
     const start = Date.now();
     try {
-        const res = await fetch('https://api.openai.com/v1/models', {
-            headers: { 'Authorization': `Bearer ${key}` },
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${key}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: 'gpt-5.6-luna',
+                messages: [{ role: 'user', content: 'ping' }],
+                max_completion_tokens: 10,
+            }),
             signal: AbortSignal.timeout(5000),
         });
         return { status: res.ok ? 'ok' : 'degraded', latencyMs: Date.now() - start };

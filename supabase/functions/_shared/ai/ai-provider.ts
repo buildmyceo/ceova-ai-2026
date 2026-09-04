@@ -90,15 +90,23 @@ export class AIProviderService {
       try {
         Logger.INFO(`[AIProvider] Requesting ${resolvedModel} (Attempt ${attempt}/4)`);
 
+        const isLuna = resolvedModel.includes('luna');
         const requestBody: Record<string, any> = {
           model: resolvedModel,
           messages: messages,
           max_completion_tokens: maxTokens,
         };
 
+        if (!isLuna && options.temperature !== undefined) {
+          requestBody.temperature = options.temperature;
+        }
+
         if (options.tools && options.tools.length > 0) {
           requestBody.tools = options.tools;
           requestBody.tool_choice = options.toolChoice || "auto";
+          if (isLuna) {
+            requestBody.reasoning_effort = "none";
+          }
         }
 
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -133,11 +141,32 @@ export class AIProviderService {
             }
           }
 
-          // 2. If model not found or does not exist on key, fallback gracefully to FALLBACK_MODEL (gpt-4o)
-          if ((response.status === 404 || response.status === 400 || errText.includes("model_not_found") || errText.includes("does not exist")) && resolvedModel !== this.FALLBACK_MODEL) {
-            Logger.WARN(`[AIProvider] ${resolvedModel} invocation error, falling back to ${this.FALLBACK_MODEL}`);
+          // 2. If reasoning_effort needed for tools, retry with reasoning_effort: 'none'
+          if (errText.includes("reasoning_effort") && !requestBody.reasoning_effort) {
+            Logger.WARN(`[AIProvider] Setting reasoning_effort: none for ${resolvedModel}`);
+            requestBody.reasoning_effort = "none";
+            delete requestBody.temperature;
+            const retryRes = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(requestBody),
+              signal: AbortSignal.timeout(timeoutMs),
+            });
+            if (retryRes.ok) {
+              const data = await retryRes.json();
+              return this.parseResponse(data, userId, resolvedModel);
+            }
+          }
+
+          // 3. If model genuinely not found on key (404), fallback gracefully to FALLBACK_MODEL (gpt-4o)
+          if ((response.status === 404 || errText.includes("model_not_found")) && resolvedModel !== this.FALLBACK_MODEL) {
+            Logger.WARN(`[AIProvider] ${resolvedModel} not found on key, falling back to ${this.FALLBACK_MODEL}`);
             resolvedModel = this.FALLBACK_MODEL;
             requestBody.model = this.FALLBACK_MODEL;
+            delete requestBody.reasoning_effort;
             delete requestBody.temperature;
             
             const fallbackRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -271,18 +300,25 @@ export class AIProviderService {
     const maxTokens = options.maxTokens ?? 4000;
     const temperature = options.temperature ?? 0.7;
 
+    const isLuna = this.MODEL_NAME.includes('luna');
     const requestBody: Record<string, any> = {
       model: this.MODEL_NAME,
       messages: messages,
       max_completion_tokens: maxTokens,
-      temperature: temperature,
       stream: true,
       stream_options: { include_usage: true },
     };
 
+    if (!isLuna) {
+      requestBody.temperature = temperature;
+    }
+
     if (options.tools && options.tools.length > 0) {
       requestBody.tools = options.tools;
       requestBody.tool_choice = options.toolChoice || "auto";
+      if (isLuna) {
+        requestBody.reasoning_effort = "none";
+      }
     }
 
     const res = await fetch("https://api.openai.com/v1/chat/completions", {

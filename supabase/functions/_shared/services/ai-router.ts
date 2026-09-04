@@ -66,9 +66,12 @@ export class AIRouter {
                 if (options.tools && options.tools.length > 0) {
                     requestBody.tools = options.tools;
                     requestBody.tool_choice = "auto";
+                    if (currentModel.includes('luna')) {
+                        requestBody.reasoning_effort = "none";
+                    }
                 }
 
-                const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                let response = await fetch("https://api.openai.com/v1/chat/completions", {
                     method: "POST",
                     headers: {
                         "Authorization": `Bearer ${apiKey}`,
@@ -80,7 +83,23 @@ export class AIRouter {
 
                 if (!response.ok) {
                     const errText = await response.text();
-                    throw new Error(`OpenAI HTTP ${response.status}: ${errText}`);
+                    if (errText.includes("reasoning_effort") && !requestBody.reasoning_effort) {
+                        Logger.WARN(`[AIRouter] Setting reasoning_effort: none for ${currentModel}`);
+                        requestBody.reasoning_effort = "none";
+                        delete requestBody.temperature;
+                        response = await fetch("https://api.openai.com/v1/chat/completions", {
+                            method: "POST",
+                            headers: {
+                                "Authorization": `Bearer ${apiKey}`,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify(requestBody),
+                            signal: AbortSignal.timeout(60000)
+                        });
+                    }
+                    if (!response.ok) {
+                        throw new Error(`OpenAI HTTP ${response.status}: ${await response.text()}`);
+                    }
                 }
 
                 const data = await response.json();
