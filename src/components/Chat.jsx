@@ -393,12 +393,19 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
   const resolvedCloudProject = useMemo(() => {
     if (msg.cloudProject) return msg.cloudProject;
     if (!isUser && rawText && typeof rawText === 'string') {
-      const match = rawText.match(/https:\/\/([a-z0-9-]+)\.ceova\.online/i) || rawText.match(/https:\/\/ceova\.online\/([a-z0-9-]+)/i);
-      if (match) {
+      const pathMatch = rawText.match(/https?:\/\/(?:www\.)?ceova\.online\/p\/([a-z0-9-]+)/i);
+      const subMatch = rawText.match(/https?:\/\/([a-z0-9-]+)\.ceova\.online/i);
+      const legacyMatch = rawText.match(/https?:\/\/(?:www\.)?ceova\.online\/([a-z0-9-]+)/i);
+
+      const slug = pathMatch ? pathMatch[1] :
+        (subMatch && subMatch[1] !== 'www' && subMatch[1] !== 'app' ? subMatch[1] :
+        (legacyMatch && !['p', 'api', 'auth', 'app'].includes(legacyMatch[1].toLowerCase()) ? legacyMatch[1] : null));
+
+      if (slug) {
         return {
           stage: 'READY',
-          slug: match[1],
-          deploymentUrl: match[0],
+          slug: slug,
+          deploymentUrl: `https://www.ceova.online/p/${slug}`,
           content: rawText
         };
       }

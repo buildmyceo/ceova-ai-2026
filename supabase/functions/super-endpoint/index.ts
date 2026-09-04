@@ -108,6 +108,7 @@ serve(async (req) => {
         const { z } = await import("https://deno.land/x/zod@v3.22.4/mod.ts");
         const requestSchema = z.object({
             message: z.string().max(50000).optional().default(""),
+            project_id: z.string().optional(),
             history: z.array(z.object({
                 role: z.enum(['user', 'assistant', 'system']),
                 content: z.string(),
@@ -139,7 +140,7 @@ serve(async (req) => {
             });
         }
 
-        const { history, message: rawMessage, attachments, has_local_folder, is_thinking } = parseResult.data;
+        const { history, message: rawMessage, attachments, has_local_folder, is_thinking, project_id: clientProjectId } = parseResult.data;
 
         if (!rawMessage && attachments.length === 0) {
             return new Response(JSON.stringify({ error: "Message or attachment is required" }), {
@@ -302,25 +303,62 @@ serve(async (req) => {
                     }
 
                     // ── Cloud Development Fast Path & Follow-up Iteration ────────────────────
-                    let existingProjectId: string | undefined;
+                    let existingProjectId: string | undefined = clientProjectId;
                     let existingSlug: string | undefined;
 
-                    if (history && Array.isArray(history) && history.length > 0) {
-                        for (const msg of history.slice().reverse()) {
-                            if (msg.attachments && Array.isArray(msg.attachments)) {
-                                const cloudProj = msg.attachments.find((a: any) => a.type === 'cloud_project');
-                                if (cloudProj?.data?.projectId) {
-                                    existingProjectId = cloudProj.data.projectId;
-                                    existingSlug = cloudProj.data.slug;
-                                    break;
+                    // 1. If client sent a valid project_id, fetch slug from database
+                    if (existingProjectId) {
+                        try {
+                            const { data: proj } = await supabaseAdmin
+                                .from('projects')
+                                .select('id, slug, name')
+                                .eq('id', existingProjectId)
+                                .maybeSingle();
+                            if (proj) {
+                                existingSlug = proj.slug;
+                            } else {
+                                existingProjectId = undefined;
+                            }
+                        } catch {}
+                    }
+
+                    // 2. Scan attachments in history
+                    if (!existingProjectId) {
+                        if (history && Array.isArray(history) && history.length > 0) {
+                            for (const msg of history.slice().reverse()) {
+                                if (msg.attachments && Array.isArray(msg.attachments)) {
+                                    const cloudProj = msg.attachments.find((a: any) => a.type === 'cloud_project');
+                                    if (cloudProj?.data?.projectId) {
+                                        existingProjectId = cloudProj.data.projectId;
+                                        existingSlug = cloudProj.data.slug;
+                                        break;
+                                    }
                                 }
                             }
-                            if (typeof msg.content === 'string') {
-                                const urlMatch = msg.content.match(/https:\/\/(?:[a-z0-9-]+\.)?ceova\.online\/([a-z0-9-]+)/i) || msg.content.match(/https:\/\/([a-z0-9-]+)\.ceova\.online/i);
-                                if (urlMatch) {
-                                    existingSlug = urlMatch[1];
-                                    break;
-                                }
+                        }
+                    }
+
+                    // 3. Scan URLs in current message and history
+                    if (!existingSlug && !existingProjectId) {
+                        const allTexts = [rawMessage];
+                        if (history && Array.isArray(history)) {
+                            for (const msg of history.slice().reverse()) {
+                                if (typeof msg.content === 'string') allTexts.push(msg.content);
+                            }
+                        }
+                        for (const txt of allTexts) {
+                            if (!txt) continue;
+                            const pathMatch = txt.match(/https?:\/\/(?:www\.)?ceova\.online\/p\/([a-z0-9-]+)/i);
+                            const subMatch = txt.match(/https?:\/\/([a-z0-9-]+)\.ceova\.online/i);
+                            const legacyMatch = txt.match(/https?:\/\/(?:www\.)?ceova\.online\/([a-z0-9-]+)/i);
+
+                            const foundSlug = pathMatch ? pathMatch[1] : 
+                                (subMatch && subMatch[1] !== 'www' && subMatch[1] !== 'app' ? subMatch[1] : 
+                                (legacyMatch && !['p', 'api', 'auth', 'app'].includes(legacyMatch[1].toLowerCase()) ? legacyMatch[1] : null));
+
+                            if (foundSlug) {
+                                existingSlug = foundSlug;
+                                break;
                             }
                         }
                     }
@@ -338,6 +376,29 @@ serve(async (req) => {
                         } catch {}
                     }
 
+                    // 4. Fail-safe DB check: If still not resolved, check if message is an update to an existing website
+                    if (!existingProjectId) {
+                        const isUpdateRequest = /change|update|modify|edit|fix|add|remove|hero|heading|button|menu|section|footer|navbar|styles|color/i.test(rawMessage) ||
+                            (history && history.some((m: any) => typeof m.content === 'string' && (m.content.includes('ceova.online') || m.content.includes('Website Implementation Plan'))));
+
+                        if (isUpdateRequest) {
+                            try {
+                                const { data: latestProj } = await supabaseAdmin
+                                    .from('projects')
+                                    .select('id, slug, name')
+                                    .eq('user_id', user.id)
+                                    .order('updated_at', { ascending: false })
+                                    .limit(1)
+                                    .maybeSingle();
+
+                                if (latestProj) {
+                                    existingProjectId = latestProj.id;
+                                    existingSlug = latestProj.slug;
+                                }
+                            } catch {}
+                        }
+                    }
+
                     // ── Build slim, intent-driven system prompt ───────────────────────────────
                     // Tool schemas are injected ONLY when the intent router selected them.
                     // For casual chat, zero tool tokens are sent to OpenAI.
@@ -346,7 +407,7 @@ serve(async (req) => {
                     const writeFilesExample = `{"tool_call":{"tool":"write_local_files","args":{"files":[{"filename":"index.html","content":"<!DOCTYPE html>\\\\n<html lang=\\\\"en\\\\"><head><meta charset=\\\\"UTF-8\\\\"><title>My Site</title><link rel=\\\\"stylesheet\\\\" href=\\\\"styles.css\\\\"></head><body>...</body></html>"},{"filename":"styles.css","content":"* { box-sizing: border-box; } body { margin: 0; }"},{"filename":"script.js","content":"document.addEventListener(\\\\"DOMContentLoaded\\\\", () => { console.log(\\\\"ready\\\\"); });"}]}}}`;
 
                     const existingProjectContext = existingProjectId
-                        ? `\n- ACTIVE CLOUD PROJECT ID: "${existingProjectId}" (slug: "${existingSlug}", deployment URL: "https://www.ceova.online/p/${existingSlug}"). When modifying, updating, or adding pages to this website, call \`create_project\` with 'project_id': "${existingProjectId}" and the update description. When generating a QR code for this website, use the deployment URL: https://www.ceova.online/p/${existingSlug}`
+                        ? `\n- ACTIVE CLOUD PROJECT: Project ID "${existingProjectId}", slug "${existingSlug}", live URL: "https://www.ceova.online/p/${existingSlug}".\n  CRITICAL: This website ALREADY EXISTS. When the user asks to modify, update, change sections (e.g. "Change the hero section"), or add pages:\n  • You MUST EDIT THIS EXISTING PROJECT by calling \`create_project\` with 'project_id': "${existingProjectId}".\n  • DO NOT create a second or new website.\n  • The existing URL ("https://www.ceova.online/p/${existingSlug}") MUST remain the same.\n  • Modify only the relevant files/components. Preserve all other existing sections, styles, navigation, and functionality.\n  • When generating a QR code for this website, use the deployment URL: https://www.ceova.online/p/${existingSlug}`
                         : '';
 
                     const toolsSection = hasTools
@@ -416,7 +477,20 @@ For these small changes, CEOVA must:
 6. Keep the rest of the website unchanged.
 7. Do not regenerate the entire website unnecessarily.
 
-7. 'write_local_files' is ONLY for saving files directly to local folders on user's machine. For websites on ceova.online, ALWAYS use \`create_project\`.\n\nCRITICAL write_local_files RULE:\nThe 'files' array MUST contain complete code for EVERY file. Example of a CORRECT call:\n${writeFilesExample}\n\nTOOL RULES:\n- gmail_connector: Require a valid '@' email before sending.\n- write_local_files: Please provide the actual file content for all required files. Do not send an empty files array. NEVER send placeholder files.\n- run_terminal_command: Use for npm install, running scripts, shell commands.\n- qr_barcode: When generating a QR code for a website, use the EXACT deployment URL from the ACTIVE CLOUD PROJECT context (e.g. https://www.ceova.online/p/<slug>) or the EXACT URL the user explicitly provided. NEVER invent, guess, or modify the URL. If the user provides a specific URL, use it EXACTLY as given including any path and fragment (e.g. #section).\n- invoice_generator: Collect all billing details first.\n- image_analysis / background_remover: Only when an image is attached.\nn${hasImage ? '- The user has attached an image.' : ''}\n\nTool call format (output ONLY this JSON — no text before or after):\n{"tool_call":{"tool":"<tool_id>","args":{"key":"value"}}}`
+7. CHANGES MUST ACTUALLY PERSIST CORRECTLY:
+When the user asks CEOVA to modify an existing website, the system must edit the existing project, not create an unrelated replacement website.
+For example:
+Existing Website -> User: "Change the hero section" -> Identify existing project -> Modify only relevant files/components -> Build -> Verify -> Deploy updated version -> Same website URL.
+The existing URL ("https://www.ceova.online/p/${existingSlug}") must remain the same unless the user explicitly asks to change it.
+Do not accidentally:
+• create a second website
+• lose existing sections (e.g. when changing the hero section, KEEP Navbar, About, Services, Menu, Contact, Footer intact)
+• overwrite unrelated code
+• remove existing functionality
+• reset the design
+• regenerate everything unnecessarily
+
+8. 'write_local_files' is ONLY for saving files directly to local folders on user's machine. For websites on ceova.online, ALWAYS use \`create_project\`.\n\nCRITICAL write_local_files RULE:\nThe 'files' array MUST contain complete code for EVERY file. Example of a CORRECT call:\n${writeFilesExample}\n\nTOOL RULES:\n- gmail_connector: Require a valid '@' email before sending.\n- write_local_files: Please provide the actual file content for all required files. Do not send an empty files array. NEVER send placeholder files.\n- run_terminal_command: Use for npm install, running scripts, shell commands.\n- qr_barcode: When generating a QR code for a website, use the EXACT deployment URL from the ACTIVE CLOUD PROJECT context (e.g. https://www.ceova.online/p/<slug>) or the EXACT URL the user explicitly provided. NEVER invent, guess, or modify the URL. If the user provides a specific URL, use it EXACTLY as given including any path and fragment (e.g. #section).\n- invoice_generator: Collect all billing details first.\n- image_analysis / background_remover: Only when an image is attached.\nn${hasImage ? '- The user has attached an image.' : ''}\n\nTool call format (output ONLY this JSON — no text before or after):\n{"tool_call":{"tool":"<tool_id>","args":{"key":"value"}}}`
                         : `\n\nCEOVA CAPABILITIES (no tools needed for this message):\n${CAPABILITY_SUMMARY}`;
 
                     const baseDirective = is_thinking 

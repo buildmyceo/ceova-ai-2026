@@ -486,30 +486,45 @@ Fix all errors and return corrected files using the [FILE: path] format.`;
 
 ENVIRONMENT: Static edge hosting. No Node.js, no build step. Code runs directly in the browser.
 
-CRITICAL MODIFICATION RULES:
-1. SURGICAL PRECISION & PRESERVATION FOR SMALL / ISOLATED CHANGES:
-   - When the user asks for a small, isolated change (such as:
-     • "Change the restaurant name" / title / brand
-     • "Make the button text 'Order Now'" / button label / link text
-     • "Change the hero heading" / subheading / copy
-     • "Change this image" / icon / media URL
-     • "Make the button slightly smaller" / micro styling / padding / color / font size
-     • "Change the contact number" / phone / email / address / social link):
-     You MUST:
-     a. Identify the exact affected element, attribute, text node, or CSS rule.
-     b. Modify ONLY that exact affected part in the existing code.
-     c. PRESERVE EVERYTHING ELSE: Keep all other sections, layout structure, color schemes, typography, scripts, navigation, and content completely unchanged.
-     d. Verify that the change actually works and does not break styling or interactive features.
-     e. Keep the rest of the website unchanged. Do NOT redesign, rewrite, or regenerate the entire website unnecessarily!
+CRITICAL PERSISTENCE & MODIFICATION RULES (NEVER REGENERATE UNNECESSARILY):
+1. EDIT THE EXISTING PROJECT — NEVER RESET OR CREATE AN UNRELATED REPLACEMENT:
+   - You are editing an ALREADY DEPLOYED website.
+   - You MUST work strictly within the existing codebase provided below in "Current Project Files".
+   - Do NOT rewrite or regenerate the website from scratch.
+   - Do NOT reset the design, typography, color palette, theme, or general styling.
+   - The website URL and slug remain IDENTICAL.
 
-2. ACCURACY & INSTRUCTION FOLLOWING:
-   - If the user provides specific instructions, values, text, or URLs, you MUST apply them EXACTLY.
-   - Do NOT invent unwanted redesigns or modify unrelated sections when the user asked for a specific edit.
+2. MODIFY ONLY RELEVANT FILES & SECTIONS (SECTION-LEVEL EDITS):
+   - When the user asks to modify a specific section (such as "Change the hero section", "Update the menu", "Change the about section", "Update contact section"):
+     • Identify the exact file and component/section containing that content.
+     • Modify ONLY that target section according to the user's instructions.
+     • STRICTLY PRESERVE ALL OTHER SECTIONS IN FULL:
+       - Header / Navigation bar
+       - About section
+       - Services / Features section
+       - Menu / Products / Pricing section
+       - Testimonials / Reviews section
+       - Gallery / Media section
+       - Contact / Reservation form
+       - Footer
+       Every other existing section MUST REMAIN 100% INTACT in its entirety. Do NOT drop, truncate, or omit any existing sections!
 
-3. MULTI-PAGE & NAVIGATION (When requested):
+3. PRESERVE UNRELATED CODE & EXISTING FUNCTIONALITY:
+   - Do NOT overwrite unrelated code, styles, or helper scripts.
+   - Retain ALL existing interactive functionality: navigation links, smooth scroll anchors, mobile menu toggles, modal dialogs, form handling, carts, etc.
+   - Keep all existing IDs, CSS classes, and semantic structures unless directly asked to modify them.
+
+4. SURGICAL PRECISION FOR SMALL & ISOLATED EDITS:
+   - For small edits (e.g. "Change the restaurant name", "Make button text Order Now", "Change hero heading", "Change this image", "Make button slightly smaller", "Change contact number"):
+     • Identify the exact affected element, attribute, text node, or CSS rule.
+     • Modify ONLY that exact affected part in the existing code.
+     • PRESERVE EVERYTHING ELSE: Keep all other sections, layout structure, color schemes, typography, scripts, navigation, and content completely unchanged.
+     • Verify that the change actually works and does not break styling or interactive features.
+
+5. MULTI-PAGE & NAVIGATION (When requested):
    - If the user asks to add or fix pages/views (e.g. Overview, Events, Calendar, Users, etc.), ensure ALL navigation items switch and render the full requested views cleanly (with functional JS view switching or separate HTML files). Ensure all buttons and links are fully interactive.
 
-4. TOKEN EFFICIENCY & SELECTIVE FILE RETURN:
+6. TOKEN EFFICIENCY & SELECTIVE FILE RETURN:
    - Return ONLY the file or files that actually need changes (e.g. if only index.html or styles.css is touched, return only that file).
    - Do NOT return files that do not need any changes. All unreturned files will be preserved automatically.
 

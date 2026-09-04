@@ -75,7 +75,27 @@ export class CreateProjectTool implements Tool {
   async execute(context: ToolContext): Promise<ToolResult> {
     try {
       const prompt = context.args?.description || context.args?.name || context.message || 'Create a web project';
-      const projectId = context.args?.project_id || context.existingProjectId;
+      let projectId = context.args?.project_id || context.existingProjectId;
+
+      // Fail-safe: If projectId is missing, check if this is an update request
+      // and lookup the user's most recent active project in Supabase
+      if (!projectId) {
+        const isUpdateRequest = /change|update|modify|edit|fix|add to|remove from|replace|make the|hero|navbar|menu|footer|heading|button|section|style/i.test(prompt) ||
+                                /change|update|modify|edit|fix|add to|remove from|replace|make the|hero|navbar|menu|footer|heading|button|section|style/i.test(context.message || '');
+        if (isUpdateRequest) {
+          const { data: latestProj } = await supabaseAdmin
+            .from('projects')
+            .select('id, slug, name')
+            .eq('user_id', context.userId)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (latestProj) {
+            projectId = latestProj.id;
+          }
+        }
+      }
       
       const onProgress = context.sendEvent || ((event: any) => {
         if (context.onStatusUpdate && event.stage) {

@@ -486,6 +486,12 @@ export default function Home({ session }) {
             })) 
             : [];
 
+        const activeCloudProject = currentMessages.slice().reverse().find(m => 
+            m.cloudProject?.projectId || m.attachments?.some(a => a.type === 'cloud_project' && a.data?.projectId)
+        );
+        const activeProjectId = activeCloudProject?.cloudProject?.projectId || 
+            activeCloudProject?.attachments?.find(a => a.type === 'cloud_project')?.data?.projectId;
+
         try {
             const token = session?.access_token || SUPABASE_KEY;
             let aiRawText = "";
@@ -495,6 +501,7 @@ export default function Home({ session }) {
             // Cloud fetch directly to super-endpoint
                 const reqBody = {
                     message: text,
+                    project_id: activeProjectId || undefined,
                     history: historyForAI,
                     attachments: currentAttachments.length > 0 ? currentAttachments : [],
                     is_temporary: isTemporary,
