@@ -1296,6 +1296,7 @@ export default function Home({ session }) {
                 <Chat 
                     messages={chats[currentChatId] || []}
                     isLoading={isLoading} 
+                    onSuggestionClick={(text) => handleSend([], text)}
                     localDirectoryHandle={localDirectoryHandle}
                     setLocalDirectoryHandle={setLocalDirectoryHandle}
                     onEditRequest={(msg) => {
