@@ -9,7 +9,8 @@
  */
 
 import { AIProviderService, ChatMessage } from './ai-provider.ts';
-import { CloudWorkerService, ProjectFile } from '../worker/worker-service.ts';
+import { AgenticCodingEngine } from './agentic-coding-engine.ts';
+import { CloudWorkerService, ProjectFile, BuildResult } from '../worker/worker-service.ts';
 import { generateProjectSlug } from '../tools/cloud-tools.ts';
 import { Logger } from '../services/logger.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
@@ -136,34 +137,75 @@ export class CloudDevOrchestrator {
 
     let generatedFiles: ProjectFile[];
     let currentFiles: ProjectFile[] = [];
+    let fileActivityLog = '';
+    let buildResult: BuildResult;
+
     if (isUpdate) {
       currentFiles = await CloudWorkerService.getProjectFiles(project.id);
-      generatedFiles = await this.modifyProjectSource(userPrompt, currentFiles, projectName, slug, userId);
+      fileActivityLog += `[AGENT] Starting autonomous Codex-style coding session for update...\n`;
+
+      const agentResult = await AgenticCodingEngine.runModificationSession({
+        userPrompt,
+        projectId: project.id,
+        projectName,
+        slug,
+        userId,
+        onProgress,
+      });
+
+      generatedFiles = agentResult.files;
+      buildResult = agentResult.buildResult;
+      fileActivityLog += `[AGENT] Coding session finished in ${agentResult.turns} turns: ${agentResult.summary}\n`;
     } else {
       generatedFiles = await this.generateProjectSource(userPrompt, projectName, slug, userId);
+
+      const writtenFilesList: string[] = [];
+      for (const file of generatedFiles) {
+        writtenFilesList.push(file.path);
+        fileActivityLog += `[FILE] Created & wrote: ${file.path} (${file.content.length} bytes)\n`;
+        onProgress({
+          type: 'project_progress',
+          stage: 'BUILDING',
+          projectId: project.id,
+          slug: slug,
+          deploymentUrl: deploymentUrl,
+          isUpdate,
+          files: [...writtenFilesList],
+          logs: fileActivityLog,
+          content: 'Building website...',
+        });
+        await new Promise(r => setTimeout(r, 60));
+      }
+
+      await CloudWorkerService.writeProjectFiles(project.id, generatedFiles);
+      buildResult = await CloudWorkerService.runBuild(project.id, userId);
+
+      let fixAttempts = 0;
+      while (!buildResult.success && fixAttempts < this.MAX_FIX_ATTEMPTS) {
+        fixAttempts++;
+        const errorMsg = buildResult.errors?.[0]?.message || 'Build compilation error';
+        Logger.WARN(`[CloudDevOrchestrator] Build auto-optimizing (attempt ${fixAttempts}/${this.MAX_FIX_ATTEMPTS}): ${errorMsg}`);
+
+        onProgress({
+          type: 'project_progress',
+          stage: 'BUILDING',
+          projectId: project.id,
+          slug: slug,
+          deploymentUrl: deploymentUrl,
+          isUpdate,
+          files: generatedFiles.map(f => f.path),
+          logs: buildResult.logs,
+          content: 'Building website...',
+        });
+
+        await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
+
+        const current = await CloudWorkerService.getProjectFiles(project.id);
+        const fixedFiles = await this.fixProjectErrors(userPrompt, current, errorMsg, buildResult.logs, userId);
+        await CloudWorkerService.writeProjectFiles(project.id, fixedFiles);
+        buildResult = await CloudWorkerService.runBuild(project.id, userId);
+      }
     }
-
-    const writtenFilesList: string[] = [];
-    let fileActivityLog = '';
-
-    for (const file of generatedFiles) {
-      writtenFilesList.push(file.path);
-      fileActivityLog += `[FILE] Created & wrote: ${file.path} (${file.content.length} bytes)\n`;
-      onProgress({
-        type: 'project_progress',
-        stage: 'BUILDING',
-        projectId: project.id,
-        slug: slug,
-        deploymentUrl: deploymentUrl,
-        isUpdate,
-        files: [...writtenFilesList],
-        logs: fileActivityLog,
-        content: isUpdate ? 'Building website updates...' : 'Building website...',
-      });
-      await new Promise(r => setTimeout(r, 80));
-    }
-
-    await CloudWorkerService.writeProjectFiles(project.id, generatedFiles);
 
     // Detect if website name changed from the generated index.html <title>
     const indexFile = generatedFiles.find(f => f.path === 'index.html' || f.path.endsWith('/index.html'));
@@ -176,61 +218,6 @@ export class CloudDevOrchestrator {
           await supabaseAdmin.from('projects').update({ name: projectName }).eq('id', project.id);
         }
       }
-    }
-
-    onProgress({
-      type: 'project_progress',
-      stage: 'BUILDING',
-      projectId: project.id,
-      slug: slug,
-      deploymentUrl: deploymentUrl,
-      isUpdate,
-      files: generatedFiles.map(f => f.path),
-      logs: fileActivityLog,
-      content: isUpdate ? 'Building website updates...' : 'Building website...',
-    });
-
-    await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
-
-    let buildResult = await CloudWorkerService.runBuild(project.id, userId);
-
-    let fixAttempts = 0;
-    while (!buildResult.success && fixAttempts < this.MAX_FIX_ATTEMPTS) {
-      fixAttempts++;
-      const errorMsg = buildResult.errors?.[0]?.message || 'Build compilation error';
-      Logger.WARN(`[CloudDevOrchestrator] Build auto-optimizing (attempt ${fixAttempts}/${this.MAX_FIX_ATTEMPTS}): ${errorMsg}`);
-
-      onProgress({
-        type: 'project_progress',
-        stage: 'BUILDING',
-        projectId: project.id,
-        slug: slug,
-        deploymentUrl: deploymentUrl,
-        isUpdate,
-        files: generatedFiles.map(f => f.path),
-        logs: buildResult.logs,
-        content: isUpdate ? 'Building website updates...' : 'Building website...',
-      });
-
-      await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
-
-      const currentFiles = await CloudWorkerService.getProjectFiles(project.id);
-      const fixedFiles = await this.fixProjectErrors(userPrompt, currentFiles, errorMsg, buildResult.logs, userId);
-      await CloudWorkerService.writeProjectFiles(project.id, fixedFiles);
-
-      onProgress({
-        type: 'project_progress',
-        stage: 'BUILDING',
-        projectId: project.id,
-        slug: slug,
-        deploymentUrl: deploymentUrl,
-        isUpdate,
-        files: fixedFiles.map(f => f.path),
-        logs: buildResult.logs,
-        content: isUpdate ? 'Building website updates...' : 'Building website...',
-      });
-
-      buildResult = await CloudWorkerService.runBuild(project.id, userId);
     }
 
     if (!buildResult.success) {

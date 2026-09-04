@@ -211,7 +211,7 @@ export class ReadProjectFileTool implements Tool {
   metadata: ToolMetadata = {
     id: 'read_project_file',
     name: 'Read Project File',
-    description: 'Reads the content of a file from the project workspace.',
+    description: 'Reads the content of a file from the project workspace. Optionally specify start_line and end_line.',
     category: 'CloudDev',
     icon: 'FileText',
     requiresImage: false,
@@ -222,6 +222,8 @@ export class ReadProjectFileTool implements Tool {
       properties: {
         project_id: { type: 'string', description: 'The project UUID' },
         path: { type: 'string', description: 'Relative path of the file to read' },
+        start_line: { type: 'number', description: 'Optional 1-indexed start line number' },
+        end_line: { type: 'number', description: 'Optional 1-indexed end line number' },
       },
       required: ['project_id', 'path'],
     },
@@ -244,16 +246,104 @@ export class ReadProjectFileTool implements Tool {
         return { success: false, error: { code: 'FILE_NOT_FOUND', message: `File "${path}" not found.` } };
       }
 
+      let content = file.content;
+      const lines = content.split('\n');
+      if (context.args?.start_line || context.args?.end_line) {
+        const startLine = Math.max(1, parseInt(context.args.start_line || '1', 10));
+        const endLine = Math.min(lines.length, parseInt(context.args.end_line || `${lines.length}`, 10));
+        content = lines.slice(startLine - 1, endLine).map((l: string, i: number) => `${startLine + i}: ${l}`).join('\n');
+      }
+
       return {
         success: true,
         data: {
           path,
-          content: file.content,
+          content,
+          total_lines: lines.length,
           size_bytes: file.size_bytes,
         },
       };
     } catch (e: any) {
       return { success: false, error: { code: 'READ_ERROR', message: e.message } };
+    }
+  }
+}
+
+/**
+ * Tool: Edit Project File (Surgical Replacement)
+ */
+export class EditProjectFileTool implements Tool {
+  metadata: ToolMetadata = {
+    id: 'edit_project_file',
+    name: 'Edit Project File',
+    description: 'Surgically replaces a unique substring of code within an existing project file without rewriting the whole file.',
+    category: 'CloudDev',
+    icon: 'Edit3',
+    requiresImage: false,
+    requiresAuth: true,
+    enabled: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'The project UUID' },
+        path: { type: 'string', description: 'Relative path of the file to edit' },
+        target_content: { type: 'string', description: 'Exact string to replace (must match existing content uniquely)' },
+        replacement_content: { type: 'string', description: 'Replacement string' },
+      },
+      required: ['project_id', 'path', 'target_content', 'replacement_content'],
+    },
+  };
+
+  async execute(context: ToolContext): Promise<ToolResult> {
+    try {
+      const projectId = context.args?.project_id;
+      const path = CloudWorkerService.sanitizePath(context.args?.path);
+      const targetContent = context.args?.target_content;
+      const replacementContent = context.args?.replacement_content;
+      await verifyProjectOwnership(projectId, context.userId);
+
+      const { data: file, error } = await supabaseAdmin
+        .from('project_files')
+        .select('content')
+        .eq('project_id', projectId)
+        .eq('path', path)
+        .single();
+
+      if (error || !file) {
+        return { success: false, error: { code: 'FILE_NOT_FOUND', message: `File "${path}" not found.` } };
+      }
+
+      if (!file.content.includes(targetContent) || file.content.split(targetContent).length - 1 > 1) {
+        // Delegate to CloudDevOrchestrator / AgenticCodingEngine to handle surgical edit via multi-turn loop
+        const result = await CloudDevOrchestrator.buildAndDeployProject(
+          context.message || `Replace ${targetContent} with ${replacementContent} in ${path}`,
+          context.userId,
+          context.sendEvent,
+          projectId
+        );
+        return {
+          success: true,
+          data: {
+            path,
+            message: `Successfully edited "${path}" and verified build.`,
+            deployment_url: result.deploymentUrl,
+          },
+        };
+      }
+
+      const updated = file.content.replace(targetContent, replacementContent);
+      await CloudWorkerService.writeProjectFiles(projectId, [{ path, content: updated }]);
+      await CloudWorkerService.runBuild(projectId, context.userId);
+
+      return {
+        success: true,
+        data: {
+          path,
+          message: `Successfully edited "${path}".`,
+        },
+      };
+    } catch (e: any) {
+      return { success: false, error: { code: 'EDIT_ERROR', message: e.message } };
     }
   }
 }
@@ -564,6 +654,7 @@ export class DeployProjectTool implements Tool {
 export const cloudDevelopmentTools: Tool[] = [
   new CreateProjectTool(),
   new WriteProjectFileTool(),
+  new EditProjectFileTool(),
   new ReadProjectFileTool(),
   new ListProjectFilesTool(),
   new InstallProjectDependencyTool(),

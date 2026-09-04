@@ -21,9 +21,10 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string;
+  content: string | null;
   tool_call_id?: string;
   name?: string;
+  tool_calls?: any[];
 }
 
 export interface AIProviderOptions {
@@ -44,6 +45,7 @@ export interface AIProviderResult {
       arguments: Record<string, any>;
     };
   }>;
+  rawToolCalls?: any[];
   usage: {
     promptTokens: number;
     completionTokens: number;
@@ -83,10 +85,10 @@ export class AIProviderService {
     let errorMsg = "";
     let resolvedModel = this.MODEL_NAME;
 
-    // Retry loop with exponential backoff (Max 3 attempts)
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    // Retry loop with exponential backoff (Max 4 attempts)
+    for (let attempt = 1; attempt <= 4; attempt++) {
       try {
-        Logger.INFO(`[AIProvider] Requesting ${resolvedModel} (Attempt ${attempt}/3)`);
+        Logger.INFO(`[AIProvider] Requesting ${resolvedModel} (Attempt ${attempt}/4)`);
 
         const requestBody: Record<string, any> = {
           model: resolvedModel,
@@ -156,6 +158,18 @@ export class AIProviderService {
             return this.parseResponse(data, userId, resolvedModel);
           }
 
+          // 3. If rate limited (429), wait and retry dynamically
+          if (response.status === 429 || errText.includes("rate_limit")) {
+            let waitTimeMs = Math.pow(2, attempt) * 4000;
+            const match = errText.match(/try again in ([\d\.]+)s/i);
+            if (match && match[1]) {
+              waitTimeMs = Math.min(25000, Math.ceil(parseFloat(match[1]) * 1000) + 1500);
+            }
+            Logger.WARN(`[AIProvider] 429 Rate limited. Waiting ${waitTimeMs}ms before attempt ${attempt + 1}...`);
+            await new Promise((r) => setTimeout(r, waitTimeMs));
+            continue;
+          }
+
           throw new Error(`OpenAI HTTP ${response.status}: ${errText}`);
         }
 
@@ -166,8 +180,8 @@ export class AIProviderService {
         Logger.WARN(`[AIProvider] Attempt ${attempt} failed: ${error.message}`);
         errorMsg = error.message;
 
-        if (attempt === 3) break;
-        await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 1000));
+        if (attempt >= 4) break;
+        await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 1500));
       }
     }
 
@@ -233,6 +247,7 @@ export class AIProviderService {
     return {
       content,
       toolCalls,
+      rawToolCalls: message?.tool_calls || undefined,
       usage: {
         promptTokens,
         completionTokens,
