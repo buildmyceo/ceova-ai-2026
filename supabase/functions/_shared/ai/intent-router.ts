@@ -12,6 +12,8 @@
 import { CAPABILITIES, Capability } from "./capabilities.ts";
 import { toolRegistry } from "../tools/registry.ts";
 
+export type TaskScope = 'simple' | 'complex';
+
 export interface IntentRouterResult {
   /** Tool IDs selected for this request */
   toolIds: string[];
@@ -23,6 +25,8 @@ export interface IntentRouterResult {
   isComplexTask: boolean;
   /** Whether this is a casual/conversational message with no tools needed */
   isCasualChat: boolean;
+  /** Determined scope of the task (Requirement 13) */
+  taskScope: TaskScope;
 }
 
 // Patterns for casual chat — no tools needed at all
@@ -173,6 +177,7 @@ export function routeIntent(
         memoryCategories: [],
         isComplexTask: false,
         isCasualChat: true,
+        taskScope: 'simple',
       };
     }
   }
@@ -220,6 +225,9 @@ export function routeIntent(
     }
   }
 
+  // ── Determine Task Scope (Requirement 13) ───────────────────────────────────
+  const taskScope = determineTaskScope(message, { isExistingProject: hasCloudProjectInHistory });
+
   // ── If no capability matched, treat as general chat (no tools) ───────────────
   if (matchedCapabilities.length === 0) {
     return {
@@ -228,6 +236,7 @@ export function routeIntent(
       memoryCategories: [],
       isComplexTask: false,
       isCasualChat: false,
+      taskScope,
     };
   }
 
@@ -258,8 +267,8 @@ export function routeIntent(
     }
   }
 
-  // IDE tasks are "complex" — more history, more context allowed
-  const isComplexTask = matchedCapabilities.some(c => c.id === "ide");
+  // Complex tasks or IDE tasks get extended history/context
+  const isComplexTask = taskScope === 'complex' || matchedCapabilities.some(c => c.id === "ide");
 
   return {
     toolIds: finalToolIds,
@@ -267,5 +276,76 @@ export function routeIntent(
     memoryCategories: Array.from(memoryCategorySet),
     isComplexTask,
     isCasualChat: false,
+    taskScope,
   };
 }
+
+/**
+ * Requirement 13: Handle simple and complex tasks differently
+ * The agent should determine the scope of the task.
+ * 
+ * Simple task
+ * Examples: Change restaurant name, Change button text, Change phone number,
+ * Change color, Change image, Change heading, small text/styling tweaks.
+ * Workflow: search → read relevant code → targeted edit → verify.
+ * No unnecessary planning or broad context.
+ * 
+ * Complex task
+ * Examples: Add an entire booking system UI, Redesign homepage, Add a complete gallery,
+ * Create a new page, Major navigation change, multi-step flow, cart/checkout.
+ * Workflow: understand → inspect architecture → identify affected files →
+ * retrieve relevant context → implement → build → test → fix → verify.
+ * The agent may retrieve more files when the task genuinely requires them.
+ */
+export function determineTaskScope(message: string, context?: { isExistingProject?: boolean }): TaskScope {
+  const msg = (message || '').trim().toLowerCase();
+
+  // Explicit complex patterns (Requirement 13)
+  const complexPatterns = [
+    /\b(?:entire|complete|full)\s+(?:booking|reservation|cart|checkout|gallery|ecommerce|auth|dashboard|admin|system|store)\b/i,
+    /\b(?:add|build|create|implement)\s+(?:an?\s+)?(?:entire|complete|full|new)\s+(?:booking|reservation|gallery|page|system|shop|store)\b/i,
+    /\bredesign\s+(?:the\s+)?(?:homepage|home|website|site|entire|page|landing)\b/i,
+    /\bcreate\s+(?:a\s+)?(?:new\s+)?(?:page|route|subpage)\b/i,
+    /\bmajor\s+(?:navigation|layout|architectur\w+|overhaul|redesign)\b/i,
+    /\b(?:booking\s+system|reservation\s+system|shopping\s+cart|payment\s+gateway|multi-step|user\s+auth)\b/i,
+    /\badd\s+(?:a\s+)?(?:complete|full)\s+gallery\b/i,
+  ];
+
+  for (const pattern of complexPatterns) {
+    if (pattern.test(msg)) {
+      return 'complex';
+    }
+  }
+
+  // Explicit simple patterns (Requirement 13)
+  const simplePatterns = [
+    /\b(?:change|update|fix|replace|tweak|modify|make|set)\s+(?:the\s+)?(?:restaurant\s+)?name\b/i,
+    /\b(?:change|update|fix|replace|tweak|modify|make|set)\s+(?:the\s+)?(?:button|btn)(?:\s+text)?\b/i,
+    /\b(?:change|update|fix|replace|tweak|modify|make|set)\s+(?:the\s+)?(?:phone|mobile|telephone|call)(?:\s+number)?\b/i,
+    /\b(?:change|update|fix|replace|tweak|modify|make|set)\s+(?:the\s+)?(?:color|colour|background|bg|font|theme\s+color)\b/i,
+    /\b(?:change|update|fix|replace|tweak|modify|make|set)\s+(?:the\s+)?(?:image|photo|picture|icon|logo)\b/i,
+    /\b(?:change|update|fix|replace|tweak|modify|make|set)\s+(?:the\s+)?(?:heading|headline|title|subheading|text|label|caption|badge)\b/i,
+    /\b(?:change|update|fix|tweak)\s+(?:the\s+)?(?:navbar|nav|header|footer|link)\b/i,
+  ];
+
+  for (const pattern of simplePatterns) {
+    if (pattern.test(msg)) {
+      return 'simple';
+    }
+  }
+
+  // If modifying an existing project and the prompt is short/isolated, default to simple
+  if (context?.isExistingProject) {
+    if (msg.split(/\s+/).length < 25 && !/\b(?:entire|complete|all\s+pages|full\s+redesign|new\s+page)\b/i.test(msg)) {
+      return 'simple';
+    }
+  }
+
+  // Creating a new site from scratch is complex
+  if (/\b(?:create|build|make)\s+(?:a\s+)?(?:new\s+)?(?:website|site|landing|app|store|portfolio|restaurant|bakery)\b/i.test(msg)) {
+    return 'complex';
+  }
+
+  return 'simple';
+}
+

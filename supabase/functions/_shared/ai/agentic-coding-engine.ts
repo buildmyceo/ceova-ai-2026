@@ -10,6 +10,7 @@
 import { Logger } from "../services/logger.ts";
 import { AIProviderService, ChatMessage } from "./ai-provider.ts";
 import { CloudWorkerService, ProjectFile, BuildResult, ProjectState } from "../worker/worker-service.ts";
+import { determineTaskScope, TaskScope } from "./intent-router.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -33,6 +34,8 @@ export interface BaselineSnapshot {
 }
 
 export class AgenticCodingEngine {
+  public static readonly MAX_AGENT_TURNS_SIMPLE = 7;
+  public static readonly MAX_AGENT_TURNS_COMPLEX = 15;
   private static readonly MAX_AGENT_TURNS = 12;
 
   /**
@@ -595,6 +598,10 @@ export class AgenticCodingEngine {
         : (projectState.current_version === 1 ? 'Initial website' : 'Latest modifications')
     );
 
+    const isExistingProject = projectFiles.length > 0;
+    const taskScope: TaskScope = determineTaskScope(userPrompt, { isExistingProject });
+    const maxTurns = taskScope === 'complex' ? AgenticCodingEngine.MAX_AGENT_TURNS_COMPLEX : AgenticCodingEngine.MAX_AGENT_TURNS_SIMPLE;
+
     const systemPrompt = `You are GPT-5.6 Luna, an elite autonomous senior coding engineer working inside CEOVA's cloud development environment.
 You are tasked with implementing or modifying a live website according to the user's request.
 
@@ -626,6 +633,29 @@ Every successful modification creates a new project version with a human-readabl
 - You already know the current version (v${projectState.current_version}) and latest change ("${latestChangeSummary}").
 - Do NOT request or load historical versions unless the user explicitly asks about past changes, version history, or undo/revert/rollback.
 - When relevant to the user request, call 'get_version_history' with a targeted limit.
+
+TASK SCOPE & WORKFLOW DIRECTIVES (MANDATORY REQUIREMENT 13):
+${taskScope === 'simple' ? `TASK SCOPE: SIMPLE TASK
+The user has requested an isolated, targeted change (e.g. Change restaurant name, Change button text, Change phone number, Change color, Change image, Change heading, or small text tweak).
+STRICT SIMPLE WORKFLOW:
+  search → read relevant code → targeted edit → verify
+- No unnecessary planning or broad context.
+- Use 'search_code' to find the exact target location.
+- Read ONLY the relevant 15-30 lines of code around the target using 'read_file'.
+- Apply a targeted surgical edit using 'edit_file' (smallest safe modification).
+- Call 'run_build' to test & verify, and call 'finish_task'.
+- DO NOT perform broad architectural scans or read multiple unrelated files/components.` : `TASK SCOPE: COMPLEX TASK
+The user has requested a substantial or multi-component addition/redesign (e.g. Add an entire booking system UI, Redesign homepage, Add a complete gallery, Create a new page, Major navigation change).
+STRICT COMPLEX WORKFLOW:
+  understand → inspect architecture → identify affected files → retrieve relevant context → implement → build → test → fix → verify
+- Understand the user's architectural vision and requirements.
+- Inspect project architecture using 'get_project_state' and 'list_files'.
+- Identify affected files across pages, components, and stylesheets.
+- Retrieve relevant context for all interrelated components. The agent may retrieve more files when the task genuinely requires them.
+- Implement additions/modifications systematically across necessary files.
+- Run automated build & tests via 'run_build'.
+- If any build or test failure occurs: diagnose error lines, inspect relevant code, fix surgically with 'edit_file', and test again until PASS.
+- Verify website integrity before concluding with 'finish_task'.`}
 
 ITERATIVE AGENT LOOP WORKFLOW (MANDATORY REQUIREMENT 7):
 You must execute your work as an iterative coding loop according to this conceptual architecture:
@@ -756,9 +786,8 @@ CRITICAL MODIFICATION RULES:
 Current Project File Structure:
 ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'}`;
 
-    const isExistingProject = projectFiles.length > 0;
     const initialUserPrompt = isExistingProject
-      ? `User Request: "${userPrompt}"\n\nProject: "${projectName}" (slug: ${slug})\n\nITERATIVE AGENT LOOP:\n1. Inspect: search_code & read_file.\n2. Modify: surgical edit_file.\n3. Test: run_build.\n4. Branch: If FAIL -> investigate errors, read code, fix, re-test. If PASS -> verify and call finish_task.\n\nYou may use multiple tool calls in a single turn.`
+      ? `User Request: "${userPrompt}"\n\nProject: "${projectName}" (slug: ${slug})\nTask Scope: ${taskScope.toUpperCase()}\n\nWORKFLOW:\n${taskScope === 'simple' ? '1. Search: search_code\n2. Read: read_file (relevant code only)\n3. Edit: targeted edit_file\n4. Verify: run_build & finish_task (No unnecessary planning or broad context)' : '1. Understand & Inspect: inspect architecture & identify affected files\n2. Context: retrieve relevant context (may retrieve more files when genuinely needed)\n3. Implement: edit_file\n4. Build & Test: run_build (fix errors if failed)\n5. Verify: finish_task'}\n\nYou may use multiple tool calls in a single turn.`
       : `User Request: "${userPrompt}"\n\nPlease implement this website using your tools in an iterative loop: inspect, write code, run_build to test (investigate and fix if fail), and call finish_task when verified. You may use multiple tool calls in a single turn.`;
 
     const messages: ChatMessage[] = [
@@ -779,9 +808,9 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
     const inspectedFiles = new Set<string>();
     const tools = this.getCodingTools();
 
-    while (turns < this.MAX_AGENT_TURNS && !taskFinished) {
+    while (turns < maxTurns && !taskFinished) {
       turns++;
-      Logger.INFO(`[AgenticCodingEngine] Turn ${turns}/${this.MAX_AGENT_TURNS}`);
+      Logger.INFO(`[AgenticCodingEngine] Turn ${turns}/${maxTurns} (Scope: ${taskScope.toUpperCase()})`);
 
       onProgress?.({
         type: 'project_progress',
