@@ -173,7 +173,7 @@ export class AgenticCodingEngine {
       };
     }
 
-    const formattedText = `Build failed\n\nFile:\n${targetFile}\n\nLine:\n${targetLine}\n\nError:\n${errorMessage}${
+    const formattedText = `BUILD FAILED\n\nRelevant error:\n${targetFile}:${targetLine}\n\n${errorMessage}${
       relevantSlice ? `\n\nRelevant Code (Lines ${relevantSlice.startLine}-${relevantSlice.endLine}):\n${relevantSlice.content}` : ''
     }`;
 
@@ -185,6 +185,75 @@ export class AgenticCodingEngine {
       relevantSlice,
       formattedText,
     };
+  }
+
+  /**
+   * Processes terminal command output to be token-efficient (Requirement 9).
+   * Prevents returning thousands of lines of terminal output to GPT.
+   */
+  static summarizeTerminalOutput(
+    command: string,
+    rawOutput: string,
+    success: boolean,
+    includeFullLogs: boolean = false
+  ): string {
+    if (includeFullLogs) {
+      // If full logs are explicitly requested, return capped logs (max 100 lines / 4,000 chars)
+      const lines = rawOutput.split('\n');
+      if (lines.length > 100) {
+        return `${lines.slice(0, 50).join('\n')}\n... [${lines.length - 100} lines omitted for buffer limits] ...\n${lines.slice(-50).join('\n')}`;
+      }
+      return rawOutput.slice(0, 4000);
+    }
+
+    const lines = (rawOutput || '').trim().split('\n').filter(Boolean);
+    const totalLines = lines.length;
+
+    // 1. Build commands (npm run build, vite build, build)
+    const isBuildCmd = /\b(build|vite build|compile)\b/i.test(command);
+    if (isBuildCmd) {
+      if (success) {
+        return `BUILD SUCCESS`;
+      } else {
+        const errorLines = lines.filter(l => /(?:error|failed|exception|syntaxerror|typeerror|ts\d+)/i.test(l));
+        const relevantError = errorLines.slice(0, 3).join('\n') || lines.slice(-3).join('\n');
+        return `BUILD FAILED\n\nRelevant error:\n${relevantError}\n\n(Full logs omitted for efficiency. Pass include_full_logs: true if needed.)`;
+      }
+    }
+
+    // 2. Test commands (npm test, test, vitest)
+    const isTestCmd = /\b(test|jest|vitest|sanity)\b/i.test(command);
+    if (isTestCmd) {
+      if (success) {
+        return `TESTS PASSED\nAll automated tests passed successfully (${totalLines} log lines processed).`;
+      } else {
+        const errorLines = lines.filter(l => /(?:fail|error|mismatch|unclosed|unbalanced)/i.test(l));
+        const relevantError = errorLines.slice(0, 3).join('\n') || lines.slice(-3).join('\n');
+        return `TESTS FAILED\n\nRelevant error:\n${relevantError}\n\n(Full logs omitted for efficiency. Pass include_full_logs: true if needed.)`;
+      }
+    }
+
+    // 3. Short output (under 15 lines and under 800 chars) -> return as-is
+    if (totalLines <= 15 && rawOutput.length <= 800) {
+      return rawOutput.trim();
+    }
+
+    // 4. Large command output (> 15 lines, e.g. 3,000 lines) -> Process and extract relevant information
+    const errorOrWarnLines = lines.filter(l => /(?:error|failed|warning|exception|critical)/i.test(l));
+    const summaryLines: string[] = [
+      `Command completed (${success ? 'SUCCESS' : 'FAILED'}, ${totalLines} lines produced).`,
+    ];
+
+    if (errorOrWarnLines.length > 0) {
+      summaryLines.push(`Relevant diagnostics (${errorOrWarnLines.length} alert line(s)):`);
+      summaryLines.push(...errorOrWarnLines.slice(0, 5).map(l => `  ${l.trim()}`));
+    }
+
+    // Include last 3 lines for context
+    summaryLines.push(`Recent output:\n${lines.slice(-3).map(l => `  ${l.trim()}`).join('\n')}`);
+    summaryLines.push(`(Full output omitted for token efficiency. Pass include_full_logs: true if needed.)`);
+
+    return summaryLines.join('\n\n');
   }
 
   /**
@@ -332,11 +401,12 @@ export class AgenticCodingEngine {
         type: 'function' as const,
         function: {
           name: 'run_command',
-          description: 'Executes a project command in the isolated workspace (e.g. "build", "test", "lint", "npm install <pkg>").',
+          description: 'Executes a project command in the isolated workspace (e.g. "build", "test", "lint", "npm install <pkg>"). Output is automatically summarized to be token-efficient.',
           parameters: {
             type: 'object',
             properties: {
               command: { type: 'string', description: 'Command to run (e.g. "build", "test", "lint")' },
+              include_full_logs: { type: 'boolean', description: 'Optional: Set to true only if you explicitly need full unparsed terminal logs. Defaults to false.' },
             },
             required: ['command'],
           },
@@ -357,10 +427,12 @@ export class AgenticCodingEngine {
         type: 'function' as const,
         function: {
           name: 'get_build_errors',
-          description: 'Retrieves detailed compilation errors, test failures, and recent compiler diagnostic logs.',
+          description: 'Retrieves concise compilation errors or test failures. Returns BUILD SUCCESS or BUILD FAILED with relevant error line.',
           parameters: {
             type: 'object',
-            properties: {},
+            properties: {
+              include_full_logs: { type: 'boolean', description: 'Optional: Set to true only if you explicitly need raw compiler logs. Defaults to false.' },
+            },
           },
         },
       },
@@ -393,7 +465,9 @@ export class AgenticCodingEngine {
           description: 'Runs final build verification, packages a new release version, and activates it on the live URL.',
           parameters: {
             type: 'object',
-            properties: {},
+            properties: {
+              include_full_logs: { type: 'boolean', description: 'Optional: Set to true only if you explicitly need raw compiler logs. Defaults to false.' },
+            },
           },
         },
       },
@@ -401,10 +475,12 @@ export class AgenticCodingEngine {
         type: 'function' as const,
         function: {
           name: 'run_build',
-          description: 'Compiles the project bundle and runs automated sanity tests in the sandbox. Returns PASS or FAIL status with actionable error diagnostics. If FAIL, investigate and fix the code before testing again.',
+          description: 'Compiles the project bundle and runs automated sanity tests. Returns BUILD SUCCESS on pass or BUILD FAILED with relevant error line. Never returns huge logs unnecessarily.',
           parameters: {
             type: 'object',
-            properties: {},
+            properties: {
+              include_full_logs: { type: 'boolean', description: 'Optional: Set to true only if you explicitly need raw compiler logs. Defaults to false.' },
+            },
           },
         },
       },
@@ -518,6 +594,20 @@ BUILD/TEST & SELF-HEALING LOOP:
 - Run 'run_build' to compile and run automated sanity tests.
 - If status is FAIL: Investigate the error log, read the relevant code where the error occurred, fix the code using 'edit_file', and run_build again. Repeat this loop until tests PASS.
 - If status is PASS: Verify website integrity, confirm code preservation, ensure deployment is ready, and call 'finish_task'.
+
+EFFICIENT TOOL OUTPUTS (MANDATORY REQUIREMENT 9):
+All tool outputs are concise, filtered, and token-efficient.
+- For successful builds, the engine returns:
+  BUILD SUCCESS
+- For failed builds, the engine returns:
+  BUILD FAILED
+
+  Relevant error:
+  <file>:<line>
+
+  <error>
+- If a command or build produces hundreds or thousands of lines of terminal output, CEOVA automatically processes it and returns only the relevant diagnostic/status information.
+- Only provide full logs if you explicitly need them by setting include_full_logs: true.
 
 DO NOT REWRITE CODE JUST BECAUSE A BUILD FAILS (MANDATORY REQUIREMENT 8):
 If a build or test fails:
@@ -963,45 +1053,34 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
               latestBuildResult = await CloudWorkerService.runBuild(projectId, userId);
             }
 
-            toolResultText = JSON.stringify({
-              command,
-              success: cmdRes.success,
-              status: latestBuildResult.success ? 'PASS' : 'FAIL',
-              output: cmdRes.output,
-            });
+            const isSuccess = cmdRes.success && latestBuildResult.success;
+            const includeFullLogs = !!args.include_full_logs;
+            toolResultText = AgenticCodingEngine.summarizeTerminalOutput(command, cmdRes.output, isSuccess, includeFullLogs);
           }
           else if (name === 'get_build_status') {
-            toolResultText = JSON.stringify({
-              status: latestBuildResult.success ? 'PASS' : 'FAIL',
-              step: latestBuildResult.success ? 'VERIFY_AND_DEPLOY' : 'INVESTIGATE_AND_FIX',
-              buildId: latestBuildResult.buildId || 'none',
-              durationMs: latestBuildResult.durationMs || 0,
-              deploymentUrl: `https://www.ceova.online/p/${slug}`,
-              next_action: latestBuildResult.success ? 'finish_task' : 'investigate_and_fix',
-            });
+            if (latestBuildResult.success) {
+              toolResultText = `BUILD SUCCESS\n\nStatus: PASS\nDeployment: https://www.ceova.online/p/${slug}\nNext action: finish_task`;
+            } else {
+              toolResultText = `BUILD FAILED\n\nStatus: FAIL\nNext action: get_build_errors or read failing file`;
+            }
           }
           else if (name === 'get_build_errors') {
             if (latestBuildResult.success) {
-              toolResultText = JSON.stringify({
-                status: 'PASS',
-                step: 'VERIFY_AND_DEPLOY',
-                errors: [],
-                guidance: 'No build errors. Ready to verify and call finish_task.'
-              });
+              toolResultText = `BUILD SUCCESS\n\nNo build errors detected. Ready to verify and call finish_task.`;
             } else {
               const diag = AgenticCodingEngine.extractBuildDiagnostics(latestBuildResult, projectFiles);
-              toolResultText = JSON.stringify({
-                status: 'FAIL',
-                step: 'INVESTIGATE_AND_FIX',
-                build_failure: {
-                  file: diag.file,
-                  line: diag.line,
-                  error: diag.error,
-                },
-                diagnostic_summary: diag.formattedText,
-                relevant_code_slice: diag.relevantSlice,
-                guidance: `DO NOT rewrite the entire project or file. Investigate line ${diag.line} of "${diag.file}". Apply a surgical fix using 'edit_file' and re-test with 'run_build'.`,
-              });
+              const includeFullLogs = !!args.include_full_logs;
+              let outText = `BUILD FAILED\n\nRelevant error:\n${diag.file}:${diag.line}\n\n${diag.error}`;
+              if (diag.relevantSlice) {
+                outText += `\n\nRelevant Code (Lines ${diag.relevantSlice.startLine}-${diag.relevantSlice.endLine}):\n${diag.relevantSlice.content}`;
+              }
+              if (includeFullLogs && latestBuildResult.logs) {
+                outText += `\n\nFull Logs (capped):\n${latestBuildResult.logs.slice(-2500)}`;
+              } else {
+                outText += `\n\n(Full logs omitted for efficiency. Pass include_full_logs: true if needed.)`;
+              }
+              outText += `\n\nGuidance: DO NOT rewrite the entire project or file. Investigate line ${diag.line} of "${diag.file}". Apply a surgical fix using 'edit_file' and re-test with 'run_build'.`;
+              toolResultText = outText;
             }
           }
           else if (name === 'preview_website') {
@@ -1029,29 +1108,21 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             latestBuildResult = await CloudWorkerService.runBuild(projectId, userId);
 
             if (latestBuildResult.success) {
-              toolResultText = JSON.stringify({
-                status: 'PASS',
-                step: 'VERIFY_AND_DEPLOY',
-                message: 'Build and automated verification tests passed successfully.',
-                deploymentUrl: `https://www.ceova.online/p/${slug}`,
-                version: latestBuildResult.versionNumber,
-                bundle_ready: true,
-                guidance: 'Build/test passed! Follow the agent loop: 1) Verify your changes, 2) Ensure all original components and styles remain intact, 3) Call "finish_task" to complete.'
-              });
+              toolResultText = `BUILD SUCCESS\n\nStatus: PASS\nDeployment ready: https://www.ceova.online/p/${slug}\nVersion: v${latestBuildResult.versionNumber || 1}\n\nGuidance: Build verified. If all requested changes are verified and code preserved, call 'finish_task'.`;
             } else {
               const diag = AgenticCodingEngine.extractBuildDiagnostics(latestBuildResult, projectFiles);
-              toolResultText = JSON.stringify({
-                status: 'FAIL',
-                step: 'INVESTIGATE_AND_FIX',
-                build_failure: {
-                  file: diag.file,
-                  line: diag.line,
-                  error: diag.error,
-                },
-                diagnostic_summary: diag.formattedText,
-                relevant_code_slice: diag.relevantSlice,
-                guidance: `DO NOT rewrite the entire project or file. Investigate the failure at line ${diag.line} of "${diag.file}". Use 'read_file' if you need surrounding context, and apply a surgical fix using 'edit_file' (smallest safe modification). Then run 'run_build' to test again.`
-              });
+              const includeFullLogs = !!args.include_full_logs;
+              let outText = `BUILD FAILED\n\nRelevant error:\n${diag.file}:${diag.line}\n\n${diag.error}`;
+              if (diag.relevantSlice) {
+                outText += `\n\nRelevant Code (Lines ${diag.relevantSlice.startLine}-${diag.relevantSlice.endLine}):\n${diag.relevantSlice.content}`;
+              }
+              if (includeFullLogs && latestBuildResult.logs) {
+                outText += `\n\nFull Logs (capped):\n${latestBuildResult.logs.slice(-2500)}`;
+              } else {
+                outText += `\n\n(Full logs omitted for efficiency. Pass include_full_logs: true if needed.)`;
+              }
+              outText += `\n\nGuidance: DO NOT rewrite the entire project or file. Investigate line ${diag.line} of "${diag.file}". Use 'read_file' if you need surrounding context, and apply a surgical fix using 'edit_file' (smallest safe modification). Then run 'run_build' to test again.`;
+              toolResultText = outText;
             }
           } 
           else if (name === 'finish_task') {
@@ -1074,11 +1145,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
                 if (droppedScripts.length > 0) issues.push(`Dropped script(s)/dependency: [${droppedScripts.join(', ')}]`);
                 if (droppedRoutes.length > 0) issues.push(`Dropped route(s)/anchor: [${droppedRoutes.join(', ')}]`);
 
-                toolResultText = JSON.stringify({
-                  status: 'BLOCKED',
-                  step: 'INVESTIGATE_AND_FIX',
-                  error: `Code Preservation Audit Failed: ${issues.join('; ')}. When modifying an existing website, you must PRESERVE EVERYTHING that is not related to the requested change. Avoid accidentally deleting components, removing functionality, changing routes, replacing assets, or changing dependencies. Please restore the missing element(s) before finishing.`,
-                });
+                toolResultText = `CODE PRESERVATION AUDIT FAILED\n\nIssues:\n${issues.map(i => `- ${i}`).join('\n')}\n\nGuidance: When modifying an existing website, you must PRESERVE EVERYTHING that is not related to the requested change. Avoid accidentally deleting components, removing functionality, changing routes, replacing assets, or changing dependencies. Please restore the missing element(s) before finishing.`;
               }
             }
 
@@ -1098,21 +1165,10 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
               if (latestBuildResult.success) {
                 taskFinished = true;
-                toolResultText = JSON.stringify({
-                  status: 'COMPLETED',
-                  step: 'DONE',
-                  message: 'Task completed, build verified, automated tests passed, and code preservation audit passed.',
-                });
+                toolResultText = `TASK COMPLETED\n\nStatus: DONE\nMessage: Task completed, build verified, automated tests passed, and code preservation audit passed.\nDeployment: https://www.ceova.online/p/${slug}`;
               } else {
                 const diag = AgenticCodingEngine.extractBuildDiagnostics(latestBuildResult, projectFiles);
-                toolResultText = JSON.stringify({
-                  status: 'BLOCKED',
-                  step: 'INVESTIGATE_AND_FIX',
-                  error: 'Build must succeed before task can be finished.',
-                  diagnostic_summary: diag.formattedText,
-                  relevant_code_slice: diag.relevantSlice,
-                  guidance: `DO NOT rewrite the entire project or file. Fix line ${diag.line} in "${diag.file}" using 'edit_file' and re-test with 'run_build'.`
-                });
+                toolResultText = `BUILD FAILED\n\nRelevant error:\n${diag.file}:${diag.line}\n\n${diag.error}\n\nGuidance: Build must succeed before task can be finished. Fix line ${diag.line} in "${diag.file}" using 'edit_file' and re-test with 'run_build'.`;
               }
             }
           } 

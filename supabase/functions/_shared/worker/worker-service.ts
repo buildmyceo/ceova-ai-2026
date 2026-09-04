@@ -334,10 +334,19 @@ export class CloudWorkerService {
 
     if (cmd === 'build' || cmd === 'npm run build' || cmd === 'npx vite build') {
       const res = await this.runBuild(projectId, userId);
-      return {
-        success: res.success,
-        output: res.logs.slice(-1500) || (res.success ? 'Build succeeded.' : 'Build failed.'),
-      };
+      if (res.success) {
+        return {
+          success: true,
+          output: 'BUILD SUCCESS',
+        };
+      } else {
+        const firstErr = res.errors?.[0];
+        const errorDesc = firstErr ? `${firstErr.file || 'index.html'}:${firstErr.line || 1}\n\n${firstErr.message}` : (res.logs.slice(-300) || 'Build failed.');
+        return {
+          success: false,
+          output: `BUILD FAILED\n\nRelevant error:\n${errorDesc}`,
+        };
+      }
     }
 
     if (cmd === 'test' || cmd === 'npm test') {
