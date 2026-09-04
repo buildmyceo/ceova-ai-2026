@@ -54,7 +54,7 @@ export class CreateProjectTool implements Tool {
   metadata: ToolMetadata = {
     id: 'create_project',
     name: 'Create Cloud Project',
-    description: 'Creates a new isolated cloud project workspace with a unique subdomain on ceova.online.',
+    description: 'Creates and deploys a cloud website project workspace on ceova.online. IMPORTANT: DO NOT call this tool on the user\'s initial website request. First present a step-by-step implementation plan. Only call this tool once the plan has been presented and the user approves or confirms to proceed.',
     category: 'CloudDev',
     icon: 'FolderPlus',
     requiresImage: false,
