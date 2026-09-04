@@ -111,7 +111,7 @@ export class AgenticCodingEngine {
         type: 'function' as const,
         function: {
           name: 'edit_file',
-          description: 'Performs a surgical replacement of an exact snippet of text within an existing file. Avoids rewriting the entire file.',
+          description: 'Makes the smallest safe modification to an existing file using surgical replacement (target_content -> replacement_content). Avoids regenerating the entire file unnecessarily.',
           parameters: {
             type: 'object',
             properties: {
@@ -129,6 +129,10 @@ export class AgenticCodingEngine {
                   },
                   required: ['target_content', 'replacement_content'],
                 },
+              },
+              patch: {
+                type: 'string',
+                description: 'Optional unified diff patch string (e.g. - old line\\n+ new line)',
               },
             },
             required: ['path'],
@@ -317,6 +321,7 @@ STRICT RULES - DO NOT RETRIEVE UNRELATED CONTEXT:
 - Never load or read entire multi-hundred line files when a 20-30 line slice is sufficient.
 
 CRITICAL MODIFICATION RULES:
+- DO NOT REGENERATE COMPLETE FILES UNNECESSARILY: If the user asks for a small change, modify the existing code. Do NOT generate 800 lines of code just to change one string. Make the smallest safe modification possible (- old + new) using 'edit_file'.
 - Never overwrite unrelated sections or delete existing functionality (Navigation, About, Menu, Contact, Footer, etc. must remain intact).
 - Make precise, surgical modifications.
 - Ensure the project builds cleanly before calling 'finish_task'.
@@ -326,7 +331,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
     const isExistingProject = projectFiles.length > 0;
     const initialUserPrompt = isExistingProject
-      ? `User Request: "${userPrompt}"\n\nProject: "${projectName}" (slug: ${slug})\n\nTARGETED CONTEXT MANDATE:\nRetrieve ONLY the minimum sufficient context required to safely perform this task.\n- Search project to locate the specific component/element (e.g. hero, navbar, button).\n- Read only that component's lines (do NOT retrieve Footer, Contact, About, package-lock.json, or unrelated components/assets).\n- If associated styles or CSS are referenced, progressively inspect only those relevant styles.\n- Make surgical edits with edit_file, verify with build, and finish.`
+      ? `User Request: "${userPrompt}"\n\nProject: "${projectName}" (slug: ${slug})\n\nSURGICAL MODIFICATION MANDATE:\nDo NOT regenerate complete files unnecessarily. Do NOT output 800 lines just to change one string.\nMake the smallest safe modification possible using 'edit_file' (target_content -> replacement_content).\n- Search and read only the target lines.\n- Apply surgical edit_file.\n- Verify with build and finish.`
       : `User Request: "${userPrompt}"\n\nPlease implement this website using your tools. Inspect the structure, write the code, verify with build, and call finish_task when done.`;
 
     const messages: ChatMessage[] = [
@@ -531,6 +536,30 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
                 edits.push(...args.changes);
               } else if (args.target_content !== undefined && args.replacement_content !== undefined) {
                 edits.push({ target_content: args.target_content, replacement_content: args.replacement_content });
+              } else if (args.patch && typeof args.patch === 'string') {
+                const patchLines = args.patch.split('\n');
+                const targetLines: string[] = [];
+                const replacementLines: string[] = [];
+                for (const line of patchLines) {
+                  if (line.startsWith('@@') || line.startsWith('---') || line.startsWith('+++')) continue;
+                  if (line.startsWith('-')) {
+                    targetLines.push(line.slice(1).trimEnd());
+                  } else if (line.startsWith('+')) {
+                    replacementLines.push(line.slice(1).trimEnd());
+                  } else {
+                    const clean = line.startsWith(' ') ? line.slice(1).trimEnd() : line.trimEnd();
+                    if (clean.length > 0) {
+                      targetLines.push(clean);
+                      replacementLines.push(clean);
+                    }
+                  }
+                }
+                if (targetLines.length > 0 && replacementLines.length > 0) {
+                  edits.push({
+                    target_content: targetLines.join('\n'),
+                    replacement_content: replacementLines.join('\n'),
+                  });
+                }
               }
 
               if (edits.length === 0) {
@@ -572,25 +601,32 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
           }
           else if (name === 'create_file' || name === 'write_file') {
             const path = CloudWorkerService.sanitizePath(args.path);
-            inspectedFiles.add(path);
             const content = args.content || '';
-
             const fileIndex = projectFiles.findIndex(f => f.path === path);
-            if (fileIndex >= 0) {
-              projectFiles[fileIndex].content = content;
+
+            // Enforce Requirement 5: Do NOT regenerate complete files unnecessarily
+            if (fileIndex >= 0 && projectFiles[fileIndex].content.length > 300 && content.length > 300) {
+              toolResultText = JSON.stringify({
+                error: `Do not regenerate complete files unnecessarily. "${path}" already exists (${projectFiles[fileIndex].content.split('\n').length} lines). Do not output the entire file just to change one string or component. Use 'edit_file' with exact 'target_content' and 'replacement_content' to make the smallest safe surgical modification possible.`,
+              });
             } else {
-              projectFiles.push({ path, content });
+              inspectedFiles.add(path);
+              if (fileIndex >= 0) {
+                projectFiles[fileIndex].content = content;
+              } else {
+                projectFiles.push({ path, content });
+              }
+
+              // Persist to worker DB
+              await CloudWorkerService.writeProjectFiles(projectId, [{ path, content }]);
+
+              toolResultText = JSON.stringify({
+                success: true,
+                path,
+                bytes_written: content.length,
+                message: `Successfully written "${path}".`,
+              });
             }
-
-            // Persist to worker DB
-            await CloudWorkerService.writeProjectFiles(projectId, [{ path, content }]);
-
-            toolResultText = JSON.stringify({
-              success: true,
-              path,
-              bytes_written: content.length,
-              message: `Successfully written "${path}".`,
-            });
           }
           else if (name === 'delete_file') {
             const path = CloudWorkerService.sanitizePath(args.path);
