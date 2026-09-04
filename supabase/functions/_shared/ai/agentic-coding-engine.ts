@@ -11,6 +11,7 @@ import { Logger } from "../services/logger.ts";
 import { AIProviderService, ChatMessage } from "./ai-provider.ts";
 import { CloudWorkerService, ProjectFile, BuildResult, ProjectState } from "../worker/worker-service.ts";
 import { determineTaskScope, TaskScope } from "./intent-router.ts";
+import { ContextReconstructionService } from "./context-reconstruction.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -602,6 +603,19 @@ export class AgenticCodingEngine {
     const taskScope: TaskScope = determineTaskScope(userPrompt, { isExistingProject });
     const maxTurns = taskScope === 'complex' ? AgenticCodingEngine.MAX_AGENT_TURNS_COMPLEX : AgenticCodingEngine.MAX_AGENT_TURNS_SIMPLE;
 
+    const reconstructed = ContextReconstructionService.reconstruct({
+      projectState,
+      projectFiles,
+      userTask: userPrompt,
+      projectName,
+      slug,
+      projectId,
+      currentVersion: projectState.current_version,
+      latestChange: latestChangeSummary,
+      versionHistory: projectRecord?.metadata?.version_history || [],
+      isHistoryQuery: false
+    });
+
     const systemPrompt = `You are GPT-5.6 Luna, an elite autonomous senior coding engineer working inside CEOVA's cloud development environment.
 You are tasked with implementing or modifying a live website according to the user's request.
 
@@ -610,6 +624,15 @@ ENVIRONMENT & WORKSPACE RULES:
 - Project Name: "${projectName}"
 - Project Slug: "${slug}"
 - Deployment URL: "https://www.ceova.online/p/${slug}"
+
+CONTEXT RECONSTRUCTION ARCHITECTURE (MANDATORY REQUIREMENT 14):
+Do not confuse context with memory. The model is stateless and is not expected to permanently remember the entire website.
+Instead, context is dynamically reconstructed for each task via the 5-pillar architecture:
+Persistent project state + Project files + Search/read tools + Current task + Version info → GPT-5.6 Luna
+- You do NOT permanently remember previous code across sessions.
+- Every task reconstructs the architectural map and file index on demand.
+- When you need code details, use 'search_code' to pinpoint the location and 'read_file' to inspect the relevant slice.
+- This allows you to reconstruct whatever context you need for the current task without token bloat.
 
 PERSISTENT INTERNAL PROJECT STATE (MANDATORY REQUIREMENT 10):
 This persistent project state describes the website architecture without requiring complete source code to be injected:
