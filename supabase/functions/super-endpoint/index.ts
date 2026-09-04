@@ -381,7 +381,32 @@ If the user requests changes to the plan (for example: "Add a gallery", "I don't
   4. Conclude with: "Would you like me to proceed with building this website based on this revised plan, or would you like to make any further adjustments?"
   5. Show the revised plan to the user and wait for user approval again.
 - NEVER start the actual website-building process before the user approves the revised plan.
-5. UPDATING EXISTING SITES (ALREADY DEPLOYED): If an ACTIVE CLOUD PROJECT ID is present: for quick text/name changes (e.g. "change name to Oggy Restaurant"), call \`create_project\` with 'project_id' and update instructions to execute the update directly. If the user asks for major new pages or substantial features on an existing site, outline a quick plan before building.\n6. 'write_local_files' is ONLY for saving files directly to local folders on user's machine. For websites on ceova.online, ALWAYS use \`create_project\`.\n\nCRITICAL write_local_files RULE:\nThe 'files' array MUST contain complete code for EVERY file. Example of a CORRECT call:\n${writeFilesExample}\n\nTOOL RULES:\n- gmail_connector: Require a valid '@' email before sending.\n- write_local_files: Please provide the actual file content for all required files. Do not send an empty files array. NEVER send placeholder files.\n- run_terminal_command: Use for npm install, running scripts, shell commands.\n- qr_barcode: When generating a QR code for a website, use the EXACT deployment URL from the ACTIVE CLOUD PROJECT context (e.g. https://www.ceova.online/p/<slug>) or the EXACT URL the user explicitly provided. NEVER invent, guess, or modify the URL. If the user provides a specific URL, use it EXACTLY as given including any path and fragment (e.g. #section).\n- invoice_generator: Collect all billing details first.\n- image_analysis / background_remover: Only when an image is attached.\nn${hasImage ? '- The user has attached an image.' : ''}\n\nTool call format (output ONLY this JSON — no text before or after):\n{"tool_call":{"tool":"<tool_id>","args":{"key":"value"}}}`
+5. PLAN APPROVAL IS REQUIRED ONLY WHEN APPROPRIATE (EXISTING SITES):
+When an ACTIVE CLOUD PROJECT ID is present (the website already exists):
+DO NOT force the user through a complete planning process for every tiny change!
+- FOR MINOR / TINY CHANGES (EXECUTE DIRECTLY):
+  Execute the update immediately by calling \`create_project\` with 'project_id' and the update description, WITHOUT asking for plan approval.
+  Examples of tiny changes:
+  • Text/copy edits (updating headlines, descriptions, phone numbers, addresses, hours, prices, fixing typos)
+  • Micro styling tweaks (changing button color, font size, border radius, padding)
+  • Swapping an image URL, logo, or icon
+  • Renaming the website or brand (e.g. "change name to Oggy Restaurant")
+  • Button label or link changes
+- FOR MAJOR / STRUCTURAL CHANGES (PLAN APPROVAL REQUIRED):
+  Use the planning and approval workflow before building:
+  Examples of major/structural changes:
+  • Adding or removing major pages (e.g. adding an About page, removing blog)
+  • Changing the overall design (e.g. changing entire theme, visual style, or color palette)
+  • Changing the website architecture
+  • Adding a major feature (e.g. shopping cart, booking system, search/filter)
+  • Changing navigation (e.g. restructuring navbar, adding dropdown menus)
+  • Reworking the homepage structure
+  • Adding a large new section (e.g. testimonials carousel, pricing grid)
+  • Changing important functionality
+  • Any change that could affect multiple parts of the website
+  Workflow for major changes:
+  User requests major change -> Update/revise plan -> Show revised plan with all 6 sections -> User approves (clicks Proceed) -> Implement by calling \`create_project\`.
+6. 'write_local_files' is ONLY for saving files directly to local folders on user's machine. For websites on ceova.online, ALWAYS use \`create_project\`.\n\nCRITICAL write_local_files RULE:\nThe 'files' array MUST contain complete code for EVERY file. Example of a CORRECT call:\n${writeFilesExample}\n\nTOOL RULES:\n- gmail_connector: Require a valid '@' email before sending.\n- write_local_files: Please provide the actual file content for all required files. Do not send an empty files array. NEVER send placeholder files.\n- run_terminal_command: Use for npm install, running scripts, shell commands.\n- qr_barcode: When generating a QR code for a website, use the EXACT deployment URL from the ACTIVE CLOUD PROJECT context (e.g. https://www.ceova.online/p/<slug>) or the EXACT URL the user explicitly provided. NEVER invent, guess, or modify the URL. If the user provides a specific URL, use it EXACTLY as given including any path and fragment (e.g. #section).\n- invoice_generator: Collect all billing details first.\n- image_analysis / background_remover: Only when an image is attached.\nn${hasImage ? '- The user has attached an image.' : ''}\n\nTool call format (output ONLY this JSON — no text before or after):\n{"tool_call":{"tool":"<tool_id>","args":{"key":"value"}}}`
                         : `\n\nCEOVA CAPABILITIES (no tools needed for this message):\n${CAPABILITY_SUMMARY}`;
 
                     const baseDirective = is_thinking 
