@@ -9,7 +9,7 @@
 
 import { Logger } from "../services/logger.ts";
 import { AIProviderService, ChatMessage } from "./ai-provider.ts";
-import { CloudWorkerService, ProjectFile, BuildResult } from "../worker/worker-service.ts";
+import { CloudWorkerService, ProjectFile, BuildResult, ProjectState } from "../worker/worker-service.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -487,6 +487,17 @@ export class AgenticCodingEngine {
       {
         type: 'function' as const,
         function: {
+          name: 'get_project_state',
+          description: 'Returns the persistent internal project state (project_id, framework, build_system, entry_points, routes, pages, components, assets, current_version, approved_plan, deployment_url) without loading complete source code.',
+          parameters: {
+            type: 'object',
+            properties: {},
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
           name: 'finish_task',
           description: 'Declares that the coding task is complete after build/tests PASS and verification succeeds. Summarizes the modifications implemented.',
           parameters: {
@@ -531,6 +542,39 @@ export class AgenticCodingEngine {
 
     const baselineSnapshot = AgenticCodingEngine.computeSnapshot(projectFiles);
 
+    // Retrieve and maintain persistent internal project state (MANDATORY REQUIREMENT 10)
+    let projectRecord: any = null;
+    try {
+      const { data: proj } = await supabaseAdmin
+        .from('projects')
+        .select('id, slug, name, status, framework, runtime, metadata')
+        .eq('id', projectId)
+        .maybeSingle();
+      if (proj) projectRecord = proj;
+    } catch {}
+
+    let projectState: ProjectState;
+    if (projectRecord?.metadata?.project_state) {
+      projectState = projectRecord.metadata.project_state;
+    } else {
+      projectState = CloudWorkerService.extractProjectState(
+        projectId,
+        projectFiles,
+        projectRecord?.metadata,
+        slug,
+        projectRecord?.metadata?.current_version || 1
+      );
+      try {
+        await supabaseAdmin.from('projects').update({
+          metadata: {
+            ...(projectRecord?.metadata || {}),
+            project_state: projectState,
+          },
+          updated_at: new Date().toISOString(),
+        }).eq('id', projectId);
+      } catch {}
+    }
+
     const systemPrompt = `You are GPT-5.6 Luna, an elite autonomous senior coding engineer working inside CEOVA's cloud development environment.
 You are tasked with implementing or modifying a live website according to the user's request.
 
@@ -539,6 +583,22 @@ ENVIRONMENT & WORKSPACE RULES:
 - Project Name: "${projectName}"
 - Project Slug: "${slug}"
 - Deployment URL: "https://www.ceova.online/p/${slug}"
+
+PERSISTENT INTERNAL PROJECT STATE (MANDATORY REQUIREMENT 10):
+This persistent project state describes the website architecture without requiring complete source code to be injected:
+- Project ID: "${projectState.project_id}"
+- Framework: "${projectState.framework}"
+- Build System: "${projectState.build_system}"
+- Entry Points: ${JSON.stringify(projectState.entry_points)}
+- Routes: ${JSON.stringify(projectState.routes)}
+- Pages: ${JSON.stringify(projectState.pages)}
+- Components: ${JSON.stringify(projectState.components)}
+- Assets: ${JSON.stringify(projectState.assets)}
+- Current Version: v${projectState.current_version}
+- Approved Plan: ${projectState.approved_plan ? JSON.stringify(projectState.approved_plan) : 'null'}
+- Deployment URL: "${projectState.deployment_url}"
+
+You can query this persistent internal state at any time by calling the 'get_project_state' tool.
 
 ITERATIVE AGENT LOOP WORKFLOW (MANDATORY REQUIREMENT 7):
 You must execute your work as an iterative coding loop according to this conceptual architecture:
@@ -1094,6 +1154,20 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             const inspection = CloudWorkerService.inspectProjectWebsite(projectFiles);
             toolResultText = JSON.stringify(inspection);
           }
+          else if (name === 'get_project_state') {
+            projectState = CloudWorkerService.extractProjectState(
+              projectId,
+              projectFiles,
+              {
+                ...(projectRecord?.metadata || {}),
+                approved_plan: projectState.approved_plan,
+                current_version: latestBuildResult.versionNumber || projectState.current_version,
+              },
+              slug,
+              latestBuildResult.versionNumber || projectState.current_version
+            );
+            toolResultText = JSON.stringify(projectState, null, 2);
+          }
           else if (name === 'deploy_website' || name === 'run_build') {
             const isBuildOnly = name === 'run_build';
             onProgress?.({
@@ -1195,6 +1269,33 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
     }
 
     const finalFiles = await CloudWorkerService.getProjectFiles(projectId);
+
+    // Extract and persist final internal project state (Requirement 10)
+    try {
+      const finalState = CloudWorkerService.extractProjectState(
+        projectId,
+        finalFiles,
+        {
+          ...(projectRecord?.metadata || {}),
+          approved_plan: projectState.approved_plan,
+          current_version: latestBuildResult.versionNumber || projectState.current_version,
+        },
+        slug,
+        latestBuildResult.versionNumber || projectState.current_version
+      );
+
+      await supabaseAdmin.from('projects').update({
+        metadata: {
+          ...(projectRecord?.metadata || {}),
+          current_version: finalState.current_version,
+          deployment_url: finalState.deployment_url,
+          project_state: finalState,
+        },
+        updated_at: new Date().toISOString(),
+      }).eq('id', projectId);
+    } catch (persistErr: any) {
+      Logger.WARN(`[AgenticCodingEngine] Non-fatal error persisting project_state: ${persistErr?.message}`);
+    }
 
     return {
       success: latestBuildResult.success,

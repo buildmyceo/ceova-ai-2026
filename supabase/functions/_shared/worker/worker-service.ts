@@ -33,6 +33,7 @@ export interface BuildResult {
   }>;
   bundleFiles?: Record<string, string>; // path -> content
   deploymentUrl?: string;
+  versionNumber?: number;
 }
 
 export interface TestResult {
@@ -40,6 +41,26 @@ export interface TestResult {
   testCount: number;
   failures: string[];
   logs: string;
+}
+
+/**
+ * Persistent Internal Project State (Requirement 10)
+ * Maintained persistently for each website and accessible to the agent
+ * without requiring complete source code injection.
+ */
+export interface ProjectState {
+  project_id: string;
+  framework: string;
+  build_system: string;
+  entry_points: string[];
+  routes: string[];
+  pages: string[];
+  components: string[];
+  assets: string[];
+  current_version: number;
+  approved_plan: string | null;
+  deployment_url: string;
+  updated_at?: string;
 }
 
 /** Approved package allowlist */
@@ -322,6 +343,150 @@ export class CloudWorkerService {
   }
 
   /**
+   * Extracts persistent internal project state (Requirement 10)
+   * Tracks: project_id, framework, build_system, entry_points, routes, pages,
+   * components, assets, current_version, approved_plan, deployment_url.
+   */
+  static extractProjectState(
+    projectId: string,
+    files: ProjectFile[],
+    metadata?: any,
+    slug?: string,
+    versionNumber?: number
+  ): ProjectState {
+    const projectSlug = slug || metadata?.slug || 'project';
+    const deploymentUrl = metadata?.deployment_url || `https://www.ceova.online/p/${projectSlug}`;
+    const approvedPlan = metadata?.approved_plan || null;
+    const currentVer = versionNumber || metadata?.current_version || 1;
+
+    // 1. Detect Framework
+    let framework = 'vanilla-html';
+    const hasPackageJson = files.some(f => f.path === 'package.json');
+    const hasReact = files.some(f => /\.(jsx|tsx)$/i.test(f.path)) || (hasPackageJson && files.find(f => f.path === 'package.json')?.content.includes('"react"'));
+    const hasVue = files.some(f => /\.vue$/i.test(f.path)) || (hasPackageJson && files.find(f => f.path === 'package.json')?.content.includes('"vue"'));
+    const indexHtml = files.find(f => f.path === 'index.html');
+    const hasTailwind = indexHtml && (indexHtml.content.includes('tailwindcss') || indexHtml.content.includes('cdn.tailwindcss.com'));
+
+    if (hasReact) {
+      framework = 'react';
+    } else if (hasVue) {
+      framework = 'vue';
+    } else if (hasTailwind) {
+      framework = 'html5-tailwind';
+    }
+
+    // 2. Detect Build System
+    let buildSystem = 'static-edge-bundler';
+    if (hasPackageJson) {
+      const pkgContent = files.find(f => f.path === 'package.json')?.content || '';
+      if (pkgContent.includes('"vite"')) buildSystem = 'vite';
+      else if (pkgContent.includes('"next"')) buildSystem = 'next.js';
+    }
+
+    // 3. Detect Entry Points
+    const potentialEntries = ['index.html', 'src/main.jsx', 'src/main.tsx', 'src/index.js', 'src/App.jsx', 'script.js', 'styles.css'];
+    const entryPoints = files
+      .filter(f => potentialEntries.includes(f.path))
+      .map(f => f.path);
+    if (entryPoints.length === 0 && files.length > 0) {
+      entryPoints.push(files[0].path);
+    }
+
+    // 4. Detect Pages
+    const pages = files
+      .filter(f => f.path.endsWith('.html') || f.path.startsWith('src/pages/'))
+      .map(f => f.path);
+    if (pages.length === 0 && files.some(f => f.path === 'index.html')) {
+      pages.push('index.html');
+    }
+
+    // 5. Detect Routes
+    const routeSet = new Set<string>();
+    routeSet.add('/');
+    for (const f of files) {
+      if (f.path.endsWith('.html') || f.path.endsWith('.jsx') || f.path.endsWith('.js')) {
+        const anchorMatches = f.content.matchAll(/href=["'](#[a-zA-Z0-9_-]+)["']/gi);
+        for (const m of anchorMatches) {
+          if (m[1] && m[1] !== '#') routeSet.add(`/${m[1]}`);
+        }
+        const routerMatches = f.content.matchAll(/path=["'](\/[a-zA-Z0-9_\-\/]*)["']/gi);
+        for (const m of routerMatches) {
+          if (m[1]) routeSet.add(m[1]);
+        }
+      }
+    }
+    const routes = Array.from(routeSet);
+
+    // 6. Detect Components
+    const componentSet = new Set<string>();
+    if (indexHtml) {
+      const content = indexHtml.content;
+      if (/<header[\s>]/i.test(content)) componentSet.add('header');
+      if (/<nav[\s>]/i.test(content)) componentSet.add('nav');
+      if (/<main[\s>]/i.test(content)) componentSet.add('main');
+      if (/<footer[\s>]/i.test(content)) componentSet.add('footer');
+
+      const idMatches = content.matchAll(/<(?:section|div|article|header|nav|footer)\s+[^>]*id=["']([^"']+)["']/gi);
+      for (const m of idMatches) {
+        if (m[1]) componentSet.add(m[1].toLowerCase());
+      }
+    }
+    for (const f of files) {
+      if (f.path.startsWith('src/components/') || f.path.startsWith('components/')) {
+        const compName = f.path.split('/').pop()?.replace(/\.(jsx?|tsx?)$/, '');
+        if (compName) componentSet.add(compName.toLowerCase());
+      }
+    }
+    const components = Array.from(componentSet);
+
+    // 7. Detect Assets
+    const assetSet = new Set<string>();
+    for (const f of files) {
+      if (/\.(png|jpe?g|svg|webp|gif|ico|pdf|woff2?|ttf)$/i.test(f.path)) {
+        assetSet.add(f.path);
+      }
+      if (f.path.endsWith('.html') || f.path.endsWith('.jsx') || f.path.endsWith('.js') || f.path.endsWith('.css')) {
+        // Image sources in <img> tags
+        const imgMatches = f.content.matchAll(/<img\s+[^>]*src=["']([^"']+)["']/gi);
+        for (const m of imgMatches) {
+          if (m[1]) assetSet.add(m[1].trim());
+        }
+        // CSS background URLs
+        const bgMatches = f.content.matchAll(/url\(["']?([^"')]+)["']?\)/gi);
+        for (const m of bgMatches) {
+          if (m[1] && !m[1].startsWith('data:')) assetSet.add(m[1].trim());
+        }
+        // Stylesheet links
+        const cssMatches = f.content.matchAll(/<link\s+[^>]*href=["']([^"']+\.css[^"']*)["']/gi);
+        for (const m of cssMatches) {
+          if (m[1]) assetSet.add(m[1].trim());
+        }
+        // Script links
+        const scriptMatches = f.content.matchAll(/<script\s+[^>]*src=["']([^"']+)["']/gi);
+        for (const m of scriptMatches) {
+          if (m[1]) assetSet.add(m[1].trim());
+        }
+      }
+    }
+    const assets = Array.from(assetSet);
+
+    return {
+      project_id: projectId,
+      framework,
+      build_system: buildSystem,
+      entry_points: entryPoints,
+      routes,
+      pages,
+      components,
+      assets,
+      current_version: currentVer,
+      approved_plan: approvedPlan,
+      deployment_url: deploymentUrl,
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  /**
    * Executes project commands (build, test, lint, install) within the sandbox
    */
   static async executeProjectCommand(
@@ -552,10 +717,26 @@ export class CloudWorkerService {
         throw new Error(`Failed to create deployment record: ${depErr.message}`);
       }
 
-      // 11. Update Project Status and current deployment
+      // 11. Update Project Status, current deployment, and persistent project state (Requirement 10)
+      const projectState = this.extractProjectState(
+        projectId,
+        files,
+        project.metadata,
+        project.slug,
+        nextVersionNum
+      );
+
+      const updatedMetadata = {
+        ...(project.metadata || {}),
+        current_version: nextVersionNum,
+        deployment_url: deploymentUrl,
+        project_state: projectState,
+      };
+
       await supabaseAdmin.from('projects').update({
         status: 'READY',
         current_deployment_id: deploymentRecord.id,
+        metadata: updatedMetadata,
         updated_at: new Date().toISOString(),
       }).eq('id', projectId);
 
@@ -591,6 +772,7 @@ export class CloudWorkerService {
         logs,
         bundleFiles: bundleResult.bundleFiles,
         deploymentUrl,
+        versionNumber: nextVersionNum,
       };
 
     } catch (error: any) {

@@ -111,6 +111,20 @@ export class CloudDevOrchestrator {
             current_version: 1,
             deployment_url: `https://www.ceova.online/p/${slug}`,
             source_files: [],
+            project_state: {
+              project_id: '',
+              framework: 'vanilla-html',
+              build_system: 'static-edge-bundler',
+              entry_points: ['index.html'],
+              routes: ['/'],
+              pages: ['index.html'],
+              components: [],
+              assets: [],
+              current_version: 1,
+              approved_plan: approvedPlan || null,
+              deployment_url: `https://www.ceova.online/p/${slug}`,
+              updated_at: new Date().toISOString(),
+            },
           },
         })
         .select()
@@ -315,6 +329,20 @@ export class CloudDevOrchestrator {
       }
     } catch {}
 
+    const finalProjectState = CloudWorkerService.extractProjectState(
+      project.id,
+      generatedFiles,
+      {
+        ...existingMeta,
+        slug,
+        deployment_url: deploymentUrl,
+        approved_plan: currentApprovedPlan,
+        current_version: finalVersionNumber,
+      },
+      slug,
+      finalVersionNumber
+    );
+
     const updatedMetadata = {
       ...existingMeta,
       prompt: existingMeta.prompt || userPrompt,
@@ -325,6 +353,7 @@ export class CloudDevOrchestrator {
       deployment_url: deploymentUrl,
       description: projectDescription,
       last_deployed_at: new Date().toISOString(),
+      project_state: finalProjectState,
     };
 
     try {

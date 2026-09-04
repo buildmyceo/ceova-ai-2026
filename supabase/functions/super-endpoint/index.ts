@@ -422,6 +422,7 @@ serve(async (req) => {
                     let existingProjectRecord: any = null;
                     let projectFilesList: string[] = [];
                     let projectVersionNum = 1;
+                    let projectPersistentState: any = null;
 
                     if (existingProjectId) {
                         try {
@@ -435,6 +436,9 @@ serve(async (req) => {
                                 existingSlug = pRec.slug;
                                 if (pRec.metadata?.current_version) {
                                     projectVersionNum = pRec.metadata.current_version;
+                                }
+                                if (pRec.metadata?.project_state) {
+                                    projectPersistentState = pRec.metadata.project_state;
                                 }
 
                                 const { data: pFiles } = await supabaseAdmin
@@ -477,8 +481,16 @@ serve(async (req) => {
                         ? projectFilesList.join(', ') 
                         : 'index.html, styles.css, script.js';
 
+                    const stateFramework = projectPersistentState?.framework || 'vanilla-html';
+                    const stateBuild = projectPersistentState?.build_system || 'static-edge-bundler';
+                    const stateEntries = projectPersistentState?.entry_points?.length ? projectPersistentState.entry_points.join(', ') : 'index.html';
+                    const stateRoutes = projectPersistentState?.routes?.length ? projectPersistentState.routes.join(', ') : '/';
+                    const statePages = projectPersistentState?.pages?.length ? projectPersistentState.pages.join(', ') : 'index.html';
+                    const stateComponents = projectPersistentState?.components?.length ? projectPersistentState.components.join(', ') : 'navbar, hero, about, menu, contact, footer';
+                    const stateAssetsCount = projectPersistentState?.assets?.length || 0;
+
                     const existingProjectContext = existingProjectId
-                        ? `\n- ACTIVE CLOUD PROJECT (Preserve & Continue Existing Project):\n  • Project ID: "${existingProjectId}"\n  • Project Name: "${existingProjectRecord?.name || 'Website'}"\n  • Slug: "${existingSlug}"\n  • Live URL: "https://www.ceova.online/p/${existingSlug}"\n  • Current Version: v${projectVersionNum}\n  • Existing Files: ${filesListSummary}\n\n  CONCEPTUAL PROJECT ARCHITECTURE:\n  CEOVA Project\n  │\n  ├── Website requirements: ${requirementsSummary}\n  ├── Approved plan: ${approvedPlanSummary}\n  ├── Source code & Assets: [${filesListSummary}]\n  ├── Current version: v${projectVersionNum}\n  └── Live deployment: https://www.ceova.online/p/${existingSlug}\n\n  CRITICAL: This website ALREADY EXISTS. Treat it as an existing project.\n  All future user requests operate on this existing project unless the user explicitly asks for a new website.\n  • You MUST EDIT THIS EXISTING PROJECT by calling \`create_project\` with 'project_id': "${existingProjectId}".\n  • DO NOT create a second or new website.\n  • The existing URL ("https://www.ceova.online/p/${existingSlug}") MUST remain the same.\n  • Modify only the relevant files/components. Preserve all other existing sections, styles, navigation, and functionality.\n  • When generating a QR code for this website, use the deployment URL: https://www.ceova.online/p/${existingSlug}`
+                        ? `\n- ACTIVE CLOUD PROJECT (Preserve & Continue Existing Project):\n  • Project ID: "${existingProjectId}"\n  • Project Name: "${existingProjectRecord?.name || 'Website'}"\n  • Slug: "${existingSlug}"\n  • Live URL: "https://www.ceova.online/p/${existingSlug}"\n  • Current Version: v${projectVersionNum}\n  • Existing Files: ${filesListSummary}\n\n  PERSISTENT INTERNAL PROJECT STATE (Requirement 10):\n  • framework: "${stateFramework}"\n  • build_system: "${stateBuild}"\n  • entry_points: [${stateEntries}]\n  • routes: [${stateRoutes}]\n  • pages: [${statePages}]\n  • components: [${stateComponents}]\n  • assets: ${stateAssetsCount} tracked asset(s)\n  • current_version: v${projectVersionNum}\n  • approved_plan: ${approvedPlanSummary}\n  • deployment_url: "https://www.ceova.online/p/${existingSlug}"\n  (This persistent internal state is fully available without requiring complete source code to be injected into every request).\n\n  CONCEPTUAL PROJECT ARCHITECTURE:\n  CEOVA Project\n  │\n  ├── Website requirements: ${requirementsSummary}\n  ├── Approved plan: ${approvedPlanSummary}\n  ├── Source code & Assets: [${filesListSummary}]\n  ├── Current version: v${projectVersionNum}\n  └── Live deployment: https://www.ceova.online/p/${existingSlug}\n\n  CRITICAL: This website ALREADY EXISTS. Treat it as an existing project.\n  All future user requests operate on this existing project unless the user explicitly asks for a new website.\n  • You MUST EDIT THIS EXISTING PROJECT by calling \`create_project\` with 'project_id': "${existingProjectId}".\n  • DO NOT create a second or new website.\n  • The existing URL ("https://www.ceova.online/p/${existingSlug}") MUST remain the same.\n  • Modify only the relevant files/components. Preserve all other existing sections, styles, navigation, and functionality.\n  • When generating a QR code for this website, use the deployment URL: https://www.ceova.online/p/${existingSlug}`
                         : '';
 
                     const toolsSection = hasTools
