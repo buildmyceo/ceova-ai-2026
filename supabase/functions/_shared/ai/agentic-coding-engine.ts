@@ -498,6 +498,20 @@ export class AgenticCodingEngine {
       {
         type: 'function' as const,
         function: {
+          name: 'get_version_history',
+          description: 'Retrieves previous project version records (version number, human-readable change description, date). Use ONLY when the user asks about version history, previous changes, or undo/rollback. Do not load all history unnecessarily.',
+          parameters: {
+            type: 'object',
+            properties: {
+              limit: { type: 'number', description: 'Optional maximum number of past versions to retrieve (default 10, max 25).' },
+              version: { type: 'number', description: 'Optional specific version number to inspect.' },
+            },
+          },
+        },
+      },
+      {
+        type: 'function' as const,
+        function: {
           name: 'finish_task',
           description: 'Declares that the coding task is complete after build/tests PASS and verification succeeds. Summarizes the modifications implemented.',
           parameters: {
@@ -575,6 +589,12 @@ export class AgenticCodingEngine {
       } catch {}
     }
 
+    const latestChangeSummary = projectState.latest_change || (
+      Array.isArray(projectRecord?.metadata?.version_history) && projectRecord.metadata.version_history.length > 0
+        ? projectRecord.metadata.version_history[projectRecord.metadata.version_history.length - 1]?.description
+        : (projectState.current_version === 1 ? 'Initial website' : 'Latest modifications')
+    );
+
     const systemPrompt = `You are GPT-5.6 Luna, an elite autonomous senior coding engineer working inside CEOVA's cloud development environment.
 You are tasked with implementing or modifying a live website according to the user's request.
 
@@ -595,10 +615,17 @@ This persistent project state describes the website architecture without requiri
 - Components: ${JSON.stringify(projectState.components)}
 - Assets: ${JSON.stringify(projectState.assets)}
 - Current Version: v${projectState.current_version}
+- Latest Change: "${latestChangeSummary}"
 - Approved Plan: ${projectState.approved_plan ? JSON.stringify(projectState.approved_plan) : 'null'}
 - Deployment URL: "${projectState.deployment_url}"
 
 You can query this persistent internal state at any time by calling the 'get_project_state' tool.
+
+MAINTAIN VERSION HISTORY (MANDATORY REQUIREMENT 11):
+Every successful modification creates a new project version with a human-readable change record (e.g. Version 1: Initial website, Version 2: Changed restaurant name, Version 3: Added gallery, Version 4: Updated navbar, Version 5: Fixed mobile layout).
+- You already know the current version (v${projectState.current_version}) and latest change ("${latestChangeSummary}").
+- Do NOT request or load historical versions unless the user explicitly asks about past changes, version history, or undo/revert/rollback.
+- When relevant to the user request, call 'get_version_history' with a targeted limit.
 
 ITERATIVE AGENT LOOP WORKFLOW (MANDATORY REQUIREMENT 7):
 You must execute your work as an iterative coding loop according to this conceptual architecture:
@@ -1110,7 +1137,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
             const lowerCmd = command.trim().toLowerCase();
             if (lowerCmd === 'build' || lowerCmd === 'npm run build' || lowerCmd === 'npx vite build' || lowerCmd === 'test' || lowerCmd === 'npm test') {
-              latestBuildResult = await CloudWorkerService.runBuild(projectId, userId);
+              latestBuildResult = await CloudWorkerService.runBuild(projectId, userId, `Command check: ${command}`);
             }
 
             const isSuccess = cmdRes.success && latestBuildResult.success;
@@ -1168,6 +1195,24 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             );
             toolResultText = JSON.stringify(projectState, null, 2);
           }
+          else if (name === 'get_version_history') {
+            const limit = Math.min(Math.max(1, parseInt(args.limit || '10', 10)), 25);
+            const targetVersion = args.version ? parseInt(args.version, 10) : undefined;
+            const history = await CloudWorkerService.getVersionHistory(projectId, {
+              limit,
+              version: targetVersion,
+            });
+            toolResultText = JSON.stringify({
+              current_version: latestBuildResult.versionNumber || projectState.current_version,
+              retrieved_versions_count: history.length,
+              history: history.map(h => ({
+                version: h.version,
+                description: h.description,
+                created_at: h.created_at,
+              })),
+              guidance: 'Only reference or retrieve previous changes when relevant to the current user task.'
+            }, null, 2);
+          }
           else if (name === 'deploy_website' || name === 'run_build') {
             const isBuildOnly = name === 'run_build';
             onProgress?.({
@@ -1179,9 +1224,15 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
               content: isBuildOnly ? 'Running build & automated tests...' : 'Building and deploying website release...',
             });
 
-            latestBuildResult = await CloudWorkerService.runBuild(projectId, userId);
+            const buildCommitMsg = isBuildOnly
+              ? `Build check: ${userPrompt.slice(0, 60)}`
+              : (finishSummary && finishSummary !== 'Website modifications completed.' ? finishSummary : (userPrompt.trim().slice(0, 80) || 'Website updates'));
+
+            latestBuildResult = await CloudWorkerService.runBuild(projectId, userId, buildCommitMsg);
 
             if (latestBuildResult.success) {
+              projectState.current_version = latestBuildResult.versionNumber || projectState.current_version;
+              projectState.latest_change = buildCommitMsg;
               toolResultText = `BUILD SUCCESS\n\nStatus: PASS\nDeployment ready: https://www.ceova.online/p/${slug}\nVersion: v${latestBuildResult.versionNumber || 1}\n\nGuidance: Build verified. If all requested changes are verified and code preserved, call 'finish_task'.`;
             } else {
               const diag = AgenticCodingEngine.extractBuildDiagnostics(latestBuildResult, projectFiles);
@@ -1224,6 +1275,10 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             }
 
             if (!toolResultText) {
+              const finishCommitMsg = finishSummary && finishSummary !== 'Website modifications completed.'
+                ? finishSummary
+                : (userPrompt.trim().slice(0, 80) || 'Website updates');
+
               // Ensure build is verified before allowing finish
               if (!latestBuildResult.success) {
                 onProgress?.({
@@ -1234,12 +1289,14 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
                   isUpdate: true,
                   content: 'Verifying website build and tests...',
                 });
-                latestBuildResult = await CloudWorkerService.runBuild(projectId, userId);
+                latestBuildResult = await CloudWorkerService.runBuild(projectId, userId, finishCommitMsg);
               }
 
               if (latestBuildResult.success) {
+                projectState.current_version = latestBuildResult.versionNumber || projectState.current_version;
+                projectState.latest_change = finishCommitMsg;
                 taskFinished = true;
-                toolResultText = `TASK COMPLETED\n\nStatus: DONE\nMessage: Task completed, build verified, automated tests passed, and code preservation audit passed.\nDeployment: https://www.ceova.online/p/${slug}`;
+                toolResultText = `TASK COMPLETED\n\nStatus: DONE\nVersion: v${latestBuildResult.versionNumber || projectState.current_version}\nChange Record: "${finishCommitMsg}"\nMessage: Task completed, build verified, automated tests passed, and code preservation audit passed.\nDeployment: https://www.ceova.online/p/${slug}`;
               } else {
                 const diag = AgenticCodingEngine.extractBuildDiagnostics(latestBuildResult, projectFiles);
                 toolResultText = `BUILD FAILED\n\nRelevant error:\n${diag.file}:${diag.line}\n\n${diag.error}\n\nGuidance: Build must succeed before task can be finished. Fix line ${diag.line} in "${diag.file}" using 'edit_file' and re-test with 'run_build'.`;
@@ -1264,13 +1321,17 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
     }
 
     // Final build check if agent exited loop without calling finish_task
+    const fallbackCommitMsg = finishSummary && finishSummary !== 'Website modifications completed.'
+      ? finishSummary
+      : (userPrompt.trim().slice(0, 80) || 'Website updates');
+
     if (!latestBuildResult.success) {
-      latestBuildResult = await CloudWorkerService.runBuild(projectId, userId);
+      latestBuildResult = await CloudWorkerService.runBuild(projectId, userId, fallbackCommitMsg);
     }
 
     const finalFiles = await CloudWorkerService.getProjectFiles(projectId);
 
-    // Extract and persist final internal project state (Requirement 10)
+    // Extract and persist final internal project state (Requirements 10 & 11)
     try {
       const finalState = CloudWorkerService.extractProjectState(
         projectId,
@@ -1279,15 +1340,18 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
           ...(projectRecord?.metadata || {}),
           approved_plan: projectState.approved_plan,
           current_version: latestBuildResult.versionNumber || projectState.current_version,
+          latest_change: projectState.latest_change || fallbackCommitMsg,
         },
         slug,
-        latestBuildResult.versionNumber || projectState.current_version
+        latestBuildResult.versionNumber || projectState.current_version,
+        projectState.latest_change || fallbackCommitMsg
       );
 
       await supabaseAdmin.from('projects').update({
         metadata: {
           ...(projectRecord?.metadata || {}),
           current_version: finalState.current_version,
+          latest_change: finalState.latest_change,
           deployment_url: finalState.deployment_url,
           project_state: finalState,
         },

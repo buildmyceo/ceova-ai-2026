@@ -58,9 +58,20 @@ export interface ProjectState {
   components: string[];
   assets: string[];
   current_version: number;
+  latest_change?: string;
   approved_plan: string | null;
   deployment_url: string;
   updated_at?: string;
+}
+
+/**
+ * Concise project change record (Requirement 11)
+ */
+export interface VersionRecord {
+  version: number;
+  description: string;
+  created_at: string;
+  files?: string[];
 }
 
 /** Approved package allowlist */
@@ -352,7 +363,8 @@ export class CloudWorkerService {
     files: ProjectFile[],
     metadata?: any,
     slug?: string,
-    versionNumber?: number
+    versionNumber?: number,
+    latestChange?: string
   ): ProjectState {
     const projectSlug = slug || metadata?.slug || 'project';
     const deploymentUrl = metadata?.deployment_url || `https://www.ceova.online/p/${projectSlug}`;
@@ -480,6 +492,7 @@ export class CloudWorkerService {
       components,
       assets,
       current_version: currentVer,
+      latest_change: latestChange || metadata?.latest_change || (metadata?.version_history?.length ? metadata.version_history.slice(-1)[0].description : (currentVer === 1 ? 'Initial website' : undefined)),
       approved_plan: approvedPlan,
       deployment_url: deploymentUrl,
       updated_at: new Date().toISOString(),
@@ -578,7 +591,8 @@ export class CloudWorkerService {
    */
   static async runBuild(
     projectId: string,
-    userId: string
+    userId: string,
+    commitMessage?: string
   ): Promise<BuildResult> {
     const startTime = Date.now();
     const buildId = crypto.randomUUID();
@@ -686,6 +700,7 @@ export class CloudWorkerService {
         .maybeSingle();
 
       const nextVersionNum = (latestVer?.version_number || 0) + 1;
+      const effectiveMessage = commitMessage || (nextVersionNum === 1 ? 'Initial website' : `Version ${nextVersionNum} update`);
 
       const { data: verRecord } = await supabaseAdmin
         .from('project_versions')
@@ -693,7 +708,7 @@ export class CloudWorkerService {
           project_id: projectId,
           version_number: nextVersionNum,
           source_tree: sourceTreeMap,
-          commit_message: `Build #${nextVersionNum} - Automated generation`,
+          commit_message: effectiveMessage,
         })
         .select()
         .single();
@@ -717,19 +732,34 @@ export class CloudWorkerService {
         throw new Error(`Failed to create deployment record: ${depErr.message}`);
       }
 
-      // 11. Update Project Status, current deployment, and persistent project state (Requirement 10)
+      // 11. Update Project Status, current deployment, and persistent project state (Requirements 10 & 11)
+      const existingHistory: VersionRecord[] = Array.isArray(project.metadata?.version_history)
+        ? project.metadata.version_history
+        : [];
+      const updatedHistory: VersionRecord[] = [
+        ...existingHistory.filter((v: any) => v.version !== nextVersionNum),
+        {
+          version: nextVersionNum,
+          description: effectiveMessage,
+          created_at: new Date().toISOString(),
+        }
+      ].slice(-25);
+
       const projectState = this.extractProjectState(
         projectId,
         files,
         project.metadata,
         project.slug,
-        nextVersionNum
+        nextVersionNum,
+        effectiveMessage
       );
 
       const updatedMetadata = {
         ...(project.metadata || {}),
         current_version: nextVersionNum,
         deployment_url: deploymentUrl,
+        latest_change: effectiveMessage,
+        version_history: updatedHistory,
         project_state: projectState,
       };
 
@@ -1005,5 +1035,77 @@ export class CloudWorkerService {
       ico: 'image/x-icon',
     };
     return map[ext] || 'text/plain; charset=utf-8';
+  }
+
+  /**
+   * Retrieves concise version history for a project (Requirement 11)
+   * Only returns past changes when relevant. Never dumps full source trees of past versions.
+   */
+  static async getVersionHistory(
+    projectId: string,
+    options?: { limit?: number; version?: number; query?: string }
+  ): Promise<{
+    current_version: number;
+    versions: VersionRecord[];
+    detail?: { version: number; description: string; files: string[]; created_at: string };
+  }> {
+    const limit = Math.min(Math.max(options?.limit || 5, 1), 20);
+
+    if (options?.version) {
+      const { data: ver } = await supabaseAdmin
+        .from('project_versions')
+        .select('version_number, commit_message, created_at, source_tree')
+        .eq('project_id', projectId)
+        .eq('version_number', options.version)
+        .maybeSingle();
+
+      if (!ver) {
+        return { current_version: 0, versions: [] };
+      }
+
+      const filePaths = ver.source_tree ? Object.keys(ver.source_tree) : [];
+      const rec: VersionRecord = {
+        version: ver.version_number,
+        description: ver.commit_message || `Version ${ver.version_number}`,
+        created_at: ver.created_at,
+        files: filePaths,
+      };
+
+      return {
+        current_version: ver.version_number,
+        versions: [rec],
+        detail: {
+          version: ver.version_number,
+          description: ver.commit_message || `Version ${ver.version_number}`,
+          files: filePaths,
+          created_at: ver.created_at,
+        },
+      };
+    }
+
+    const { data: rows } = await supabaseAdmin
+      .from('project_versions')
+      .select('version_number, commit_message, created_at')
+      .eq('project_id', projectId)
+      .order('version_number', { ascending: false })
+      .limit(limit);
+
+    let list: VersionRecord[] = (rows || []).map((r: any) => ({
+      version: r.version_number,
+      description: r.commit_message || `Version ${r.version_number}`,
+      created_at: r.created_at,
+    }));
+
+    if (options?.query) {
+      const q = options.query.toLowerCase();
+      list = list.filter((v: any) => v.description.toLowerCase().includes(q));
+    }
+
+    const currentVersion = list.length > 0 ? list[0].version : 1;
+
+    return {
+      current_version: currentVersion,
+      versions: list,
+    };
   }
 }

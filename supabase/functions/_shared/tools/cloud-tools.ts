@@ -333,7 +333,7 @@ export class EditProjectFileTool implements Tool {
 
       const updated = file.content.replace(targetContent, replacementContent);
       await CloudWorkerService.writeProjectFiles(projectId, [{ path, content: updated }]);
-      await CloudWorkerService.runBuild(projectId, context.userId);
+      await CloudWorkerService.runBuild(projectId, context.userId, `Edited ${path}`);
 
       return {
         success: true,
@@ -508,7 +508,8 @@ export class RunProjectBuildTool implements Tool {
       await verifyProjectOwnership(projectId, context.userId);
 
       context.onStatusUpdate?.("Starting isolated cloud worker build...");
-      const buildResult = await CloudWorkerService.runBuild(projectId, context.userId);
+      const commitMessage = context.args?.commit_message || 'Manual build execution';
+      const buildResult = await CloudWorkerService.runBuild(projectId, context.userId, commitMessage);
 
       if (!buildResult.success) {
         return {
@@ -626,7 +627,8 @@ export class DeployProjectTool implements Tool {
       const project = await verifyProjectOwnership(projectId, context.userId);
 
       // Trigger build and deployment through worker
-      const buildResult = await CloudWorkerService.runBuild(projectId, context.userId);
+      const releaseSummary = context.args?.release_summary || 'Deployment release';
+      const buildResult = await CloudWorkerService.runBuild(projectId, context.userId, releaseSummary);
 
       if (!buildResult.success) {
         return {
@@ -650,6 +652,42 @@ export class DeployProjectTool implements Tool {
   }
 }
 
+export class GetProjectVersionHistoryTool implements Tool {
+  metadata: ToolMetadata = {
+    id: 'get_project_version_history',
+    name: 'get_project_version_history',
+    description: 'Retrieves concise project version history (version number, change description, timestamp) without full source code dumps.',
+    parameters: [
+      { name: 'project_id', type: 'string', description: 'The project ID to get version history for', required: true },
+      { name: 'limit', type: 'number', description: 'Maximum number of versions to return (default 10, max 25)', required: false },
+      { name: 'version', type: 'number', description: 'Specific version number to inspect', required: false },
+    ],
+  };
+
+  async execute(context: ToolContext): Promise<ToolResult> {
+    try {
+      const projectId = context.args?.project_id;
+      await verifyProjectOwnership(projectId, context.userId);
+      const limit = Math.min(Math.max(1, parseInt(context.args?.limit || '10', 10)), 25);
+      const targetVersion = context.args?.version ? parseInt(context.args?.version, 10) : undefined;
+      const history = await CloudWorkerService.getVersionHistory(projectId, { limit, version: targetVersion });
+      return {
+        success: true,
+        data: {
+          project_id: projectId,
+          versions: history.map(h => ({
+            version: h.version,
+            description: h.description,
+            created_at: h.created_at,
+          })),
+        },
+      };
+    } catch (e: any) {
+      return { success: false, error: { code: 'HISTORY_FETCH_ERROR', message: e.message } };
+    }
+  }
+}
+
 /** Export all Cloud Development Tools */
 export const cloudDevelopmentTools: Tool[] = [
   new CreateProjectTool(),
@@ -661,4 +699,5 @@ export const cloudDevelopmentTools: Tool[] = [
   new RunProjectBuildTool(),
   new GetProjectBuildLogsTool(),
   new DeployProjectTool(),
+  new GetProjectVersionHistoryTool(),
 ];

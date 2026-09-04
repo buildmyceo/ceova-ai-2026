@@ -191,8 +191,8 @@ export class CloudDevOrchestrator {
         await new Promise(r => setTimeout(r, 60));
       }
 
-      await CloudWorkerService.writeProjectFiles(project.id, generatedFiles);
-      buildResult = await CloudWorkerService.runBuild(project.id, userId);
+      const initialCommitMessage = isUpdate ? (userPrompt.slice(0, 80)) : 'Initial website';
+      buildResult = await CloudWorkerService.runBuild(project.id, userId, initialCommitMessage);
 
       let fixAttempts = 0;
       while (!buildResult.success && fixAttempts < this.MAX_FIX_ATTEMPTS) {
