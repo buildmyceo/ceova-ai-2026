@@ -175,7 +175,7 @@ export class CloudDevOrchestrator {
       slug: slug,
       deploymentUrl: deploymentUrl,
       isUpdate,
-      content: isUpdate ? 'Building website updates...' : 'Building website...',
+      content: isUpdate ? 'Updating your website…' : 'Building your website…',
     });
 
     await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
@@ -217,7 +217,7 @@ export class CloudDevOrchestrator {
           isUpdate,
           files: [...writtenFilesList],
           logs: fileActivityLog,
-          content: 'Building website...',
+          content: isUpdate ? 'Updating your website…' : 'Building your website…',
         });
         await new Promise(r => setTimeout(r, 60));
       }
@@ -240,7 +240,7 @@ export class CloudDevOrchestrator {
           isUpdate,
           files: generatedFiles.map(f => f.path),
           logs: buildResult.logs,
-          content: 'Building website...',
+          content: isUpdate ? 'I found an issue while updating the website. I’m fixing it.' : 'I found an issue while building the website. I’m fixing it.',
         });
 
         await supabaseAdmin.from('projects').update({ status: 'BUILDING' }).eq('id', project.id);
@@ -297,7 +297,7 @@ export class CloudDevOrchestrator {
       isUpdate,
       files: generatedFiles.map(f => f.path),
       logs: fileActivityLog,
-      content: 'Verifying website...',
+      content: 'Verifying website…',
     });
 
     const verification = await this.verifyModification({
@@ -331,7 +331,7 @@ export class CloudDevOrchestrator {
       isUpdate,
       files: generatedFiles.map(f => f.path),
       logs: fileActivityLog,
-      content: 'Verifying website...',
+      content: 'Verifying website…',
     });
 
     const projectDescription = project.metadata?.description || `Responsive website with custom sections and navigation.`;
@@ -396,7 +396,7 @@ export class CloudDevOrchestrator {
       Logger.WARN(`[CloudDevOrchestrator] Non-fatal error saving project metadata: ${e.message}`);
     }
 
-    const statusHeader = isUpdate ? '✓ Website updated' : '✓ Website created';
+    const statusHeader = isUpdate ? 'Website updated successfully.' : 'Website created successfully.';
     const resultSummary = `${statusHeader}\n\n${projectName}\n\n${projectDescription}\n\n${deploymentUrl}`;
 
     onProgress({

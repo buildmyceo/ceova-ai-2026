@@ -790,6 +790,25 @@ Strict Division of Labor:
    - Deciding when the task is complete (evaluating verification status and calling 'finish_task')
 This separation is important for both cost and reliability.
 
+DO NOT EXPOSE THE AGENT'S INTERNAL TOOL PROCESS TO NORMAL USERS (MANDATORY REQUIREMENT 18):
+The user does not need to see:
+- search_code()
+- read_file()
+- edit_file()
+- npm run build
+Those are internal agent operations.
+
+The user should see a clean experience such as:
+Updating your website…
+Then:
+Website updated successfully.
+If something fails:
+I found an issue while updating the website. I’m fixing it.
+
+Only expose technical details when they are genuinely useful.
+- In any conversational explanations, messages, summaries, or commit notes shown to normal users, NEVER mention or list internal tool names ('search_code', 'read_file', 'edit_file', 'run_build', etc.) or internal command names ('npm run build', 'git commit').
+- Speak in natural, friendly, non-technical language.
+
 STRICT RULES - DO NOT RETRIEVE UNRELATED CONTEXT:
 - Do NOT retrieve Footer, Contact, About, Menu, or other unrelated components unless they are actually relevant.
 - Do NOT retrieve lock files (package-lock.json, yarn.lock).
@@ -816,7 +835,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
     let turns = 0;
     let taskFinished = false;
-    let finishSummary = 'Website modifications completed.';
+    let finishSummary = isExistingProject ? 'Website updated successfully.' : 'Website created successfully.';
     let latestBuildResult: BuildResult = {
       success: false,
       buildId: '',
@@ -836,8 +855,8 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
         stage: 'BUILDING',
         projectId,
         slug,
-        isUpdate: true,
-        content: turns === 1 ? 'Inspecting website code...' : 'Building website updates...',
+        isUpdate: isExistingProject,
+        content: isExistingProject ? 'Updating your website…' : 'Building your website…',
       });
 
       // Token efficiency: Prune older intermediate tool outputs and verbose logs across turns
@@ -881,18 +900,14 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
         const hasActiveErrors = !latestBuildResult.success && latestBuildResult.errors && latestBuildResult.errors.length > 0;
         let progressMessage = '';
 
-        if (name === 'search_code' || name === 'list_files' || name === 'inspect_website') {
-          progressMessage = 'Inspecting website code...';
-        } else if (name === 'read_file' || name === 'read_files') {
-          progressMessage = hasActiveErrors ? 'Investigating build failure & inspecting code...' : 'Reading targeted component...';
-        } else if (name === 'edit_file' || name === 'create_file' || name === 'write_file') {
-          progressMessage = hasActiveErrors ? 'Applying fix for build error...' : 'Applying surgical code modifications...';
-        } else if (name === 'run_build') {
-          progressMessage = 'Running build & automated sanity tests...';
-        } else if (name === 'deploy_website') {
-          progressMessage = 'Deploying website updates...';
+        if (hasActiveErrors) {
+          progressMessage = isExistingProject
+            ? 'I found an issue while updating the website. I’m fixing it.'
+            : 'I found an issue while building the website. I’m fixing it.';
         } else if (name === 'finish_task') {
-          progressMessage = 'Verifying website & code preservation...';
+          progressMessage = 'Verifying website…';
+        } else {
+          progressMessage = isExistingProject ? 'Updating your website…' : 'Building your website…';
         }
 
         if (progressMessage) {
@@ -901,7 +916,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             stage: name === 'finish_task' ? 'VERIFYING' : 'BUILDING',
             projectId,
             slug,
-            isUpdate: true,
+            isUpdate: isExistingProject,
             content: progressMessage,
           });
         }
@@ -1272,13 +1287,13 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
               stage: 'BUILDING',
               projectId,
               slug,
-              isUpdate: true,
-              content: isBuildOnly ? 'Running build & automated tests...' : 'Building and deploying website release...',
+              isUpdate: isExistingProject,
+              content: isExistingProject ? 'Updating your website…' : 'Building your website…',
             });
 
             const buildCommitMsg = isBuildOnly
               ? `Build check: ${userPrompt.slice(0, 60)}`
-              : (finishSummary && finishSummary !== 'Website modifications completed.' ? finishSummary : (userPrompt.trim().slice(0, 80) || 'Website updates'));
+              : (finishSummary && finishSummary !== 'Website modifications completed.' && finishSummary !== 'Website updated successfully.' ? finishSummary : (isExistingProject ? 'Website updated successfully.' : 'Website created successfully.'));
 
             latestBuildResult = await CloudWorkerService.runBuild(projectId, userId, buildCommitMsg);
 
@@ -1303,7 +1318,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             }
           } 
           else if (name === 'finish_task') {
-            finishSummary = args.summary || 'Website modifications completed.';
+            finishSummary = args.summary || (isExistingProject ? 'Website updated successfully.' : 'Website created successfully.');
 
             // Code Preservation Audit (Requirement 6)
             if (isExistingProject && baselineSnapshot.components.size > 0) {
@@ -1327,9 +1342,9 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             }
 
             if (!toolResultText) {
-              const finishCommitMsg = finishSummary && finishSummary !== 'Website modifications completed.'
+              const finishCommitMsg = finishSummary && finishSummary !== 'Website modifications completed.' && finishSummary !== 'Website updated successfully.'
                 ? finishSummary
-                : (userPrompt.trim().slice(0, 80) || 'Website updates');
+                : (isExistingProject ? 'Website updated successfully.' : 'Website created successfully.');
 
               // Ensure build is verified before allowing finish
               if (!latestBuildResult.success) {
@@ -1338,8 +1353,8 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
                   stage: 'VERIFYING',
                   projectId,
                   slug,
-                  isUpdate: true,
-                  content: 'Verifying website build and tests...',
+                  isUpdate: isExistingProject,
+                  content: 'Verifying website…',
                 });
                 latestBuildResult = await CloudWorkerService.runBuild(projectId, userId, finishCommitMsg);
               }
