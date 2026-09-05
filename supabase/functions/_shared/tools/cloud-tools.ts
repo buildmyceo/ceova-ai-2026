@@ -74,28 +74,15 @@ export class CreateProjectTool implements Tool {
 
   async execute(context: ToolContext): Promise<ToolResult> {
     try {
-      const prompt = context.args?.description || context.args?.name || context.message || 'Update web project';
-      let projectId = context.args?.project_id || context.existingProjectId;
+      const prompt = context.args?.description || context.args?.name || context.message || 'Create web project';
+      let projectId: string | undefined = context.args?.project_id;
       const approvedPlan = context.args?.approved_plan;
 
-      // Fail-safe: If projectId is missing, check if this is an update request
-      // and lookup the user's most recent active project in Supabase
-      if (!projectId) {
-        const isUpdateRequest = /change|update|modify|edit|fix|add|remove|replace|make|style|adjust|navbar|nav|hero|menu|footer|heading|button|section|logo/i.test(prompt) ||
-                                /change|update|modify|edit|fix|add|remove|replace|make|style|adjust|navbar|nav|hero|menu|footer|heading|button|section|logo/i.test(context.message || '');
-        if (isUpdateRequest) {
-          const { data: latestProj } = await supabaseAdmin
-            .from('projects')
-            .select('id, slug, name')
-            .eq('user_id', context.userId)
-            .order('updated_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (latestProj) {
-            projectId = latestProj.id;
-          }
-        }
+      // Respect the AI's decision:
+      // If the AI specified a project name or omitted project_id to create a new site, leave projectId undefined.
+      // Only fallback to context.existingProjectId if no new project name was given.
+      if (!projectId && !context.args?.name && context.existingProjectId) {
+        projectId = context.existingProjectId;
       }
       
       const onProgress = context.sendEvent || ((event: any) => {

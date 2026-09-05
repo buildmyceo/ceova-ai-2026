@@ -492,12 +492,20 @@ export default function Home({ session }) {
         const activeProjectId = activeCloudProject?.cloudProject?.projectId || 
             activeCloudProject?.attachments?.find(a => a.type === 'cloud_project')?.data?.projectId;
 
-        // Step 9: If user explicitly asks for a new website, do not bind existing project_id.
-        // Otherwise, all follow-up requests preserve and operate on the existing project.
-        const isExplicitNewSite = /^\s*(?:please\s+)?(?:create|build|make|start|generate)\s+(?:a\s+)?(?:completely\s+)?(?:new|different|another|second)\s+(?:website|web\s*app|site|project)/i.test(text)
+        // Check if user is approving a new website implementation plan
+        const lastAssistantMsg = currentMessages.slice().reverse().find(m => m.sender === 'assistant');
+        const isApprovingNewSitePlan = lastAssistantMsg && 
+            typeof lastAssistantMsg.text === 'string' &&
+            /Website Implementation Plan/i.test(lastAssistantMsg.text) &&
+            !/Revised Website Implementation Plan/i.test(lastAssistantMsg.text) &&
+            /^(?:proceed|yes|build it|go ahead|approved|approve|sure|ok|start|do it|let's do it|lets do it)\b/i.test(text.trim());
+
+        // Check if user explicitly requests or describes creating a brand-new website
+        const isNewWebsiteRequest = /^\s*(?:please\s+)?(?:creat|create|build|make|start|generate|design)\s+(?:a\s+)?(?:completely\s+)?(?:new\s+)?(?:website|web\s*app|site|landing|portfolio|restaurant|resturent|store|bakery|project|page)/i.test(text)
             || /\b(?:start|begin)\s+(?:from\s+scratch|fresh|over|anew)\b/i.test(text)
-            || /\bcreate\s+a\s+brand\s+new\s+website\b/i.test(text);
-        const effectiveProjectId = isExplicitNewSite ? undefined : activeProjectId;
+            || /\b(?:create|build|make)\s+(?:a\s+)?brand\s+new\b/i.test(text);
+
+        const effectiveProjectId = (isNewWebsiteRequest || isApprovingNewSitePlan) ? undefined : activeProjectId;
 
         try {
             const token = session?.access_token || SUPABASE_KEY;

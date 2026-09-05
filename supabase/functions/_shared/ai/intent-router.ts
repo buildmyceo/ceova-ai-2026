@@ -354,8 +354,9 @@ export function determineTaskScope(message: string, context?: { isExistingProjec
     }
   }
 
-  // Creating a new site from scratch is complex
-  if (/\b(?:create|build|make)\s+(?:a\s+)?(?:new\s+)?(?:website|site|landing|app|store|portfolio|restaurant|bakery)\b/i.test(msg)) {
+  // Creating a new site from scratch or executing an approved plan is complex
+  if (/\b(?:creat|create|build|make|start|generate|design)\s+(?:a\s+)?(?:completely\s+)?(?:new\s+)?(?:website|web\s*app|site|landing|portfolio|restaurant|resturent|store|bakery|project|page)/i.test(msg) ||
+      /^(?:proceed|yes|build it|go ahead|approved|approve|sure|ok|start|do it|let's do it|lets do it)\b/i.test(msg)) {
     return 'complex';
   }
 
