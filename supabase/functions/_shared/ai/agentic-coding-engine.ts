@@ -329,6 +329,8 @@ export class AgenticCodingEngine {
               replacement_content: { type: 'string', description: 'The new replacement code to insert in place of target_content.' },
               context_before: { type: 'string', description: 'Optional structural context immediately preceding target_content to disambiguate identical strings (e.g. parent tag, attribute, or preceding line).' },
               context_after: { type: 'string', description: 'Optional structural context immediately following target_content to disambiguate identical strings (e.g. closing tag or following line).' },
+              allow_multiple: { type: 'boolean', description: 'Set to true when intentionally replacing all occurrences of target_content throughout the file (e.g. updating a global brand name, company title, or theme token).' },
+              replace_all: { type: 'boolean', description: 'Alias for allow_multiple. Set to true to replace all matching occurrences.' },
               changes: {
                 type: 'array',
                 description: 'Optional array of changes [{ target_content, replacement_content, context_before?, context_after? }]',
@@ -669,8 +671,9 @@ STRICT SIMPLE WORKFLOW:
 - Use 'search_code' to find the exact target location.
 - Read ONLY the relevant 15-30 lines of code around the target using 'read_file'.
 - Apply a targeted surgical edit using 'edit_file' (smallest safe modification).
+- When changing a brand or website name, ensure the navigation logo in <header>/<nav> and page metadata are updated.
 - Call 'run_build' to test & verify, and call 'finish_task'.
-- DO NOT perform broad architectural scans or read multiple unrelated files/components.` : `TASK SCOPE: COMPLEX TASK
+- DO NOT perform broad architectural scans or read multiple unrelated files/components unless contextual requirements (like audience/theme) genuinely warrant it.` : `TASK SCOPE: COMPLEX TASK
 The user has requested a substantial or multi-component addition/redesign (e.g. Add an entire booking system UI, Redesign homepage, Add a complete gallery, Create a new page, Major navigation change).
 STRICT COMPLEX WORKFLOW:
   understand → inspect architecture → identify affected files → retrieve relevant context → implement → build → test → fix → verify
@@ -869,6 +872,20 @@ CRITICAL MODIFICATION RULES:
   • NEVER blindly perform a string replacement merely because the string exists in the file.
   • Disambiguate multi-occurrence strings: For example, if "Home" appears 17 times (in navigation, hero headline, section titles, breadcrumbs, footer links), you MUST determine which occurrence actually corresponds to the user's requested change.
   • PREFER STRUCTURAL / CONTEXT-AWARE EDITING: Always include surrounding parent tags, container elements, distinctive attributes, or adjacent lines in target_content (or use context_before and context_after) so that the target matches the exact intended occurrence uniquely.
+  • When intentionally renaming a global brand name, company title, or theme token across the entire file, pass allow_multiple: true in 'edit_file'.
+
+- HOLISTIC COMPOUND INTENT & THEMATIC CONTEXT:
+  • Understand the entire user prompt. When a user provides context, audience, or purpose (e.g. "change the website name to X as the restaurant is for childrens" or "make it dark themed for a nightclub"), you must address BOTH the primary request (the name/brand) and the contextual request (the theme, audience, tone, and offerings).
+  • Never truncate or discard contextual clauses. Update headings, copy, and offerings to genuinely suit the requested audience while preserving the core layout and working interactive functionality.
+
+- BRAND & VISUAL IDENTITY COMPLETENESS:
+  • When updating a website's name, brand, or theme, always inspect and update ALL brand identity touchpoints:
+    1. The primary navigation header/logo (<a class="logo">, <header> .brand, nav .logo). In modern website templates, logos often wrap text in <span>, <strong>, or SVG icons (e.g. 'Brand <span>&</span> Name'). Always inspect the <header>/<nav> markup directly and update the logo element so the visible brand name matches what the user requested!
+    2. Page metadata (<title>, <meta name="description">).
+    3. Hero & Intro section greetings and headlines (e.g. "Welcome to [Brand]").
+    4. About / Story sections (brand origins, company mission).
+    5. Footer logo and copyright notice.
+  • Never finish a task leaving the main navigation logo displaying an old brand name!
 - DO NOT OVER-ENGINEER THE FIRST IMPLEMENTATION (MANDATORY REQUIREMENT 21):
   For this version, prioritize ONLY the essential 7 pillars:
   1. Tool calling (OpenAI function calling via tools array)
@@ -1188,15 +1205,21 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
                   }
 
                   const occurrences = existingContent.split(searchTarget).length - 1;
-                  if (occurrences > 1) {
+                  const allowMultiple = Boolean((edit as any).allow_multiple || (edit as any).replace_all || (args as any).allow_multiple || (args as any).replace_all);
+
+                  if (occurrences > 1 && !allowMultiple) {
                     toolResultText = JSON.stringify({
-                      error: `target_content "${edit.target_content}" is ambiguous and appears ${occurrences} times in "${path}". (Requirement 20: Never blindly perform a string replacement merely because the string exists). Inspect surrounding code with 'search_code' or 'read_file' to determine which occurrence corresponds to the user's requested change. Prefer structural/context-aware editing by including surrounding parent tags, attributes, or adjacent lines (or using 'context_before' / 'context_after') so that the target matches uniquely.`,
+                      error: `target_content "${edit.target_content}" is ambiguous and appears ${occurrences} times in "${path}". (Requirement 20: Never blindly perform a string replacement merely because the string exists). Inspect surrounding code with 'search_code' or 'read_file' to determine which occurrence corresponds to the user's requested change. Prefer structural/context-aware editing by including surrounding parent tags, attributes, or adjacent lines (or using 'context_before' / 'context_after') so that the target matches uniquely. If your intent is to rename all occurrences across the entire file (e.g. brand name), pass allow_multiple: true.`,
                     });
                     errorOccurred = true;
                     break;
                   }
 
-                  existingContent = existingContent.replace(searchTarget, replacement);
+                  if (allowMultiple) {
+                    existingContent = existingContent.replaceAll(searchTarget, replacement);
+                  } else {
+                    existingContent = existingContent.replace(searchTarget, replacement);
+                  }
                 }
 
                 if (!errorOccurred) {

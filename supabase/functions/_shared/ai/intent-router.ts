@@ -317,6 +317,19 @@ export function determineTaskScope(message: string, context?: { isExistingProjec
     }
   }
 
+  // Compound intent / contextual modifier detection (Flexible Intent Recognition):
+  // If the user prompt includes secondary clauses specifying audience, theme, purpose, or multiple actions,
+  // do NOT pigeonhole into a simple micro-edit. Give the agent full cognitive scope to adapt both.
+  const hasContextualClause = 
+    /\b(?:as|because|since)\s+(?:the|it|this|that)\b/i.test(msg) ||
+    /\bfor\s+(?:children|childs|childrens|kids|toddlers|babies|families|students|gamers|developers|luxury|seniors|teens)\b/i.test(msg) ||
+    /\b(?:theme|rebrand|makeover|overhaul|redesign|vibe|mood|audience|aesthetic)\b/i.test(msg) ||
+    /\b(?:and\s+also|along\s+with|as\s+well\s+as|in\s+addition)\b/i.test(msg);
+
+  if (hasContextualClause && !/\b(?:what|who|how|where|when|why|is\s+there)\b/i.test(msg)) {
+    return 'complex';
+  }
+
   // Explicit simple patterns (Requirement 13)
   const simplePatterns = [
     /\b(?:change|update|fix|replace|tweak|modify|make|set)\s+(?:the\s+)?(?:restaurant\s+)?name\b/i,
