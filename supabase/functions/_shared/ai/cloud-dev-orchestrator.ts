@@ -66,7 +66,7 @@ export class CloudDevOrchestrator {
         project = existingProj;
         projectName = existingProj.name;
         slug = existingProj.slug;
-        deploymentUrl = `https://www.ceova.online/p/${slug}`;
+        deploymentUrl = 'in-app-preview';
         isUpdate = true;
       }
     }
@@ -109,7 +109,7 @@ export class CloudDevOrchestrator {
             requirements: [userPrompt],
             approved_plan: approvedPlan || null,
             current_version: 1,
-            deployment_url: `https://www.ceova.online/p/${slug}`,
+            deployment_url: 'in-app-preview',
             source_files: [],
             project_state: {
               project_id: '',
@@ -122,7 +122,7 @@ export class CloudDevOrchestrator {
               assets: [],
               current_version: 1,
               approved_plan: approvedPlan || null,
-              deployment_url: `https://www.ceova.online/p/${slug}`,
+              deployment_url: 'in-app-preview',
               updated_at: new Date().toISOString(),
             },
           },
@@ -134,7 +134,7 @@ export class CloudDevOrchestrator {
         throw new Error(`Failed to create project: ${createErr?.message}`);
       }
       project = newProj;
-      deploymentUrl = `https://www.ceova.online/p/${slug}`;
+      deploymentUrl = 'in-app-preview';
     }
 
     onProgress({
@@ -158,8 +158,15 @@ export class CloudDevOrchestrator {
       currentFiles = await CloudWorkerService.getProjectFiles(project.id);
       fileActivityLog += `[AGENT] Starting autonomous Codex-style coding session for update...\n`;
 
+      // Check if there is an approved plan in parameters or project metadata
+      const activeApprovedPlan = approvedPlan || project?.metadata?.approved_plan || null;
+      let effectivePrompt = userPrompt;
+      if (activeApprovedPlan) {
+        effectivePrompt = `Task: Implement the following approved website plan and user instructions.\n\nAPPROVED IMPLEMENTATION PLAN:\n${activeApprovedPlan}\n\nUSER REQUEST / INSTRUCTION:\n${userPrompt}\n\nCRITICAL INSTRUCTIONS:\n- If the plan specifies separate pages (e.g. Home, About, Services, Why us, Contact), use create_file or edit_file to implement each page as clean HTML with shared CSS styling and complete navigation links.\n- If the plan specifies cartoon character imagery, illustrations, or icons, embed child-friendly cartoon SVG illustrations or styling directly into the pages.\n- Ensure navigation links between all pages work seamlessly.`;
+      }
+
       const agentResult = await AgenticCodingEngine.runModificationSession({
-        userPrompt,
+        userPrompt: effectivePrompt,
         projectId: project.id,
         projectName,
         slug,
@@ -366,7 +373,7 @@ export class CloudDevOrchestrator {
     }
 
     const statusHeader = isUpdate ? 'Website updated successfully.' : 'Website created successfully.';
-    const resultSummary = `${statusHeader}\n\n${projectName}\n\n${projectDescription}\n\n${deploymentUrl}`;
+    const resultSummary = `${statusHeader}\n\n${projectName}\n\n${projectDescription}`;
 
     onProgress({
       type: 'cloud_project_ready',

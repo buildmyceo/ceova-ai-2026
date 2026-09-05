@@ -6,7 +6,7 @@ import { Loader2, ArrowRight } from 'lucide-react';
    Simple, compact website result message.
    ═══════════════════════════════════════════════════════════════════════ */
 
-export default function CloudProjectCard({ project }) {
+export default function CloudProjectCard({ project, onPreview }) {
   if (!project) return null;
 
   const {
@@ -18,11 +18,6 @@ export default function CloudProjectCard({ project }) {
     error = null,
     isUpdate = false,
   } = project;
-
-  const rawUrl = project.deploymentUrl || (slug ? `https://www.ceova.online/p/${slug}` : '');
-  const deploymentUrl = slug && rawUrl && !rawUrl.includes('/p/')
-    ? rawUrl.replace(/(?:https?:\/\/)?(?:www\.)?ceova\.online\/([^\s/?#]+)/i, 'https://www.ceova.online/p/$1')
-    : (rawUrl || (slug ? `https://www.ceova.online/p/${slug}` : ''));
 
   const isReady = stage === 'READY';
   const isFailed = stage === 'FAILED' || !!error;
@@ -67,12 +62,6 @@ export default function CloudProjectCard({ project }) {
     const cleanName = displayProjectName.replace(/^(?:My\s+)?Cloud\s+Project$/i, 'website');
     return `Responsive ${cleanName.toLowerCase().includes('website') || cleanName.toLowerCase().includes('app') ? cleanName : `${cleanName} website`} with menu, about, contact and custom interactive sections.`;
   }, [description, project.description, project.metadata, content, displayProjectName]);
-
-  const openUrl = useMemo(() => {
-    if (!deploymentUrl) return slug ? `https://www.ceova.online/p/${slug}` : '#';
-    const sep = deploymentUrl.includes('?') ? '&' : '?';
-    return `${deploymentUrl}${sep}_t=${Date.now()}`;
-  }, [deploymentUrl, slug]);
 
   // ─── 1. Completed State: Simple, clean website result message (Step 10) ───────────
   if (isReady) {
@@ -133,58 +122,38 @@ export default function CloudProjectCard({ project }) {
           {displayDescription}
         </div>
 
-        {/* Live website link */}
+        {/* In-App Private Sandbox Preview Indicator */}
         <div
           style={{
-            fontSize: '0.88rem',
-            display: 'flex',
-            alignItems: 'baseline',
+            fontSize: '0.82rem',
+            display: 'inline-flex',
+            alignItems: 'center',
             gap: '6px',
-            flexWrap: 'wrap',
-            wordBreak: 'break-all',
+            color: '#71717a',
             paddingTop: '2px',
           }}
         >
-          <a
-            href={openUrl}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              color: '#818cf8',
-              textDecoration: 'none',
-              fontWeight: 400,
-              transition: 'color 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = '#a5b4fc';
-              e.currentTarget.style.textDecoration = 'underline';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = '#818cf8';
-              e.currentTarget.style.textDecoration = 'none';
-            }}
-          >
-            {deploymentUrl}
-          </a>
+          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981' }} />
+          <span>Private In-App Sandbox Preview</span>
         </div>
 
-        {/* Clear Open Website action/button */}
+        {/* Clear Preview Website action/button */}
         <div style={{ paddingTop: '6px' }}>
-          <a
-            href={openUrl}
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
+            onClick={() => onPreview && onPreview(project)}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '8px',
               padding: '8px 18px',
               borderRadius: '8px',
               background: 'linear-gradient(135deg, #7c5cfc 0%, #6366f1 100%)',
               color: '#ffffff',
               fontSize: '0.86rem',
               fontWeight: 500,
-              textDecoration: 'none',
+              border: 'none',
+              cursor: 'pointer',
               boxShadow: '0 2px 8px rgba(124, 92, 252, 0.25)',
               transition: 'all 0.15s ease',
             }}
@@ -197,8 +166,9 @@ export default function CloudProjectCard({ project }) {
               e.currentTarget.style.boxShadow = '0 2px 8px rgba(124, 92, 252, 0.25)';
             }}
           >
-            Open Website <ArrowRight size={14} />
-          </a>
+            <span>Preview Website</span>
+            <ArrowRight size={14} />
+          </button>
         </div>
       </div>
     );

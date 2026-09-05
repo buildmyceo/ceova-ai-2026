@@ -23,20 +23,6 @@ const RESERVED_APP_PATHS = new Set([
 ]);
 
 function NotFoundOrProjectRedirect() {
-    const location = useLocation();
-    const firstSegment = location.pathname.replace(/^\/+/, '').split('/')[0]?.toLowerCase();
-
-    useEffect(() => {
-        if (firstSegment && !RESERVED_APP_PATHS.has(firstSegment) && !firstSegment.includes('.')) {
-            // Unrecognized path: redirect to /p/:slug so customer websites load seamlessly
-            window.location.replace(`/p/${firstSegment}${location.search}${location.hash}`);
-        }
-    }, [firstSegment, location]);
-
-    if (firstSegment && !RESERVED_APP_PATHS.has(firstSegment) && !firstSegment.includes('.')) {
-        return <LoadingScreen text="Loading website..." />;
-    }
-
     return <Navigate to="/" replace />;
 }
 

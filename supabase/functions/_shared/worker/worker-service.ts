@@ -714,7 +714,7 @@ export class CloudWorkerService {
         .single();
 
       // 10. Create Deployment Record
-      const deploymentUrl = `https://www.ceova.online/p/${project.slug}`;
+      const deploymentUrl = 'in-app-preview';
       const { data: deploymentRecord, error: depErr } = await supabaseAdmin
         .from('deployments')
         .insert({
@@ -1028,6 +1028,16 @@ export class CloudWorkerService {
 
     // Output index.html into distribution bundle
     bundle['index.html'] = processedHtml;
+
+    // Output all additional multi-page HTML files (e.g. about.html, services.html, why.html, contact.html)
+    const otherHtmlFiles = files.filter(f => f.path.endsWith('.html') && f.path !== 'index.html');
+    for (const hFile of otherHtmlFiles) {
+      let pHtml = hFile.content;
+      if (!pHtml.includes('tailwindcss.com') && !pHtml.includes('tailwind.css')) {
+        pHtml = pHtml.replace('</head>', '  <script src="https://cdn.tailwindcss.com"></script>\n</head>');
+      }
+      bundle[hFile.path] = pHtml;
+    }
 
     return {
       success: true,

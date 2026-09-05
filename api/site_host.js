@@ -18,86 +18,96 @@ const MIME_MAP = {
 };
 
 export default async function handler(req, res) {
-  const { slug, path: rawPath } = req.query;
+  const { slug } = req.query;
   const projectSlug = (slug || '').trim().toLowerCase();
 
-  if (!projectSlug) {
-    return res.status(404).send('Project slug is required.');
-  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
 
-  try {
-    const { data: project, error: projErr } = await supabase
-      .from('projects')
-      .select('id, name, slug, status, current_deployment_id')
-      .eq('slug', projectSlug)
-      .maybeSingle();
-
-    if (projErr || !project) {
-      return res.status(404).send(`Project "${projectSlug}" not found.`);
+  // Return a sleek, modern inactive / in-app preview notice
+  return res.status(410).send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>In-App Preview Only | CEOVA</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #09090b;
+      color: #fafafa;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
     }
-
-    let deployment = null;
-    if (project.current_deployment_id) {
-      const { data: dep } = await supabase
-        .from('deployments')
-        .select('*')
-        .eq('id', project.current_deployment_id)
-        .maybeSingle();
-      deployment = dep;
+    .card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 480px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
     }
-
-    if (!deployment) {
-      const { data: dep } = await supabase
-        .from('deployments')
-        .select('*')
-        .eq('project_id', project.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      deployment = dep;
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 999px;
+      color: #a5b4fc;
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin-bottom: 20px;
     }
-
-    if (!deployment || !deployment.bundle_path) {
-      return res.status(200).send(`Project "${project.name}" is currently ${project.status}. Please check back shortly.`);
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      letter-spacing: -0.02em;
     }
-
-    const assetFile = rawPath || 'index.html';
-    const storagePath = `${deployment.bundle_path}/${assetFile}`;
-
-    const { data: fileBlob, error: downloadErr } = await supabase.storage
-      .from('deployments')
-      .download(storagePath);
-
-    if (downloadErr || !fileBlob) {
-      // SPA Fallback
-      const { data: indexBlob } = await supabase.storage
-        .from('deployments')
-        .download(`${deployment.bundle_path}/index.html`);
-
-      if (!indexBlob) {
-        return res.status(404).send('Asset not found.');
-      }
-      const buffer = Buffer.from(await indexBlob.arrayBuffer());
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-      return res.status(200).send(buffer);
+    p {
+      color: #a1a1aa;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin-bottom: 28px;
     }
-
-    const ext = assetFile.split('.').pop()?.toLowerCase() || 'html';
-    res.setHeader('Content-Type', MIME_MAP[ext] || 'text/plain; charset=utf-8');
-    if (ext === 'html') {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-    } else {
-      res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60, stale-while-revalidate=120');
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #7c5cfc 0%, #6366f1 100%);
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 0.92rem;
+      border-radius: 12px;
+      text-decoration: none;
+      transition: all 0.2s;
     }
-    const buffer = Buffer.from(await fileBlob.arrayBuffer());
-    return res.status(200).send(buffer);
-
-  } catch (err) {
-    return res.status(500).send(`Error loading site: ${err.message}`);
-  }
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(124, 92, 252, 0.35);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">🔒 In-App Sandbox Preview</div>
+    <h1>Public Hosting Retired</h1>
+    <p>
+      Websites generated in CEOVA are hosted in-app in private sandbox preview mode to optimize resources and reduce server costs.
+    </p>
+    <a href="https://www.ceova.online/dashboard" class="btn">Open in CEOVA App</a>
+  </div>
+</body>
+</html>`);
 }
+

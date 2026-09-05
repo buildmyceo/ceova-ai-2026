@@ -12,6 +12,7 @@ import ClientColorWidget from './ClientColorWidget';
 import ClientInvoiceWidget from './ClientInvoiceWidget';
 import ClientMediaConverterWidget from './ClientMediaConverterWidget';
 import CloudProjectCard from './CloudProjectCard';
+import WebsitePreviewModal from './WebsitePreviewModal';
 async function forceDownloadImage(url, filename = 'ceova-image.png') {
   try {
     const res = await fetch(url, { mode: 'cors' });
@@ -374,7 +375,7 @@ function ClientCompressionWidget({ meta }) {
 }
 
 // ── MessageItem component ────────────────────────────────────────────────────
-function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected }) {
+function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onPreviewWebsite }) {
   const [showActions, setShowActions] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [hasProceeded, setHasProceeded] = useState(false);
@@ -405,8 +406,20 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
         return {
           stage: 'READY',
           slug: slug,
-          deploymentUrl: `https://www.ceova.online/p/${slug}`,
           content: rawText
+        };
+      }
+
+      if (rawText.startsWith('Website updated successfully.') || rawText.startsWith('Website created successfully.')) {
+        const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+        const name = lines[1] || 'Website';
+        const desc = lines.slice(2).join('\n') || '';
+        return {
+          stage: 'READY',
+          name: name,
+          description: desc,
+          content: rawText,
+          isUpdate: rawText.startsWith('Website updated')
         };
       }
     }
@@ -567,7 +580,7 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
             )}
 
             {resolvedCloudProject && (
-              <CloudProjectCard project={resolvedCloudProject} />
+              <CloudProjectCard project={resolvedCloudProject} onPreview={onPreviewWebsite} />
             )}
 
             {isPlanMessage && !resolvedCloudProject && (
@@ -838,6 +851,7 @@ const CyclingStatus = ({ defaultStatus }) => {
 export default function Chat({ messages, onSuggestionClick, userEmail, onRegenerate, onEditRequest, onFeedback, isTemporary, actionCard, progressMessages, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected }) {
   const messagesEndRef = useRef(null);
   const [copiedId, setCopiedId] = React.useState(null);
+  const [previewProject, setPreviewProject] = React.useState(null);
 
   const handleCopy = (text, id) => {
     navigator.clipboard.writeText(text);
@@ -882,12 +896,20 @@ export default function Chat({ messages, onSuggestionClick, userEmail, onRegener
                 localDirectoryHandle={localDirectoryHandle}
                 setLocalDirectoryHandle={setLocalDirectoryHandle}
                 onFolderConnected={onFolderConnected}
+                onPreviewWebsite={setPreviewProject}
               />
             );
           })}
         </AnimatePresence>
         <div ref={messagesEndRef} style={{ height: '24px', flexShrink: 0 }} />
       </div>
+
+      {previewProject && (
+        <WebsitePreviewModal
+          project={previewProject}
+          onClose={() => setPreviewProject(null)}
+        />
+      )}
     </div>
   );
 }
