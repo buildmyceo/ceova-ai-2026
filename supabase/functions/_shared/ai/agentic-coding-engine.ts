@@ -279,21 +279,25 @@ export class AgenticCodingEngine {
         type: 'function' as const,
         function: {
           name: 'edit_file',
-          description: 'Makes the smallest safe modification to an existing file using surgical replacement (target_content -> replacement_content). Avoids regenerating the entire file unnecessarily.',
+          description: 'Makes the smallest safe modification to an existing file using surgical, structural/context-aware replacement (target_content -> replacement_content). Never blindly performs string replacement merely because a string exists. Requires enough structural context to uniquely identify the intended occurrence.',
           parameters: {
             type: 'object',
             properties: {
               path: { type: 'string', description: 'Relative path of the file to edit' },
-              target_content: { type: 'string', description: 'The exact character sequence to replace. Must match the existing file content uniquely.' },
+              target_content: { type: 'string', description: 'The exact character sequence to replace. Must include enough structural context (parent tags, attributes, adjacent lines) to match the intended occurrence uniquely.' },
               replacement_content: { type: 'string', description: 'The new replacement code to insert in place of target_content.' },
+              context_before: { type: 'string', description: 'Optional structural context immediately preceding target_content to disambiguate identical strings (e.g. parent tag, attribute, or preceding line).' },
+              context_after: { type: 'string', description: 'Optional structural context immediately following target_content to disambiguate identical strings (e.g. closing tag or following line).' },
               changes: {
                 type: 'array',
-                description: 'Optional array of changes [{ target_content, replacement_content }]',
+                description: 'Optional array of changes [{ target_content, replacement_content, context_before?, context_after? }]',
                 items: {
                   type: 'object',
                   properties: {
                     target_content: { type: 'string' },
                     replacement_content: { type: 'string' },
+                    context_before: { type: 'string' },
+                    context_after: { type: 'string' },
                   },
                   required: ['target_content', 'replacement_content'],
                 },
@@ -819,6 +823,11 @@ CRITICAL MODIFICATION RULES:
 - DO NOT REGENERATE COMPLETE FILES UNNECESSARILY: If the user asks for a small change, modify the existing code. Do NOT generate 800 lines of code just to change one string. Make the smallest safe modification possible (- old + new) using 'edit_file'.
 - Never overwrite unrelated sections or delete existing functionality (Navigation, About, Menu, Contact, Footer, etc. must remain intact).
 - Make precise, surgical modifications.
+- IMPORTANT SAFETY RULE FOR MODIFICATIONS (MANDATORY REQUIREMENT 20):
+  • Before applying an edit, you MUST have enough context to understand the code you are modifying.
+  • NEVER blindly perform a string replacement merely because the string exists in the file.
+  • Disambiguate multi-occurrence strings: For example, if "Home" appears 17 times (in navigation, hero headline, section titles, breadcrumbs, footer links), you MUST determine which occurrence actually corresponds to the user's requested change.
+  • PREFER STRUCTURAL / CONTEXT-AWARE EDITING: Always include surrounding parent tags, container elements, distinctive attributes, or adjacent lines in target_content (or use context_before and context_after) so that the target matches the exact intended occurrence uniquely.
 - Ensure the project builds cleanly before calling 'finish_task'.
 
 Current Project File Structure:
@@ -1048,12 +1057,22 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
               toolResultText = JSON.stringify({ error: `Cannot edit "${path}": File does not exist.` });
             } else {
               let existingContent = projectFiles[fileIndex].content;
-              const edits: Array<{ target_content: string; replacement_content: string }> = [];
+              const edits: Array<{ 
+                target_content: string; 
+                replacement_content: string;
+                context_before?: string;
+                context_after?: string;
+              }> = [];
 
               if (Array.isArray(args.changes) && args.changes.length > 0) {
                 edits.push(...args.changes);
               } else if (args.target_content !== undefined && args.replacement_content !== undefined) {
-                edits.push({ target_content: args.target_content, replacement_content: args.replacement_content });
+                edits.push({ 
+                  target_content: args.target_content, 
+                  replacement_content: args.replacement_content,
+                  context_before: args.context_before,
+                  context_after: args.context_after,
+                });
               } else if (args.patch && typeof args.patch === 'string') {
                 const patchLines = args.patch.split('\n');
                 const targetLines: string[] = [];
@@ -1085,7 +1104,16 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
               } else {
                 let errorOccurred = false;
                 for (const edit of edits) {
-                  if (!existingContent.includes(edit.target_content)) {
+                  let searchTarget = edit.target_content;
+                  let replacement = edit.replacement_content;
+
+                  // Requirement 20: Support structural/context-aware matching via context_before / context_after
+                  if (edit.context_before || edit.context_after) {
+                    searchTarget = (edit.context_before || '') + edit.target_content + (edit.context_after || '');
+                    replacement = (edit.context_before || '') + edit.replacement_content + (edit.context_after || '');
+                  }
+
+                  if (!existingContent.includes(searchTarget)) {
                     const inspectHint = !inspectedFiles.has(path)
                       ? ` You have not inspected "${path}" yet. Call 'search_code' or 'read_file' to locate exact lines and whitespace before editing.`
                       : '';
@@ -1095,15 +1123,17 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
                     errorOccurred = true;
                     break;
                   }
-                  const occurrences = existingContent.split(edit.target_content).length - 1;
+
+                  const occurrences = existingContent.split(searchTarget).length - 1;
                   if (occurrences > 1) {
                     toolResultText = JSON.stringify({
-                      error: `target_content matches ${occurrences} places in "${path}". Provide more surrounding context so it matches uniquely.`,
+                      error: `target_content "${edit.target_content}" is ambiguous and appears ${occurrences} times in "${path}". (Requirement 20: Never blindly perform a string replacement merely because the string exists). Inspect surrounding code with 'search_code' or 'read_file' to determine which occurrence corresponds to the user's requested change. Prefer structural/context-aware editing by including surrounding parent tags, attributes, or adjacent lines (or using 'context_before' / 'context_after') so that the target matches uniquely.`,
                     });
                     errorOccurred = true;
                     break;
                   }
-                  existingContent = existingContent.replace(edit.target_content, edit.replacement_content);
+
+                  existingContent = existingContent.replace(searchTarget, replacement);
                 }
 
                 if (!errorOccurred) {
