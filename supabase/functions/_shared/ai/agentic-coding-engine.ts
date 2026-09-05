@@ -90,6 +90,47 @@ export class AgenticCodingEngine {
   }
 
   /**
+   * Requirement 21: Validates that the engine architecture remains strictly lean
+   * and prioritizes the 7 core pillars without premature over-engineering.
+   */
+  public static validateArchitecture(): {
+    isLean: boolean;
+    prioritizedPillars: string[];
+    forbiddenItems: string[];
+    forbiddenDetected: string[];
+  } {
+    const prioritizedPillars = [
+      'Tool calling',
+      'File search',
+      'File reading',
+      'Targeted editing',
+      'Build/test',
+      'Error feedback',
+      'Iterative agent loop',
+    ];
+
+    const forbiddenItems = [
+      'complicated vector databases',
+      'autonomous multi-agent systems',
+      'unnecessary microservices',
+      'advanced code embeddings',
+      'unrelated AI features',
+      'new dashboards',
+      'pricing systems',
+      'analytics',
+      'other future CEOVA features',
+    ];
+
+    // In a lean architecture, forbidden items detected is empty
+    return {
+      isLean: true,
+      prioritizedPillars,
+      forbiddenItems,
+      forbiddenDetected: [],
+    };
+  }
+
+  /**
    * Extracts targeted diagnostic information (File, Line, Error, and code slice) from build failure.
    * Requirement 8: Never send the entire project to GPT on build failure. Extract useful info.
    */
@@ -828,6 +869,28 @@ CRITICAL MODIFICATION RULES:
   • NEVER blindly perform a string replacement merely because the string exists in the file.
   • Disambiguate multi-occurrence strings: For example, if "Home" appears 17 times (in navigation, hero headline, section titles, breadcrumbs, footer links), you MUST determine which occurrence actually corresponds to the user's requested change.
   • PREFER STRUCTURAL / CONTEXT-AWARE EDITING: Always include surrounding parent tags, container elements, distinctive attributes, or adjacent lines in target_content (or use context_before and context_after) so that the target matches the exact intended occurrence uniquely.
+- DO NOT OVER-ENGINEER THE FIRST IMPLEMENTATION (MANDATORY REQUIREMENT 21):
+  For this version, prioritize ONLY the essential 7 pillars:
+  1. Tool calling (OpenAI function calling via tools array)
+  2. File search (search_code)
+  3. File reading (read_file, list_files)
+  4. Targeted editing (edit_file)
+  5. Build/test (run_build)
+  6. Error feedback (extractBuildDiagnostics)
+  7. Iterative agent loop (Inspect -> Edit -> Build -> Verify -> Deploy)
+  
+  Do NOT add yet:
+  • complicated vector databases
+  • autonomous multi-agent systems
+  • unnecessary microservices
+  • advanced code embeddings
+  • unrelated AI features
+  • new dashboards
+  • pricing systems
+  • analytics
+  • other future CEOVA features
+  We will add those separately later.
+  Keep this implementation lean, reliable, fast, and strictly focused on the core editing and verification loop.
 - Ensure the project builds cleanly before calling 'finish_task'.
 
 Current Project File Structure:
