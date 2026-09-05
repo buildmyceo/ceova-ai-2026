@@ -865,6 +865,116 @@ export class CloudWorkerService {
   }
 
   /**
+   * Deterministically parses build logs into concise structured diagnostics (Requirement 17).
+   * Parses 3,000+ line terminal/compiler logs down to exact status, file, line, column, and error.
+   * Never forces GPT to parse raw compiler logs.
+   */
+  public static parseBuildLogsDeterministically(
+    logs: string,
+    projectFiles?: ProjectFile[]
+  ): {
+    status: 'BUILD SUCCESS' | 'BUILD FAILED';
+    file?: string;
+    line?: number;
+    column?: number;
+    error?: string;
+    relevantSlice?: {
+      path: string;
+      startLine: number;
+      endLine: number;
+      content: string;
+    };
+    formattedSummary: string;
+  } {
+    const isSuccess = /(?:build completed successfully|compilation succeeded|✓ built in|done in\s+\d+ms|bundle generated|all sanity checks passed)/i.test(logs) &&
+      !/(?:error:|build failed|syntaxerror|typeerror|uncaught)/i.test(logs);
+
+    if (isSuccess) {
+      return {
+        status: 'BUILD SUCCESS',
+        formattedSummary: 'BUILD SUCCESS',
+      };
+    }
+
+    let targetFile = 'index.html';
+    let targetLine = 1;
+    let targetColumn: number | undefined;
+    let errorMessage = 'Build failed';
+
+    // Pattern 1: TS/JSX error (e.g. src/components/Hero.jsx(42,15): error TS2304... or src/components/Hero.jsx:42:15)
+    const tsMatch = logs.match(/([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)(?:\((\d+),(\d+)\)|:(\d+)(?::(\d+))?)[ \t]*[-:]?[ \t]*(?:error[ \t]*(?:TS\d+)?:?)?[ \t]*([^\n\r]+)/i);
+    if (tsMatch) {
+      targetFile = tsMatch[1];
+      targetLine = parseInt(tsMatch[2] || tsMatch[4], 10);
+      if (tsMatch[3] || tsMatch[5]) {
+        targetColumn = parseInt(tsMatch[3] || tsMatch[5], 10);
+      }
+      if (tsMatch[6]) {
+        errorMessage = tsMatch[6].trim();
+      }
+    } else {
+      // Pattern 2: Standard file:line error (e.g. index.html:42: TypeError: ...)
+      const stdMatch = logs.match(/([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+):(\d+)[ \t]*[-:]?[ \t]*([^\n\r]+)/i);
+      if (stdMatch) {
+        targetFile = stdMatch[1];
+        targetLine = parseInt(stdMatch[2], 10);
+        if (stdMatch[3]) errorMessage = stdMatch[3].trim();
+      } else {
+        // Pattern 3: Vite / Rollup / esbuild error
+        const bundlerMatch = logs.match(/\[(?:vite|rollup|esbuild)\][ \t]*([^\n\r]+)/i);
+        if (bundlerMatch) {
+          errorMessage = bundlerMatch[1].trim();
+        } else {
+          // Pattern 4: TypeError / SyntaxError line
+          const errLineMatch = logs.match(/((?:Type|Syntax|Reference|Range|URI)?Error:[ \t]*[^\n\r]+)/i);
+          if (errLineMatch) {
+            errorMessage = errLineMatch[1].trim();
+          }
+        }
+      }
+    }
+
+    targetFile = this.sanitizePath(targetFile);
+
+    let relevantSlice: { path: string; startLine: number; endLine: number; content: string } | undefined;
+    if (projectFiles && projectFiles.length > 0) {
+      const file = projectFiles.find(f => f.path === targetFile);
+      if (file) {
+        const lines = file.content.split('\n');
+        const sliceTargetLine = Math.min(lines.length, Math.max(1, targetLine));
+        const startLine = Math.max(1, sliceTargetLine - 5);
+        const endLine = Math.min(lines.length, sliceTargetLine + 6);
+        const sliceLines = lines.slice(startLine - 1, endLine).map((l, idx) => {
+          const lineNum = startLine + idx;
+          const marker = lineNum === sliceTargetLine ? ' > ' : '   ';
+          return `${marker}${lineNum}: ${l}`;
+        }).join('\n');
+
+        relevantSlice = {
+          path: targetFile,
+          startLine,
+          endLine,
+          content: sliceLines,
+        };
+      }
+    }
+
+    const formattedSummary = `BUILD FAILED\n\nRelevant error:\n${targetFile}:${targetLine}\n\n${errorMessage}${
+      relevantSlice ? `\n\nRelevant Code (Lines ${relevantSlice.startLine}-${relevantSlice.endLine}):\n${relevantSlice.content}` : ''
+    }`;
+
+    return {
+      status: 'BUILD FAILED',
+      file: targetFile,
+      line: targetLine,
+      column: targetColumn,
+      error: errorMessage,
+      relevantSlice,
+      formattedSummary,
+    };
+  }
+
+  /**
    * Compiles source files into a standalone distribution bundle
    */
   private static async compileAndBundle(

@@ -109,86 +109,20 @@ export class AgenticCodingEngine {
     };
     formattedText: string;
   } {
-    let targetFile = 'index.html';
-    let targetLine = 1;
-    let targetColumn: number | undefined;
     let errorMessage = 'Build failed';
-
-    // 1. Check structured errors on buildResult
-    if (buildResult.errors && buildResult.errors.length > 0) {
-      const err = buildResult.errors[0];
-      if (err.file) targetFile = err.file;
-      if (err.line) targetLine = err.line;
-      if (err.column) targetColumn = err.column;
-      if (err.message) errorMessage = err.message;
+    if (buildResult.errors && buildResult.errors.length > 0 && buildResult.errors[0].message) {
+      errorMessage = buildResult.errors[0].message;
     }
-
-    // 2. Scan error message & logs for TypeScript / syntax / bundler error patterns
     const fullLogText = `${errorMessage}\n${buildResult.logs || ''}`;
-    
-    // Pattern A: TypeScript error (e.g. src/components/Hero.jsx(42,15): error TS2304... or src/components/Hero.jsx:42:15)
-    const tsMatch = fullLogText.match(/([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)(?:\((\d+),(\d+)\)|:(\d+)(?::(\d+))?)\s*[-:]?\s*(?:error\s*(?:TS\d+)?:?)?\s*([^\n\r]+)/i);
-    if (tsMatch) {
-      targetFile = tsMatch[1];
-      targetLine = parseInt(tsMatch[2] || tsMatch[4], 10);
-      if (tsMatch[3] || tsMatch[5]) {
-        targetColumn = parseInt(tsMatch[3] || tsMatch[5], 10);
-      }
-      if (tsMatch[6]) {
-        errorMessage = tsMatch[6].trim();
-      }
-    } else {
-      // Pattern B: e.g. "index.html:42 - HTML syntax error: ..."
-      const syntaxMatch = fullLogText.match(/([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+):(\d+)\s*[-:]?\s*([^\n\r]+)/i);
-      if (syntaxMatch) {
-        targetFile = syntaxMatch[1];
-        targetLine = parseInt(syntaxMatch[2], 10);
-        if (syntaxMatch[3]) errorMessage = syntaxMatch[3].trim();
-      } else {
-        // Pattern C: Vite / Rollup error
-        const rollupMatch = fullLogText.match(/\[(?:vite|rollup|esbuild)\]\s*([^\n\r]+)/i);
-        if (rollupMatch) {
-          errorMessage = rollupMatch[1].trim();
-        }
-      }
-    }
-
-    // Clean and sanitize file path
-    targetFile = CloudWorkerService.sanitizePath(targetFile);
-
-    // 3. Extract relevant slice from project files
-    let relevantSlice: { path: string; startLine: number; endLine: number; content: string } | undefined;
-    const file = projectFiles.find(f => f.path === targetFile);
-    if (file) {
-      const lines = file.content.split('\n');
-      targetLine = Math.min(lines.length, Math.max(1, targetLine));
-      const startLine = Math.max(1, targetLine - 5);
-      const endLine = Math.min(lines.length, targetLine + 6);
-      const sliceLines = lines.slice(startLine - 1, endLine).map((l, idx) => {
-        const lineNum = startLine + idx;
-        const marker = lineNum === targetLine ? ' > ' : '   ';
-        return `${marker}${lineNum}: ${l}`;
-      }).join('\n');
-
-      relevantSlice = {
-        path: targetFile,
-        startLine,
-        endLine,
-        content: sliceLines,
-      };
-    }
-
-    const formattedText = `BUILD FAILED\n\nRelevant error:\n${targetFile}:${targetLine}\n\n${errorMessage}${
-      relevantSlice ? `\n\nRelevant Code (Lines ${relevantSlice.startLine}-${relevantSlice.endLine}):\n${relevantSlice.content}` : ''
-    }`;
+    const parsed = CloudWorkerService.parseBuildLogsDeterministically(fullLogText, projectFiles);
 
     return {
-      file: targetFile,
-      line: targetLine,
-      column: targetColumn,
-      error: errorMessage,
-      relevantSlice,
-      formattedText,
+      file: parsed.file || 'index.html',
+      line: parsed.line || 1,
+      column: parsed.column,
+      error: parsed.error || errorMessage,
+      relevantSlice: parsed.relevantSlice,
+      formattedText: parsed.formattedSummary,
     };
   }
 
@@ -834,6 +768,27 @@ Examples:
    → fix
    → verify
    (The agent autonomously decides the depth of investigation).
+
+USE DETERMINISTIC TOOLS FOR DETERMINISTIC WORK (MANDATORY REQUIREMENT 17):
+Do not ask or expect GPT to perform tasks that your backend can do reliably and deterministically.
+Strict Division of Labor:
+1. Deterministic CEOVA Backend Tools:
+   - File search   → CEOVA tool ('search_code')
+   - File reading  → CEOVA tool ('read_file', 'read_files', 'list_files')
+   - File writing  → CEOVA tool ('edit_file', 'create_file', 'delete_file')
+   - Build         → CEOVA tool ('run_build', 'run_command')
+   - Deployment    → CEOVA tool ('deploy_website')
+   - Log parsing   → CEOVA/backend (parses 3,000+ line logs down to exact status & error line)
+2. GPT-5.6 Luna Cognitive Responsibilities:
+   - Understanding (analyzing user intent, constraints, and domain requirements)
+   - Reasoning (deducing architectural impacts, component interactions, styling changes)
+   - Planning (formulating step-by-step execution plans)
+   - Deciding what to inspect (selecting which files to search or read)
+   - Deciding what to change (identifying target files and components)
+   - Writing code/patches (generating exact surgical replacement strings or unified diffs)
+   - Debugging (analyzing extracted build diagnostics to produce corrective fixes)
+   - Deciding when the task is complete (evaluating verification status and calling 'finish_task')
+This separation is important for both cost and reliability.
 
 STRICT RULES - DO NOT RETRIEVE UNRELATED CONTEXT:
 - Do NOT retrieve Footer, Contact, About, Menu, or other unrelated components unless they are actually relevant.
