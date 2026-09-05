@@ -162,7 +162,7 @@ export class CloudDevOrchestrator {
       const activeApprovedPlan = approvedPlan || project?.metadata?.approved_plan || null;
       let effectivePrompt = userPrompt;
       if (activeApprovedPlan) {
-        effectivePrompt = `Task: Implement the following approved website plan and user instructions.\n\nAPPROVED IMPLEMENTATION PLAN:\n${activeApprovedPlan}\n\nUSER REQUEST / INSTRUCTION:\n${userPrompt}\n\nCRITICAL INSTRUCTIONS:\n- If the plan specifies separate pages (e.g. Home, About, Services, Why us, Contact), use create_file or edit_file to implement each page as clean HTML with shared CSS styling and complete navigation links.\n- If the plan specifies cartoon character imagery, illustrations, or icons, embed child-friendly cartoon SVG illustrations or styling directly into the pages.\n- Ensure navigation links between all pages work seamlessly.`;
+        effectivePrompt = `The user previously approved the following implementation plan. Read it carefully and implement exactly what it describes using your best judgement for design, structure, and technology choices.\n\nAPPROVED PLAN:\n${activeApprovedPlan}\n\nUSER'S LATEST MESSAGE:\n${userPrompt}\n\nFollow the plan's goals, pages, design direction, and functionality. Use create_file and edit_file tools to build or update the website files accordingly.`;
       }
 
       const agentResult = await AgenticCodingEngine.runModificationSession({

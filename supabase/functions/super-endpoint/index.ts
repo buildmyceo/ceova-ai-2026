@@ -530,7 +530,7 @@ serve(async (req) => {
   1. MODIFY EXISTING PROJECT: If the user is modifying, tweaking, styling, or updating this active website (e.g. changing text, navbar, colors, sections, adding features, or executing an approved revised plan for this project):
      • Call \`create_project\` with 'project_id': "${existingProjectId}" and describe the modification.
      • The existing project will be updated in-place preserving all other sections and functionality.
-  2. CREATE NEW WEBSITE: If the user wants to create a new website or brand, or is approving an implementation plan for a new website (e.g. approved plan for Doremon Restaurant or another new brand):
+  2. CREATE NEW WEBSITE: If the user wants to create a new website or brand, or is approving an implementation plan for a new website (e.g. approved plan for a new brand):
      • Call \`create_project\` WITHOUT 'project_id' (omit project_id).
      • Provide the new website 'name' and 'description' (or 'approved_plan').
      • This creates the website for in-app preview inside CEOVA.`
