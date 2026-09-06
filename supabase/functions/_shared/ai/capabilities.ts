@@ -51,7 +51,42 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "cloud_dev",
     description: "Build, test, update, and deploy production web applications, landing pages, SaaS apps, portfolios, and websites to https://<project>.ceova.online in isolated cloud workspaces. For new sites or major structural changes, present an implementation plan first and wait for approval. For tiny changes on existing sites (text edits, styling tweaks), execute directly.",
-    keywords: ["website", "build website", "create website", "make website", "develop website", "web app", "landing page", "landing", "page", "pages", "cloud project", "deploy", "ceova.online", "restaurant website", "portfolio", "store", "ecommerce", "saas", "frontend", "build app", "create app", "site", "webpage", "web page", "dashboard", "fullstack app", "build me", "create me", "update", "modify", "change", "add page", "make that pages", "buttons", "tab", "tabs", "navigation", "nav", "navbar", "change navbar", "update navbar", "hero", "menu", "overview", "calendar", "event", "user", "fix website", "edit website", "plan", "implementation plan", "proceed", "build it", "website plan", "go ahead", "approved", "start building", "looks good", "approve", "restaurant name", "button text", "hero heading", "contact number", "change name", "change heading", "change text", "change image", "smaller button", "badge", "banner", "announcement", "header", "footer", "section", "modal", "card"],
+    keywords: [
+      // Website creation
+      "website", "build website", "create website", "make website", "develop website", "design website",
+      "web app", "landing page", "landing", "page", "pages", "cloud project", "deploy", "ceova.online",
+      "restaurant website", "portfolio", "store", "ecommerce", "saas", "frontend", "build app", "create app",
+      "site", "webpage", "web page", "dashboard", "fullstack app", "build me", "create me",
+      // Modifications
+      "update", "modify", "change", "add page", "make that pages", "fix website", "edit website",
+      // Plan/approval flow
+      "plan", "implementation plan", "proceed", "build it", "website plan", "go ahead", "approved",
+      "start building", "looks good", "approve",
+      // UI component keywords
+      "buttons", "tab", "tabs", "navigation", "nav", "navbar", "change navbar", "update navbar",
+      "hero", "menu", "overview", "calendar", "event", "user", "header", "footer",
+      "section", "modal", "card", "badge", "banner", "announcement",
+      "restaurant name", "button text", "hero heading", "contact number",
+      "change name", "change heading", "change text", "change image", "smaller button",
+      // Technical specification terms — so detailed prompts always trigger tools
+      "html", "css", "javascript", "js", "responsive", "layout", "flex", "grid", "flexbox",
+      "media query", "breakpoint", "viewport", "mobile", "desktop", "tablet",
+      "animation", "transition", "hover", "sticky", "fixed", "position", "z-index",
+      "font", "typography", "color palette", "background", "border", "padding", "margin",
+      "container", "wrapper", "component", "design system", "ui", "ux", "interface",
+      "index.html", "style.css", "app.js", "script", "stylesheet",
+      "react", "vue", "tailwind", "bootstrap", "gsap", "three.js", "chart.js",
+      "cdn", "inline", "single file", "self-contained",
+      // Specification / detailed prompt indicators
+      "specification", "spec", "requirement", "requirements", "detailed", "implement",
+      "i want", "i need", "please create", "please build", "please make", "please design",
+      "build a", "create a", "make a", "design a", "develop a",
+      // Website types
+      "blog", "portfolio", "agency", "startup", "product", "service", "booking",
+      "hotel", "travel", "food", "cafe", "salon", "gym", "fitness", "clinic",
+      "school", "education", "real estate", "property", "finance", "crypto",
+      "music", "photography", "artist", "gallery", "event", "wedding",
+    ],
     toolIds: ["create_project"],
     memoryCategories: ["coding", "projects", "design_preferences"],
   },
