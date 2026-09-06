@@ -154,8 +154,18 @@ export class CloudDevOrchestrator {
     let fileActivityLog = '';
     let buildResult: BuildResult;
 
+    let isRealUpdate = isUpdate;
     if (isUpdate) {
       currentFiles = await CloudWorkerService.getProjectFiles(project.id);
+      const isDummyWorkspace = currentFiles.length === 0 || 
+        (currentFiles.length === 1 && (currentFiles[0].content || '').length < 800 && /<h1>.*?<\/h1>/i.test(currentFiles[0].content));
+      if (isDummyWorkspace) {
+        Logger.INFO(`[CloudDevOrchestrator] Project workspace has dummy/empty files. Routing to full code generation.`);
+        isRealUpdate = false;
+      }
+    }
+
+    if (isRealUpdate) {
       fileActivityLog += `[AGENT] Starting autonomous Codex-style coding session for update...\n`;
 
       // Check if there is an approved plan in parameters or project metadata
@@ -179,6 +189,9 @@ export class CloudDevOrchestrator {
       fileActivityLog += `[AGENT] Coding session finished in ${agentResult.turns} turns: ${agentResult.summary}\n`;
     } else {
       generatedFiles = await this.generateProjectSource(userPrompt, projectName, slug, userId);
+
+      // Persist generated files into the project workspace database
+      await CloudWorkerService.writeProjectFiles(project.id, generatedFiles);
 
       const writtenFilesList: string[] = [];
       for (const file of generatedFiles) {
