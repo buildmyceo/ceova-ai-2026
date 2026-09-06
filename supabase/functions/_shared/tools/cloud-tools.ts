@@ -74,7 +74,35 @@ export class CreateProjectTool implements Tool {
 
   async execute(context: ToolContext): Promise<ToolResult> {
     try {
-      const prompt = context.args?.description || context.args?.name || context.message || 'Create web project';
+      // Determine the richest, most detailed specification/prompt available:
+      let prompt = '';
+      const currentMsg = (context.message || '').trim();
+      const argsDesc = (context.args?.description || '').trim();
+
+      // Check if current user message or recent history contains a rich spec
+      let richestUserPrompt = currentMsg;
+      if (context.history && Array.isArray(context.history)) {
+        for (const m of context.history.slice().reverse()) {
+          if (m.role === 'user' && typeof m.content === 'string') {
+            const userText = m.content.trim();
+            // If current message is brief (e.g. "try again", "proceed", "build it") or previous was much more detailed
+            if (userText.length > richestUserPrompt.length && (currentMsg.length < 300 || userText.length > 500)) {
+              richestUserPrompt = userText;
+              break;
+            }
+          }
+        }
+      }
+
+      // If user prompt is substantive (e.g. CSS, requirements, long prompt), prefer it over the AI's 1-line summary
+      if (richestUserPrompt.length > 100 || richestUserPrompt.length > argsDesc.length) {
+        prompt = richestUserPrompt;
+      } else if (argsDesc) {
+        prompt = argsDesc;
+      } else {
+        prompt = richestUserPrompt || context.args?.name || 'Create web project';
+      }
+
       let projectId: string | undefined = context.args?.project_id;
       const approvedPlan = context.args?.approved_plan;
 

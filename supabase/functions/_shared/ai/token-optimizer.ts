@@ -181,12 +181,8 @@ export class TokenOptimizerService {
         }
       } else {
         // User message — NEVER truncate user messages.
-        // User specs, requirements, and prompts are the most critical context.
-        // Truncating them causes the AI to ask for "missing" information that was already provided.
-        // Only compact if truly enormous (> 8000 chars) AND not recent.
-        if (!isLatestTurn && content.length > 8000) {
-          content = content.slice(0, 8000).trim() + ' ... [Very long spec compacted — earlier portions preserved in project context]';
-        }
+        // User specs, requirements, prompts, and code snippets are critical context.
+        // Preserved in full so the AI has 100% of the requirements across turns.
       }
 
       return {

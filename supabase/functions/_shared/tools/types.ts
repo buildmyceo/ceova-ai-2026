@@ -21,6 +21,7 @@ export interface ToolMetadata {
 export interface ToolContext {
   userId: string;
   message?: string;
+  history?: any[];
   args?: any;
   attachments?: { url?: string; type: string; name: string; content?: string }[];
   onStatusUpdate?: (stage: string) => void; 

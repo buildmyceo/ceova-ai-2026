@@ -11,7 +11,7 @@ import { TokenOptimizerService } from '../_shared/ai/token-optimizer.ts';
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MAX_HISTORY_MESSAGES  = 15;  // Reduced from 20 to cut token usage
 const MAX_HISTORY_COMPLEX   = 20;  // Extended limit for coding tasks
-const MAX_MESSAGE_CHARS     = 8000;
+const MAX_MESSAGE_CHARS     = 100000; // Increased from 8000 to 100,000 so comprehensive specifications and prompts are never chopped off
 const MAX_MEMORY_TOKENS     = 1200; // Hard cap on injected memory block
 const CAPABILITY_SUMMARY    = getCapabilitySummary(); // Computed once at startup
 
@@ -717,6 +717,7 @@ serve(async (req) => {
                             const toolResult = await ToolExecutor.execute(toolId, {
                                 userId: user.id,
                                 message: message,
+                                history: history,
                                 args: toolCallMatch.args,
                                 attachments: allAttachments,
                                 onStatusUpdate: (stage: string) => {
