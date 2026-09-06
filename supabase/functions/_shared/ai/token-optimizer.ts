@@ -180,9 +180,12 @@ export class TokenOptimizerService {
           content = content.slice(0, maxCharsPerMessage).trim() + ' ... [Older response compacted for token efficiency]';
         }
       } else {
-        // User message
-        if (!isLatestTurn && content.length > 800) {
-          content = content.slice(0, 800).trim() + ' ... [truncated]';
+        // User message — NEVER truncate user messages.
+        // User specs, requirements, and prompts are the most critical context.
+        // Truncating them causes the AI to ask for "missing" information that was already provided.
+        // Only compact if truly enormous (> 8000 chars) AND not recent.
+        if (!isLatestTurn && content.length > 8000) {
+          content = content.slice(0, 8000).trim() + ' ... [Very long spec compacted — earlier portions preserved in project context]';
         }
       }
 
