@@ -601,6 +601,7 @@ export default function Home({ session }) {
                                             logs: parsed.logs || currentCloudProject?.logs || '',
                                             content: parsed.content || '',
                                             error: parsed.error || null,
+                                            startedAt: currentCloudProject?.startedAt || Date.now(),
                                         };
                                         if (parsed.content) {
                                             aiRawText = parsed.content;

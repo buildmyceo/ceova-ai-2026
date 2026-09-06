@@ -535,11 +535,28 @@ You MUST include an index.html file. Output ONLY the [FILE: ...] blocks.`;
     for (const block of blocks) {
       if (!block.trim()) continue;
       
+      const firstNewlineIdx = block.indexOf('\n');
       const closeBracketIdx = block.indexOf(']');
-      if (closeBracketIdx === -1) continue;
       
-      const path = block.substring(0, closeBracketIdx).trim();
-      let content = block.substring(closeBracketIdx + 1);
+      let path = '';
+      let content = '';
+      
+      // The closing bracket ']' for [FILE: path] must be on the first line (before any newline)
+      if (closeBracketIdx !== -1 && (firstNewlineIdx === -1 || closeBracketIdx < firstNewlineIdx)) {
+        path = block.substring(0, closeBracketIdx).trim();
+        content = block.substring(closeBracketIdx + 1);
+      } else if (firstNewlineIdx !== -1) {
+        // AI forgot the closing ']' or put content immediately on the next line
+        let firstLine = block.substring(0, firstNewlineIdx).trim();
+        firstLine = firstLine.replace(/\]$/, '').trim();
+        path = firstLine;
+        content = block.substring(firstNewlineIdx + 1);
+      } else {
+        continue;
+      }
+      
+      // Strip any accidental quotes or backticks from path
+      path = path.replace(/["'`]/g, '').trim();
       
       const endTagIdx = content.indexOf('[/FILE]');
       if (endTagIdx !== -1) {

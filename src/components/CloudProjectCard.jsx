@@ -1,9 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Loader2, ArrowRight } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════════════
    CEOVA — Website Creation Workflow v1
-   Simple, compact website result message.
+   Simple, compact website result message with live build timer.
    ═══════════════════════════════════════════════════════════════════════ */
 
 export default function CloudProjectCard({ project, onPreview }) {
@@ -22,6 +22,38 @@ export default function CloudProjectCard({ project, onPreview }) {
   const isReady = stage === 'READY';
   const isFailed = stage === 'FAILED' || !!error;
   const inProgress = !isReady && !isFailed;
+
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => {
+    if (project.startedAt || project.started_at) {
+      const ts = new Date(project.startedAt || project.started_at).getTime();
+      return Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    }
+    return 0;
+  });
+
+  const [finalDuration, setFinalDuration] = useState(null);
+
+  useEffect(() => {
+    if (!inProgress) {
+      if (elapsedSeconds > 0 && !finalDuration) {
+        setFinalDuration(elapsedSeconds);
+      }
+      return;
+    }
+
+    const startTs = project.startedAt || project.started_at 
+      ? new Date(project.startedAt || project.started_at).getTime() 
+      : Date.now();
+
+    // Initial tick
+    setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startTs) / 1000)));
+
+    const timer = setInterval(() => {
+      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startTs) / 1000)));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [inProgress, project.startedAt, project.started_at]);
 
   const displayProjectName = useMemo(() => {
     if (name) return name;
@@ -96,6 +128,11 @@ export default function CloudProjectCard({ project, onPreview }) {
         >
           <span style={{ fontSize: '0.95rem' }}>✓</span>
           <span>{isUpdate ? 'Website updated' : 'Website created'}</span>
+          {finalDuration ? (
+            <span style={{ color: '#71717a', fontWeight: 400, fontSize: '0.8rem', marginLeft: '2px' }}>
+              • {finalDuration}s
+            </span>
+          ) : null}
         </div>
 
         {/* Website name */}
@@ -198,11 +235,30 @@ export default function CloudProjectCard({ project, onPreview }) {
         }}
       >
         <Loader2 size={16} color="#a78bfa" style={{ animation: 'spin 1.2s linear infinite', flexShrink: 0 }} />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: '0.92rem', fontWeight: 600, color: '#ffffff' }}>
-            {displayProjectName || 'Website'}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+            <div style={{ fontSize: '0.92rem', fontWeight: 600, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {displayProjectName || 'Website'}
+            </div>
+            <span
+              style={{
+                fontSize: '0.74rem',
+                fontWeight: 600,
+                color: '#c4b5fd',
+                background: 'rgba(167, 139, 250, 0.14)',
+                border: '1px solid rgba(167, 139, 250, 0.28)',
+                padding: '2px 8px',
+                borderRadius: '6px',
+                fontVariantNumeric: 'tabular-nums',
+                flexShrink: 0,
+                letterSpacing: '0.02em',
+                boxShadow: '0 0 10px rgba(167, 139, 250, 0.1)',
+              }}
+            >
+              {elapsedSeconds}s
+            </span>
           </div>
-          <div style={{ fontSize: '0.82rem', color: '#a1a1aa', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: '0.82rem', color: '#a1a1aa', marginTop: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {statusNarrative}
           </div>
         </div>

@@ -113,8 +113,8 @@ export class CloudWorkerService {
       throw new Error("Invalid file path: path must be a non-empty string.");
     }
 
-    // Remove null bytes
-    let cleaned = relativePath.replace(/\0/g, '').trim();
+    // Strip accidental newlines, carriage returns, or quotes from path
+    let cleaned = relativePath.split(/[\r\n]/)[0].replace(/\0/g, '').replace(/["'`]/g, '').trim();
 
     // Replace Windows slashes
     cleaned = cleaned.replace(/\\/g, '/');
