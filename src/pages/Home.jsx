@@ -265,7 +265,7 @@ export default function Home({ session }) {
 
         const idToUse = currentChatId || crypto.randomUUID();
         if (!currentChatId) {
-            createNewChat(idToUse, true);
+            createNewChat(idToUse, false);
         }
 
         let currentMessages = chats[idToUse] || [];

@@ -110,38 +110,114 @@ export default function WebsitePreviewModal({ project, onClose }) {
       });
   }, [files]);
 
-  // Construct complete in-memory HTML document with styles and navigation interceptor
+  // State for in-sandbox runtime errors
+  const [runtimeError, setRuntimeError] = useState(null);
+
+  // Construct complete in-memory HTML document with styles, inlined scripts, and navigation interceptor
   const assembledHtml = useMemo(() => {
     const currentFile = files.find((f) => f.path === activePage) || files.find((f) => f.path === 'index.html');
     if (!currentFile) return '';
 
     let content = currentFile.content;
 
-    // Collect all CSS files
+    // 1. Collect and inline all CSS files, removing matching <link rel="stylesheet"> tags
     const cssFiles = files.filter((f) => f.path.endsWith('.css'));
     let inlineStyles = '';
     cssFiles.forEach((css) => {
       inlineStyles += `\n/* ${css.path} */\n${css.content}\n`;
+      const filename = css.path.split('/').pop().replace(/\./g, '\\.');
+      // Remove <link ... href="styles.css" ...> to avoid 404 network requests in sandbox
+      const linkRegex = new RegExp(`<link[^>]*?href=["'](?:\\.\\/|\\/)?${filename}["'][^>]*?>`, 'gi');
+      content = content.replace(linkRegex, '');
     });
 
-    // Collect all SVG or images if stored as data or files
-    // Inject styles before </head> if present
-    if (inlineStyles && content.includes('</head>')) {
-      content = content.replace('</head>', `<style>${inlineStyles}</style>\n</head>`);
-    } else if (inlineStyles) {
-      content = `<style>${inlineStyles}</style>\n` + content;
+    if (inlineStyles) {
+      if (content.includes('</head>')) {
+        content = content.replace('</head>', `<style>${inlineStyles}</style>\n</head>`);
+      } else {
+        content = `<style>${inlineStyles}</style>\n` + content;
+      }
     }
 
-    // Client-side link interceptor to seamlessly navigate pages inside this modal
+    // 2. Collect all JS / JSX / TS / TSX files
+    const jsFiles = files.filter((f) =>
+      f.path.endsWith('.js') || f.path.endsWith('.jsx') || f.path.endsWith('.mjs') || f.path.endsWith('.ts') || f.path.endsWith('.tsx')
+    );
+    const inlinedPaths = new Set();
+
+    // Check if any code uses React or JSX syntax
+    const allCode = jsFiles.map((f) => f.content).join('\n') + '\n' + content;
+    const usesReactOrJsx =
+      allCode.includes('React') ||
+      allCode.includes('ReactDOM') ||
+      allCode.includes('useState') ||
+      allCode.includes('useEffect') ||
+      /<[A-Z][A-Za-z0-9]*\b/.test(allCode) ||
+      allCode.includes('type="text/babel"');
+
+    // 3. Inline scripts that match <script ... src="..."> tags
+    jsFiles.forEach((js) => {
+      const filename = js.path.split('/').pop().replace(/\./g, '\\.');
+      const scriptRegex = new RegExp(`<script([^>]*?)src=["'](?:\\.\\/|\\/)?${filename}["']([^>]*?)>\\s*<\\/script>`, 'gi');
+      if (scriptRegex.test(content)) {
+        content = content.replace(scriptRegex, (match, p1, p2) => {
+          let attrs = (p1 + ' ' + p2).trim();
+          // Ensure Babel type if JSX is present
+          const isJsx = js.content.includes('React') || js.content.includes('ReactDOM') || /<[A-Z][A-Za-z0-9]*\b/.test(js.content);
+          if (isJsx && !attrs.includes('type=')) {
+            attrs += ' type="text/babel"';
+          }
+          return `<script ${attrs}>\n/* ${js.path} */\n${js.content}\n</script>`;
+        });
+        inlinedPaths.add(js.path);
+      }
+    });
+
+    // 4. Inject remaining JS files that were not explicitly linked in index.html
+    jsFiles.forEach((js) => {
+      if (!inlinedPaths.has(js.path)) {
+        const isJsx = js.content.includes('React') || js.content.includes('ReactDOM') || /<[A-Z][A-Za-z0-9]*\b/.test(js.content);
+        const scriptTag = `<script${isJsx ? ' type="text/babel"' : ''}>\n/* Inlined: ${js.path} */\n${js.content}\n</script>\n`;
+        if (content.includes('</body>')) {
+          content = content.replace('</body>', `${scriptTag}</body>`);
+        } else {
+          content += `\n${scriptTag}`;
+        }
+      }
+    });
+
+    // 5. If React/JSX is used, ensure React, ReactDOM, and Babel Standalone are loaded
+    if (usesReactOrJsx) {
+      let cdnInject = '';
+      if (!content.includes('react.development.js') && !content.includes('react.production.min.js') && !content.includes('react@')) {
+        cdnInject += '<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>\n';
+      }
+      if (!content.includes('react-dom.development.js') && !content.includes('react-dom.production.min.js') && !content.includes('react-dom@')) {
+        cdnInject += '<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>\n';
+      }
+      if (!content.includes('@babel/standalone') && !content.includes('babel.min.js')) {
+        cdnInject += '<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>\n';
+      }
+
+      if (cdnInject) {
+        if (content.includes('<head>')) {
+          content = content.replace('<head>', `<head>\n${cdnInject}`);
+        } else {
+          content = cdnInject + content;
+        }
+      }
+    }
+
+    // 6. Client-side navigation & error interceptor script
     const interceptorScript = `
 <script>
+  // Navigation interceptor
   document.addEventListener('click', function(e) {
     var target = e.target.closest('a');
     if (!target) return;
     var href = target.getAttribute('href');
     if (!href) return;
     
-    // Check if it links to an internal html page
     var cleanHref = href.split('?')[0].split('#')[0];
     if (cleanHref.endsWith('.html') || (!cleanHref.startsWith('http') && !cleanHref.startsWith('mailto:') && !cleanHref.startsWith('tel:') && !cleanHref.startsWith('#'))) {
       var targetPage = cleanHref.endsWith('.html') ? cleanHref : (cleanHref + '.html');
@@ -149,6 +225,15 @@ export default function WebsitePreviewModal({ project, onClose }) {
       e.preventDefault();
       window.parent.postMessage({ type: 'CEOVA_PREVIEW_NAVIGATE', page: targetPage }, '*');
     }
+  });
+
+  // Error reporter
+  window.addEventListener('error', function(e) {
+    window.parent.postMessage({
+      type: 'CEOVA_PREVIEW_ERROR',
+      message: e.message || 'Script error',
+      line: e.lineno
+    }, '*');
   });
 </script>
 `;
@@ -162,7 +247,7 @@ export default function WebsitePreviewModal({ project, onClose }) {
     return content;
   }, [files, activePage]);
 
-  // Listen to navigation events from inside iframe
+  // Listen to navigation and error events from inside iframe
   useEffect(() => {
     function handleMessage(event) {
       if (event.data && event.data.type === 'CEOVA_PREVIEW_NAVIGATE') {
@@ -171,6 +256,8 @@ export default function WebsitePreviewModal({ project, onClose }) {
         if (exists) {
           setActivePage(targetPage.replace(/^\//, ''));
         }
+      } else if (event.data && event.data.type === 'CEOVA_PREVIEW_ERROR') {
+        console.warn('[WebsitePreviewModal] Sandbox iframe runtime notice:', event.data.message);
       }
     }
 
