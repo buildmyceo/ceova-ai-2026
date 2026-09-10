@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.2";
+import { formatToTelegramHtml, stripTelegramHtml } from "../_shared/services/telegram-service.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,6 +43,7 @@ export async function sendTelegramMessage(text: string, userIdOrChatId: string) 
   }
 
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  const formattedHtml = formatToTelegramHtml(text);
 
   try {
     const res = await fetch(url, {
@@ -51,15 +53,26 @@ export async function sendTelegramMessage(text: string, userIdOrChatId: string) 
       },
       body: JSON.stringify({
         chat_id: targetChatId,
-        text: text,
+        text: formattedHtml,
         parse_mode: "HTML"
       })
     });
 
     const data = await res.json();
     if (!res.ok) {
-      console.error("Telegram API Error:", data);
-      return data.description || "Error sending message";
+      console.warn("Telegram API Error, trying clean plain-text fallback:", data);
+      const fallbackRes = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: targetChatId,
+          text: stripTelegramHtml(text),
+        })
+      });
+      const fallbackData = await fallbackRes.json();
+      if (!fallbackRes.ok) {
+        return fallbackData.description || "Error sending message";
+      }
     }
 
     return "ok";
