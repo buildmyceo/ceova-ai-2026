@@ -51,6 +51,7 @@ jobs:
         run: npm run lint
 
       - name: TypeScript type check (IDE)
+        if: hashFiles('ceova_ide/package.json') != ''
         working-directory: ceova_ide
         run: |
           npm ci
