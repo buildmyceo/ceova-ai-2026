@@ -132,15 +132,19 @@ serve(async (req: Request) => {
           .update({ status: newStatus, error_message: err.message })
           .eq("id", item.id);
 
-        await admin.from("email_logs").insert({
-          user_id: item.user_id,
-          queue_id: item.id,
-          to_email: item.to_email,
-          campaign_slug: item.campaign_slug,
-          status: "failed",
-          sent_at: new Date().toISOString(),
-          metadata: { error: err.message },
-        }).catch(console.error);
+        try {
+          await admin.from("email_logs").insert({
+            user_id: item.user_id,
+            queue_id: item.id,
+            to_email: item.to_email,
+            campaign_slug: item.campaign_slug,
+            status: "failed",
+            sent_at: new Date().toISOString(),
+            metadata: { error: err.message },
+          });
+        } catch (logErr) {
+          console.error("[email-sender] Failed to insert error log:", logErr);
+        }
 
         failed++;
       }

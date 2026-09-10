@@ -630,6 +630,7 @@ serve(async (req) => {
                                         if (parsed.tool_call) toolCallMatch = parsed.tool_call;
                                     } catch {}
                                 }
+                            }
                         }
                     } else {
                         try {
