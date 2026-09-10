@@ -108,6 +108,27 @@ serve(async (req) => {
             const info = await generateTelegramConnectLink(authedUserId);
             return new Response(JSON.stringify(info), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
+        if (url.pathname.endsWith('/telegram-disconnect')) {
+            const authHeader = req.headers.get('Authorization') || '';
+            const token = authHeader.replace('Bearer ', '').trim();
+            const supabaseAdmin = getAdminClient();
+            let authedUserId: string | null = null;
+            if (token) {
+                const { data: authData } = await supabaseAdmin.auth.getUser(token);
+                if (authData?.user?.id) authedUserId = authData.user.id;
+            }
+            if (!authedUserId) {
+                try {
+                    const body = await req.clone().json();
+                    if (body?.user_id) authedUserId = body.user_id;
+                } catch (_) {}
+            }
+            if (!authedUserId) {
+                return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+            await supabaseAdmin.from('user_telegram').delete().eq('user_id', authedUserId);
+            return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
         if (url.pathname.endsWith('/telegram-webhook') || url.pathname.endsWith('/telegram')) {
             if (req.method === 'POST') {
                 const body = await req.json();

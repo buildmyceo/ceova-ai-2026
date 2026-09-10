@@ -13,6 +13,7 @@ import { supabase } from '../services/supabase';
 import UsageSection from './UsageSection';
 import { useTheme } from '../contexts/ThemeContext';
 import GoogleConnectModal from './GoogleConnectModal';
+import TelegramConnectModal from './TelegramConnectModal';
 
 export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange }) {
     const { themePref, setThemePref } = useTheme();
@@ -26,6 +27,23 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
     const [isUploadingImage, setIsUploadingImage] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
+    const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
+    const [isTelegramConnected, setIsTelegramConnected] = useState(false);
+
+    useEffect(() => {
+        if (isOpen && userId) {
+            supabase
+                .from('user_telegram')
+                .select('connected')
+                .eq('user_id', userId)
+                .eq('connected', true)
+                .maybeSingle()
+                .then(({ data }) => {
+                    setIsTelegramConnected(!!data?.connected);
+                })
+                .catch(() => {});
+        }
+    }, [isOpen, userId, view]);
     
     // Email Preferences state
     const [emailPrefs, setEmailPrefs] = useState({ marketing_emails: true, educational_emails: true });
@@ -586,7 +604,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                             <div className="row-right"><ChevronRight size={14} className="chevron" /></div>
                                         </div>
 
-                                        <div className="settings-row clickable" style={{ opacity: 0.6 }}>
+                                        <div className="settings-row clickable" onClick={() => setIsTelegramModalOpen(true)}>
                                             <div className="row-left">
                                                 <div style={{ 
                                                     background: '#fff', 
@@ -605,7 +623,13 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                                 </div>
                                             </div>
                                             <div className="row-right">
-                                                <span style={{ fontSize: '10px', color: '#a1a1aa', marginRight: '8px' }}>Coming Soon</span>
+                                                {isTelegramConnected ? (
+                                                    <span style={{ fontSize: '10px', color: '#22c55e', marginRight: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} /> Connected
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ fontSize: '10px', color: '#a1a1aa', marginRight: '8px' }}>Connect</span>
+                                                )}
                                                 <ChevronRight size={14} className="chevron" />
                                             </div>
                                         </div>
@@ -1124,6 +1148,11 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                     alert("Failed to connect Google: " + e.message);
                 }
             }} 
+        />
+        <TelegramConnectModal 
+            isOpen={isTelegramModalOpen} 
+            onClose={() => setIsTelegramModalOpen(false)} 
+            onStatusChange={(status) => setIsTelegramConnected(status)}
         />
             <AnimatePresence>
                 {showAdvancedOnboarding && (

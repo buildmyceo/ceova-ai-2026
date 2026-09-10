@@ -9,14 +9,18 @@ import {
 import { supabase } from '../services/supabase';
 import { connectGoogleDrive } from '../services/gdriveSyncEngine';
 import GoogleConnectModal from './GoogleConnectModal';
+import TelegramConnectModal from './TelegramConnectModal';
 
 export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools', onSelectTool }) {
     const [view, setView] = useState(initialTab); // 'tools' or 'connectors'
     const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
+    const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
     
     const [connections, setConnections] = useState({
         google: false, // Google Drive, Gmail, Google Calendar
         googleEmail: null,
+        telegram: false,
+        telegramChatId: null,
         checking: false
     });
 
@@ -58,14 +62,46 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
             const googleIdentity = user?.identities?.find(i => i.provider === 'google');
             const googleEmail = googleIdentity?.identity_data?.email || null;
 
+            // 2. Check Telegram Connection
+            let hasTelegram = false;
+            let tgChatId = null;
+            if (user?.id) {
+                const { data: tgData } = await supabase
+                    .from('user_telegram')
+                    .select('connected, chat_id')
+                    .eq('user_id', user.id)
+                    .eq('connected', true)
+                    .maybeSingle();
+
+                if (tgData?.connected) {
+                    hasTelegram = true;
+                    tgChatId = tgData.chat_id;
+                }
+            }
+
             setConnections({
                 google: hasGoogle,
                 googleEmail: googleEmail,
+                telegram: hasTelegram,
+                telegramChatId: tgChatId,
                 checking: false
             });
         } catch (err) {
             console.error("Error checking connection status:", err);
             setConnections(prev => ({ ...prev, checking: false }));
+        }
+    };
+
+    const handleTelegramDisconnect = async () => {
+        if (!confirm("Are you sure you want to disconnect Telegram from CEOVA?")) return;
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user?.id) {
+                await supabase.from('user_telegram').delete().eq('user_id', session.user.id);
+            }
+            checkConnectionStatuses();
+        } catch (e) {
+            console.error("Error disconnecting Telegram:", e);
         }
     };
 
@@ -299,8 +335,12 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                     type="connector"
                                     icon={<img src="/telegram.png" alt="Telegram" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />} 
                                     title="Telegram" 
-                                    desc="Connect your Telegram chats." 
-                                    disabled={true}
+                                    desc={connections.telegram ? "Connected to CEOVA Telegram Bot" : "Build websites, run tools & chat from Telegram."} 
+                                    isConnected={connections.telegram}
+                                    isChecking={connections.checking}
+                                    onConnect={() => setIsTelegramModalOpen(true)}
+                                    onClick={() => setIsTelegramModalOpen(true)}
+                                    onDisconnect={handleTelegramDisconnect}
                                 />
                             </div>
                         )}
@@ -317,6 +357,16 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                 setIsGoogleModalOpen(false);
                 handleGoogleConnect();
             }} 
+        />
+        <TelegramConnectModal 
+            isOpen={isTelegramModalOpen} 
+            onClose={() => {
+                setIsTelegramModalOpen(false);
+                checkConnectionStatuses();
+            }}
+            onStatusChange={() => {
+                checkConnectionStatuses();
+            }}
         />
     </>
     );
