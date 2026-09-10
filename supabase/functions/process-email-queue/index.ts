@@ -119,7 +119,7 @@ serve(async (req) => {
 
         results.push({ id: item.id, status: "success" });
 
-      } catch (err) {
+      } catch (err: any) {
         console.error(`Failed to process email queue item ${item.id}:`, err);
         
         // Failure: Update queue attempts and apply jittered exponential backoff
@@ -156,7 +156,7 @@ serve(async (req) => {
       status: 200,
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Queue processor error:", error);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

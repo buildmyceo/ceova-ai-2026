@@ -80,7 +80,7 @@ serve(async (req: Request) => {
       status: 200,
     });
 
-  } catch (err) {
+  } catch (err: any) {
     console.error(`[SEND-EMAIL ERROR] ${err.message}`);
     return new Response(JSON.stringify({ success: false, error: err.message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

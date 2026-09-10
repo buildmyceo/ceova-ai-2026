@@ -37,7 +37,7 @@ serve(async (req) => {
         status: 200,
         headers: { "Content-Type": "application/json" }
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("[META] Error parsing webhook body:", err.message);
       return new Response("Invalid JSON", { status: 400 });
     }

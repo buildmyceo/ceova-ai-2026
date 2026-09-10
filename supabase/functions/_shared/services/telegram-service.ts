@@ -235,7 +235,7 @@ export async function sendTelegramPhoto(
     });
     const data = await res.json();
     return data.ok === true;
-  } catch (err) {
+  } catch (err: any) {
     Logger.ERROR("[Telegram] sendTelegramPhoto error:", err);
     return false;
   }
@@ -264,7 +264,7 @@ export async function sendTelegramDocument(
     });
     const data = await res.json();
     return data.ok === true;
-  } catch (err) {
+  } catch (err: any) {
     Logger.ERROR("[Telegram] sendTelegramDocument error:", err);
     return false;
   }

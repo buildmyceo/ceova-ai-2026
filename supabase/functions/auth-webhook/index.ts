@@ -73,7 +73,7 @@ serve(async (req: Request) => {
       status: 200,
     });
 
-  } catch (err) {
+  } catch (err: any) {
     console.error(`[auth-webhook ERROR] ${err.message}`);
     return new Response(JSON.stringify({ error: err.message }), {
       headers: { "Content-Type": "application/json" },

@@ -37,7 +37,7 @@ serve(async (req: Request) => {
       }
 
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
-    } catch (err) {
+    } catch (err: any) {
       console.error("[email-unsubscribe] Webhook error:", err.message);
       return new Response(JSON.stringify({ error: err.message }), { status: 500 });
     }
@@ -94,7 +94,7 @@ serve(async (req: Request) => {
       status: 200,
     });
 
-  } catch (err) {
+  } catch (err: any) {
     console.error(`[email-unsubscribe ERROR] ${err.message}`);
     return new Response(UNSUBSCRIBE_ERROR_HTML, {
       headers: { "Content-Type": "text/html" },
