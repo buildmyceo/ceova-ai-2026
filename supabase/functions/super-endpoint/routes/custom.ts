@@ -34,7 +34,7 @@ export async function handleCustomApps(supabase: any, userId: string, prompt: st
             try {
                 const encryptedObj = typeof s.secret_value === 'string' ? JSON.parse(s.secret_value) : s.secret_value;
                 decryptedSecrets[s.secret_name] = await decrypt(encryptedObj);
-            } catch (e) {
+            } catch (e: any) {
                 console.error(`[CUSTOM APP] Decryption failed for ${s.secret_name}:`, e.message);
             }
         }
@@ -99,7 +99,7 @@ export async function executeCustomApi(request: any) {
         } catch {
             return data;
         }
-    } catch (err) {
+    } catch (err: any) {
         console.error("[CUSTOM API] Execution failed:", err);
         return { error: err.message };
     }

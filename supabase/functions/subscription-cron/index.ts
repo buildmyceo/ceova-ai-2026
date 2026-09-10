@@ -138,7 +138,7 @@ serve(async (req) => {
             downgradeCount++;
           }
 
-        } catch (err) {
+        } catch (err: any) {
           console.error(`[CRON] Error verifying sub ${sub.id}:`, err);
         }
         processedCount++;
@@ -154,7 +154,7 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json" }
     });
 
-  } catch (err) {
+  } catch (err: any) {
     console.error("[CRON] Fatal error:", err);
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }

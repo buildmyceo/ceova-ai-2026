@@ -68,7 +68,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "No retry URL available for this subscription" }), { status: 400, headers: corsHeaders });
     }
 
-  } catch (err) {
+  } catch (err: any) {
     console.error("[RAZORPAY-RETRY] Error:", err);
     return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
   }

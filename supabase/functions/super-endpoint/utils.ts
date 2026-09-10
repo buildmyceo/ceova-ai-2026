@@ -63,7 +63,7 @@ export async function sendTelegramMessage(text: string, userIdOrChatId: string) 
     }
 
     return "ok";
-  } catch (err) {
+  } catch (err: any) {
     console.error("sendTelegramMessage fatal error:", err);
     return "Error";
   }
@@ -105,7 +105,7 @@ export async function sendWhatsApp(to: string, text: string) {
     }
 
     return "ok";
-  } catch (err) {
+  } catch (err: any) {
     console.error("sendWhatsApp fatal error:", err);
     return "Error";
   }
