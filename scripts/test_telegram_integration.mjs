@@ -59,8 +59,8 @@ function simulateIntentCheck(message, history = [], existingProjectId = null) {
   const lowerMsg = effectiveMessage.toLowerCase();
 
   const isWebDev = 
-    /website|web\s*app|landing\s*page|portfolio|store|site|frontend|ui|page|navbar|hero|footer|button|pricing|section|redesign/i.test(effectiveMessage) ||
-    ((/proceed|yes|build it|go ahead|approve|make it|do it|start/i.test(effectiveMessage)) && history.some(m => typeof m.content === 'string' && (/website|web\s*app|site|project|build|plan|ceova\.online|create_project/i.test(m.content)))) ||
+    /website|web\s*app|landing\s*page|portfolio|store|site|frontend|ui|page|navbar|hero|footer|button|pricing|section|redesign|placeholders?/i.test(effectiveMessage) ||
+    ((/proceed|yes|build\s*it|go\s*ahead|approve|make\s*it|do\s*it|start|use\s*placeholders?|placeholders?|build|create|continue|ok|okay|fine|sure|perfect|looks\s*good|generate/i.test(effectiveMessage)) && history.some(m => typeof m.content === 'string' && (/website|web\s*app|site|project|build|plan|ceova\.online|create_project/i.test(m.content)))) ||
     (!!existingProjectId && /change|update|add|fix|modify|edit|style|design|make|set/i.test(effectiveMessage));
 
   const isQr = /qr|qr\s*code|barcode/i.test(lowerMsg);
@@ -86,11 +86,18 @@ const resA = simulateIntentCheck("Build a modern portfolio website for a photogr
 assert(resA.isWebDev, "Should trigger web dev for website prompt");
 console.log("  ✅ 'Build a modern portfolio website...' -> triggers create_project");
 
-// Case B: Affirmative plan approval
-const resB = simulateIntentCheck("Yes, proceed and build it", [
+// Case B: Affirmative plan approval with "use placeholders"
+const resB = simulateIntentCheck("use placeholders", [
+  { role: "assistant", content: "Cafe Website Plan\nI can create a polished cafe website with:\n• Hero section\n• Menu section\n• Contact section\nPlease share details or say 'use placeholders'—I'll build it." }
+]);
+assert(resB.isWebDev, "Should trigger web dev when user says 'use placeholders' after cafe website plan");
+console.log("  ✅ 'use placeholders' after plan -> triggers create_project");
+
+// Case B2: Affirmative plan approval with "Yes, proceed and build it"
+const resB2 = simulateIntentCheck("Yes, proceed and build it", [
   { role: "assistant", content: "Here is the website implementation plan for your bakery on ceova.online. Should I build it?" }
 ]);
-assert(resB.isWebDev, "Should trigger web dev when user says 'Yes, proceed and build it' after plan");
+assert(resB2.isWebDev, "Should trigger web dev when user says 'Yes, proceed and build it' after plan");
 console.log("  ✅ 'Yes, proceed and build it' after plan -> triggers create_project");
 
 // Case C: Existing website incremental modification

@@ -104,7 +104,18 @@ export class CreateProjectTool implements Tool {
       }
 
       let projectId: string | undefined = context.args?.project_id;
-      const approvedPlan = context.args?.approved_plan;
+      let approvedPlan = context.args?.approved_plan;
+
+      // If approved_plan was not passed in args, check if the assistant proposed a plan in recent history
+      if (!approvedPlan && context.history && Array.isArray(context.history)) {
+        const lastPlanMsg = context.history.slice().reverse().find((m: any) =>
+          m.role === 'assistant' && typeof m.content === 'string' &&
+          (/plan/i.test(m.content) || /sections?:/i.test(m.content) || /hero section/i.test(m.content))
+        );
+        if (lastPlanMsg) {
+          approvedPlan = lastPlanMsg.content;
+        }
+      }
 
       // Respect the AI's decision:
       // If the AI specified a project name or omitted project_id to create a new site, leave projectId undefined.

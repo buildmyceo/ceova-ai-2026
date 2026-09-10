@@ -205,7 +205,12 @@ export function routeIntent(
   // ── Existing cloud project in request or history always enables cloud_dev capability ───
   const hasCloudProjectInHistory = hasCloudProject || (history && Array.isArray(history) && history.some(m => 
     (m.attachments && Array.isArray(m.attachments) && m.attachments.some((a: any) => a.type === 'cloud_project')) ||
-    (typeof m.content === 'string' && (m.content.includes('ceova.online') || m.content.includes('Cloud Project') || m.content.includes('Deployment Successful') || m.content.includes('Website Implementation Plan') || m.content.includes('Implementation Plan')))
+    (typeof m.content === 'string' && (
+      m.content.includes('ceova.online') ||
+      m.content.includes('Cloud Project') ||
+      m.content.includes('Deployment Successful') ||
+      /plan|website|create_project|landing page/i.test(m.content)
+    ))
   ));
 
   if (hasCloudProjectInHistory) {

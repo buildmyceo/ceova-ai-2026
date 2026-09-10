@@ -61,7 +61,7 @@ export const CAPABILITIES: Capability[] = [
       "update", "modify", "change", "add page", "make that pages", "fix website", "edit website",
       // Plan/approval flow
       "plan", "implementation plan", "proceed", "build it", "website plan", "go ahead", "approved",
-      "start building", "looks good", "approve",
+      "start building", "looks good", "approve", "use placeholders", "placeholder", "placeholders", "build", "cafe website",
       // UI component keywords
       "buttons", "tab", "tabs", "navigation", "nav", "navbar", "change navbar", "update navbar",
       "hero", "menu", "overview", "calendar", "event", "user", "header", "footer",

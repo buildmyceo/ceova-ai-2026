@@ -30,6 +30,7 @@ serve(async (req: Request) => {
       });
     }
 
+
     // ── 2. Telegram Connect Route (Invoked from CEOVA Web App) ─────────────────
     if (url.pathname.endsWith("/connect") || url.pathname.endsWith("/telegram-connect")) {
       if (req.method !== "POST") {
@@ -116,6 +117,18 @@ serve(async (req: Request) => {
     // ── 4. Main Telegram Webhook Endpoint ────────────────────────────────────
     if (req.method === "POST") {
       const body = await req.json();
+
+      // If EdgeRuntime.waitUntil is available, process update asynchronously
+      // so Telegram receives an immediate HTTP 200 response and never times out on long-running tasks
+      if (typeof (globalThis as any).EdgeRuntime?.waitUntil === "function") {
+        (globalThis as any).EdgeRuntime.waitUntil(
+          processTelegramUpdate(body).catch((err: any) => {
+            console.error("[Telegram Webhook] Background update failed:", err);
+          })
+        );
+        return new Response("ok", { status: 200, headers: corsHeaders });
+      }
+
       return await processTelegramUpdate(body);
     }
 
