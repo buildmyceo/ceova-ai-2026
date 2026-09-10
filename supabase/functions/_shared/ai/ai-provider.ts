@@ -57,8 +57,8 @@ export interface AIProviderResult {
 }
 
 export class AIProviderService {
-  private static readonly MODEL_NAME = AI_MODEL;
-  private static readonly FALLBACK_MODEL = 'gpt-4o'; // OpenAI fallback if luna endpoint alias resolves standard
+  private static readonly MODEL_NAME: string = AI_MODEL;
+  private static readonly FALLBACK_MODEL: string = 'gpt-4o'; // OpenAI fallback if luna endpoint alias resolves standard
 
   /**
    * Executes a complete chat completion via GPT-5.6 Luna
@@ -84,7 +84,7 @@ export class AIProviderService {
     let content = "";
     let toolCalls: AIProviderResult['toolCalls'] = undefined;
     let errorMsg = "";
-    let resolvedModel = this.MODEL_NAME;
+    let resolvedModel: string = this.MODEL_NAME;
 
     // Retry loop with exponential backoff (Max 4 attempts)
     for (let attempt = 1; attempt <= 4; attempt++) {
