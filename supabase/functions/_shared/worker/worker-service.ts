@@ -714,7 +714,7 @@ export class CloudWorkerService {
         .single();
 
       // 10. Create Deployment Record
-      const deploymentUrl = 'in-app-preview';
+      const deploymentUrl = `https://www.ceova.online/p/${project.slug}`;
       const { data: deploymentRecord, error: depErr } = await supabaseAdmin
         .from('deployments')
         .insert({

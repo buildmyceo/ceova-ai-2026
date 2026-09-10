@@ -41,4 +41,8 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+[functions.telegram-webhook]
+enabled = true
+verify_jwt = false
+
 

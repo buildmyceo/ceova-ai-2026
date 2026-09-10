@@ -333,7 +333,7 @@ export class AgenticCodingEngine {
               replace_all: { type: 'boolean', description: 'Alias for allow_multiple. Set to true to replace all matching occurrences.' },
               changes: {
                 type: 'array',
-                description: 'Optional array of changes [{ target_content, replacement_content, context_before?, context_after? }]',
+                description: 'Optional array of changes [{ target_content, replacement_content, context_before?, context_after?, start_line?, end_line? }]',
                 items: {
                   type: 'object',
                   properties: {
@@ -341,8 +341,10 @@ export class AgenticCodingEngine {
                     replacement_content: { type: 'string' },
                     context_before: { type: 'string' },
                     context_after: { type: 'string' },
+                    start_line: { type: 'number', description: 'Start line number (1-indexed)' },
+                    end_line: { type: 'number', description: 'End line number (1-indexed)' },
                   },
-                  required: ['target_content', 'replacement_content'],
+                  required: ['replacement_content'],
                 },
               },
               patch: {
@@ -1138,20 +1140,24 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
             } else {
               let existingContent = projectFiles[fileIndex].content;
               const edits: Array<{ 
-                target_content: string; 
+                target_content?: string; 
                 replacement_content: string;
                 context_before?: string;
                 context_after?: string;
+                start_line?: number;
+                end_line?: number;
               }> = [];
 
               if (Array.isArray(args.changes) && args.changes.length > 0) {
                 edits.push(...args.changes);
-              } else if (args.target_content !== undefined && args.replacement_content !== undefined) {
+              } else if (args.replacement_content !== undefined && (args.target_content !== undefined || (args.start_line && args.end_line))) {
                 edits.push({ 
                   target_content: args.target_content, 
                   replacement_content: args.replacement_content,
                   context_before: args.context_before,
                   context_after: args.context_after,
+                  start_line: args.start_line,
+                  end_line: args.end_line,
                 });
               } else if (args.patch && typeof args.patch === 'string') {
                 const patchLines = args.patch.split('\n');
@@ -1180,22 +1186,48 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
               }
 
               if (edits.length === 0) {
-                toolResultText = JSON.stringify({ error: 'Missing target_content and replacement_content, or changes array.' });
+                toolResultText = JSON.stringify({ error: 'Missing target_content and replacement_content, or start_line and end_line, or changes array.' });
               } else {
                 let errorOccurred = false;
                 for (const edit of edits) {
                   let searchTarget = edit.target_content;
                   let replacement = edit.replacement_content;
 
+                  if (edit.start_line !== undefined && edit.end_line !== undefined) {
+                    const lines = existingContent.split('\n');
+                    const startIdx = edit.start_line - 1;
+                    const endIdx = edit.end_line;
+                    if (startIdx >= 0 && endIdx <= lines.length && startIdx < endIdx) {
+                      lines.splice(startIdx, endIdx - startIdx, replacement);
+                      existingContent = lines.join('\n');
+                      continue;
+                    } else {
+                      toolResultText = JSON.stringify({ error: `Invalid line range: ${edit.start_line}-${edit.end_line}. File has ${lines.length} lines.` });
+                      errorOccurred = true;
+                      break;
+                    }
+                  }
+
                   // Requirement 20: Support structural/context-aware matching via context_before / context_after
                   if (edit.context_before || edit.context_after) {
-                    searchTarget = (edit.context_before || '') + edit.target_content + (edit.context_after || '');
+                    searchTarget = (edit.context_before || '') + (edit.target_content || '') + (edit.context_after || '');
                     replacement = (edit.context_before || '') + edit.replacement_content + (edit.context_after || '');
                   }
 
+                  if (!searchTarget) continue;
+
                   if (!existingContent.includes(searchTarget)) {
+                    const normalizedExisting = existingContent.replace(/\s+/g, ' ');
+                    const normalizedSearch = searchTarget.replace(/\s+/g, ' ');
+                    if (normalizedExisting.includes(normalizedSearch)) {
+                        toolResultText = JSON.stringify({
+                          error: `target_content was not found in "${path}" due to whitespace mismatch. Use 'read_files' to get exact indentation, or provide 'start_line' and 'end_line' instead of target_content.`
+                        });
+                        errorOccurred = true;
+                        break;
+                    }
                     const inspectHint = !inspectedFiles.has(path)
-                      ? ` You have not inspected "${path}" yet. Call 'search_code' or 'read_file' to locate exact lines and whitespace before editing.`
+                      ? ` You have not inspected "${path}" yet. Call 'search_code' or 'read_files' to locate exact lines and whitespace before editing.`
                       : '';
                     toolResultText = JSON.stringify({
                       error: `target_content was not found in "${path}". Ensure target_content matches exact characters including whitespace.${inspectHint}`,
@@ -1209,7 +1241,7 @@ ${fileIndex.length > 0 ? fileIndex : '(No files exist yet in project workspace)'
 
                   if (occurrences > 1 && !allowMultiple) {
                     toolResultText = JSON.stringify({
-                      error: `target_content "${edit.target_content}" is ambiguous and appears ${occurrences} times in "${path}". (Requirement 20: Never blindly perform a string replacement merely because the string exists). Inspect surrounding code with 'search_code' or 'read_file' to determine which occurrence corresponds to the user's requested change. Prefer structural/context-aware editing by including surrounding parent tags, attributes, or adjacent lines (or using 'context_before' / 'context_after') so that the target matches uniquely. If your intent is to rename all occurrences across the entire file (e.g. brand name), pass allow_multiple: true.`,
+                      error: `target_content "${edit.target_content}" is ambiguous and appears ${occurrences} times in "${path}". (Requirement 20: Never blindly perform a string replacement merely because the string exists). Inspect surrounding code with 'search_code' or 'read_files' to determine which occurrence corresponds to the user's requested change, OR use 'start_line' and 'end_line' parameters for line-based editing. If your intent is to rename all occurrences across the entire file, pass allow_multiple: true.`,
                     });
                     errorOccurred = true;
                     break;

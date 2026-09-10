@@ -8,11 +8,13 @@ export interface ToolMetadata {
   requiresAuth: boolean;
   enabled: boolean;
   parameters?: {
-    type: "object";
+    type: string;
     properties: Record<string, {
       type: string;
-      description: string;
+      description?: string;
       enum?: string[];
+      items?: any;
+      [key: string]: any;
     }>;
     required?: string[];
   };
@@ -33,6 +35,7 @@ export interface ToolResult {
   success: boolean;
   data?: any; 
   error?: { code: string; message: string };
+  ui?: any;
 }
 
 export interface Tool {

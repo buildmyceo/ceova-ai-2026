@@ -66,7 +66,7 @@ export class CloudDevOrchestrator {
         project = existingProj;
         projectName = existingProj.name;
         slug = existingProj.slug;
-        deploymentUrl = 'in-app-preview';
+        deploymentUrl = `https://www.ceova.online/p/${slug}`;
         isUpdate = true;
       }
     }
@@ -109,7 +109,7 @@ export class CloudDevOrchestrator {
             requirements: [userPrompt],
             approved_plan: approvedPlan || null,
             current_version: 1,
-            deployment_url: 'in-app-preview',
+            deployment_url: `https://www.ceova.online/p/${slug}`,
             source_files: [],
             project_state: {
               project_id: '',
@@ -122,7 +122,7 @@ export class CloudDevOrchestrator {
               assets: [],
               current_version: 1,
               approved_plan: approvedPlan || null,
-              deployment_url: 'in-app-preview',
+              deployment_url: `https://www.ceova.online/p/${slug}`,
               updated_at: new Date().toISOString(),
             },
           },
@@ -134,7 +134,7 @@ export class CloudDevOrchestrator {
         throw new Error(`Failed to create project: ${createErr?.message}`);
       }
       project = newProj;
-      deploymentUrl = 'in-app-preview';
+      deploymentUrl = `https://www.ceova.online/p/${slug}`;
     }
 
     onProgress({

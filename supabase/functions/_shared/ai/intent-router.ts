@@ -31,7 +31,7 @@ export interface IntentRouterResult {
 
 // Patterns for casual chat — no tools needed at all
 const CASUAL_PATTERNS = [
-  /^(hi|hello|hey|hii|helo|hai)[\s!?.]*$/i,
+  /^(hi+|hello+|hey+|hii+|helo+|hai+|hy+|hye+|yo+|hola|namaste|gm|gn|good\s+(morning|evening|afternoon|night))[\s!?.]*$/i,
   /^(how are you|what's up|whatsup|wassup|sup)[\s!?.]*$/i,
   /^(thanks|thank you|ty|thx|ok|okay|got it|cool|nice|great|awesome|perfect|sure|yes|no|nope|yep|yeah)[\s!?.]*$/i,
   /^(bye|goodbye|see you|cya|later)[\s!?.]*$/i,
