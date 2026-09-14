@@ -1,0 +1,33 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the main window",
+  "windows": ["*"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "shell:default",
+    "core:event:default",
+    "core:window:default",
+    "dialog:default",
+    "deep-link:default",
+    "autostart:default",
+    "process:default",
+    "fs:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "python3",
+          "cmd": "python3",
+          "args": true
+        },
+        {
+          "name": "sh",
+          "cmd": "sh",
+          "args": true
+        }
+      ]
+    }
+  ]
+}
