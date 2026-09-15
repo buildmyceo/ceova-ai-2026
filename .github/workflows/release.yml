@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'desktop'
   workflow_dispatch:
     inputs:
       target:
@@ -56,7 +58,7 @@ jobs:
           prerelease: false
 
   build-macos:
-    if: (github.event_name == 'push' || github.event.inputs.target == 'macos' || github.event.inputs.target == 'all') && github.event.inputs.target != 'windows'
+    if: github.event.inputs.target == 'macos' || github.event.inputs.target == 'all'
     name: Build macOS App (.dmg)
     runs-on: macos-latest
     permissions:
