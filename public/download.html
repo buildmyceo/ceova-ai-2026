@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Download CEOVA Desktop | Windows & macOS</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      background: radial-gradient(circle at 50% 10%, rgba(30, 41, 59, 0.4) 0%, #06070a 100%), #000000;
+      color: #ffffff;
+      font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .dl-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px 40px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .dl-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: #fff;
+    }
+
+    .dl-logo-text {
+      font-size: 1.3rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .dl-nav-links {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .dl-nav-btn {
+      padding: 9px 20px;
+      border-radius: 9999px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .dl-nav-btn.text-only {
+      color: #94a3b8;
+    }
+
+    .dl-nav-btn.text-only:hover {
+      color: #ffffff;
+    }
+
+    .dl-nav-btn.primary {
+      background: #ffffff;
+      color: #000000;
+    }
+
+    .dl-nav-btn.primary:hover {
+      background: #e2e8f0;
+      transform: translateY(-1px);
+    }
+
+    .dl-hero {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 70px 24px 60px 24px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .dl-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 9999px;
+      font-size: 0.82rem;
+      color: #cbd5e1;
+      margin-bottom: 24px;
+    }
+
+    .dl-badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 10px #10b981;
+    }
+
+    .dl-title {
+      font-size: clamp(2.4rem, 5vw, 3.8rem);
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      line-height: 1.15;
+      margin-bottom: 20px;
+      color: #ffffff;
+    }
+
+    .dl-title span {
+      background: linear-gradient(135deg, #60a5fa 0%, #c084fc 60%, #f472b6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .dl-sub {
+      font-size: 1.15rem;
+      color: #94a3b8;
+      max-width: 660px;
+      line-height: 1.6;
+      margin-bottom: 44px;
+    }
+
+    /* Highlighted Download Box */
+    .dl-cta-box {
+      width: 100%;
+      max-width: 500px;
+      margin-bottom: 60px;
+    }
+
+    .dl-main-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 28px;
+      background: #ffffff;
+      color: #000000;
+      border-radius: 16px;
+      text-decoration: none;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.7), 0 0 30px rgba(255, 255, 255, 0.12);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .dl-main-btn:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 40px rgba(255, 255, 255, 0.2);
+      background: #f8fafc;
+    }
+
+    .dl-btn-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      text-align: left;
+    }
+
+    .dl-btn-text h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin: 0;
+      color: #000000;
+    }
+
+    .dl-btn-text p {
+      font-size: 0.8rem;
+      color: #475569;
+      margin: 2px 0 0 0;
+    }
+
+    .dl-btn-arrow {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #000000;
+    }
+
+    .dl-helper-text {
+      margin-top: 12px;
+      font-size: 0.82rem;
+      color: #64748b;
+    }
+
+    .dl-helper-text a {
+      color: #cbd5e1;
+      text-decoration: underline;
+    }
+
+    /* Platform Cards */
+    .dl-platforms {
+      width: 100%;
+      max-width: 860px;
+    }
+
+    .dl-platforms-heading {
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #64748b;
+      margin-bottom: 24px;
+    }
+
+    .dl-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      text-align: left;
+    }
+
+    .dl-card {
+      background: rgba(18, 20, 29, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 20px;
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      backdrop-filter: blur(12px);
+      transition: all 0.25s ease;
+    }
+
+    .dl-card:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .dl-card.active {
+      border-color: rgba(96, 165, 250, 0.5);
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(18, 20, 29, 0.8) 100%);
+    }
+
+    .dl-card-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .dl-card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+
+    .dl-card-title h4 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin: 0;
+      color: #ffffff;
+    }
+
+    .dl-card-title span {
+      font-size: 0.82rem;
+      color: #94a3b8;
+    }
+
+    .dl-features-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 28px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex-grow: 1;
+    }
+
+    .dl-features-list li {
+      font-size: 0.88rem;
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .dl-features-list li::before {
+      content: "✓";
+      color: #34d399;
+      font-weight: bold;
+    }
+
+    .dl-card-btn {
+      display: block;
+      text-align: center;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      border-radius: 12px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .dl-card-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .dl-card-sublink {
+      display: block;
+      text-align: center;
+      font-size: 0.8rem;
+      color: #64748b;
+      margin-top: 8px;
+      text-decoration: none;
+    }
+
+    .dl-card-sublink:hover {
+      color: #cbd5e1;
+    }
+
+    /* Auto Update Section */
+    .dl-update-banner {
+      max-width: 860px;
+      margin: 40px auto 70px auto;
+      padding: 28px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      text-align: left;
+    }
+
+    .dl-update-icon {
+      font-size: 2.2rem;
+      flex-shrink: 0;
+    }
+
+    .dl-update-info h4 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin: 0 0 6px 0;
+    }
+
+    .dl-update-info p {
+      font-size: 0.88rem;
+      color: #94a3b8;
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    /* Footer */
+    .dl-footer {
+      margin-top: auto;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 24px 40px;
+      background: #030406;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.82rem;
+      color: #64748b;
+    }
+
+    .dl-footer-links {
+      display: flex;
+      gap: 20px;
+    }
+
+    .dl-footer-links a {
+      color: #94a3b8;
+      text-decoration: none;
+    }
+
+    .dl-footer-links a:hover {
+      color: #ffffff;
+    }
+
+    @media (max-width: 640px) {
+      .dl-header { padding: 18px 20px; }
+      .dl-hero { padding: 40px 16px; }
+      .dl-update-banner { flex-direction: column; text-align: center; }
+      .dl-footer { flex-direction: column; gap: 16px; text-align: center; }
+    }
+  </style>
+</head>
+<body class="dl-page">
+
+  <!-- Top Navigation -->
+  <header class="dl-header">
+    <a href="https://ceova.buildmyceo.com" class="dl-logo">
+      <span class="dl-logo-text">CEOVA</span>
+    </a>
+    <div class="dl-nav-links">
+      <a href="https://ceova.buildmyceo.com" class="dl-nav-btn text-only">Home</a>
+      <a href="https://app.ceova.online" class="dl-nav-btn primary">Open Web App</a>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <main class="dl-hero">
+    <div class="dl-badge">
+      <span class="dl-badge-dot"></span>
+      <span>Official Desktop Release v1.2.6</span>
+    </div>
+
+    <h1 class="dl-title">
+      Download <span>CEOVA Desktop</span>
+    </h1>
+
+    <p class="dl-sub">
+      Experience lightning-fast native desktop performance, permanent authentication sessions, and seamless AI assistance right from your desktop.
+    </p>
+
+    <!-- Dynamic CTA based on visitor OS -->
+    <div class="dl-cta-box" id="dynamicCta">
+      <a id="primaryDlBtn" href="#" class="dl-main-btn">
+        <div class="dl-btn-left">
+          <span id="primaryOsIcon" style="font-size: 1.8rem;">💻</span>
+          <div class="dl-btn-text">
+            <h3 id="primaryBtnTitle">Download for Windows</h3>
+            <p id="primaryBtnDesc">64-bit Installer (.exe) • Windows 10 & 11</p>
+          </div>
+        </div>
+        <span class="dl-btn-arrow">↓</span>
+      </a>
+      <p class="dl-helper-text" id="primaryHelper">
+        Looking for macOS? <a href="#card-mac">Download for Mac (.dmg)</a>
+      </p>
+    </div>
+
+    <!-- Platform Cards Grid -->
+    <div class="dl-platforms">
+      <div class="dl-platforms-heading">All Supported Platforms</div>
+
+      <div class="dl-cards-grid">
+        <!-- Windows Card -->
+        <div class="dl-card" id="card-windows">
+          <div class="dl-card-header">
+            <div class="dl-card-icon">🪟</div>
+            <div class="dl-card-title">
+              <h4>Windows</h4>
+              <span>Windows 10, 11 (64-bit)</span>
+            </div>
+          </div>
+          <ul class="dl-features-list">
+            <li>Standalone .exe Setup Installer</li>
+            <li>Background launch & system tray</li>
+            <li>WebView2 hardware acceleration</li>
+            <li>Persistent login session across reboots</li>
+          </ul>
+          <a id="winExeLink" href="https://github.com/buildmyceo/ceova-ai-2026/releases/latest/download/CEOVA_1.2.6_x64-setup.exe" class="dl-card-btn">
+            Download .exe Installer
+          </a>
+          <a id="winMsiLink" href="https://github.com/buildmyceo/ceova-ai-2026/releases/latest/download/CEOVA_1.2.6_x64_en-US.msi" class="dl-card-sublink">
+            Or download .msi package
+          </a>
+        </div>
+
+        <!-- macOS Card -->
+        <div class="dl-card" id="card-mac">
+          <div class="dl-card-header">
+            <div class="dl-card-icon">🍎</div>
+            <div class="dl-card-title">
+              <h4>macOS</h4>
+              <span>macOS 10.15 Catalina or later</span>
+            </div>
+          </div>
+          <ul class="dl-features-list">
+            <li>Apple Silicon (M1/M2/M3/M4) & Intel support</li>
+            <li>Drag-and-drop .dmg disk image</li>
+            <li>ceova:// deep-link protocol handler</li>
+            <li>Dual-layer persistent token storage</li>
+          </ul>
+          <a id="macArmLink" href="https://github.com/buildmyceo/ceova-ai-2026/releases/latest/download/CEOVA_1.2.6_aarch64.dmg" class="dl-card-btn">
+            Download .dmg (Apple Silicon)
+          </a>
+          <a id="macIntelLink" href="https://github.com/buildmyceo/ceova-ai-2026/releases/latest/download/CEOVA_1.2.6_x64.dmg" class="dl-card-sublink">
+            Or download for Intel Macs
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- In-App Auto Update Banner -->
+    <div class="dl-update-banner">
+      <div class="dl-update-icon">⚡</div>
+      <div class="dl-update-info">
+        <h4>Automatic In-App Updates</h4>
+        <p>
+          Once CEOVA is installed on your computer, you never have to revisit this page to update. When a new version is released, CEOVA automatically notifies you and updates itself in the background!
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="dl-footer">
+    <div>© 2026 CEOVA AI. All rights reserved.</div>
+    <div class="dl-footer-links">
+      <a href="https://app.ceova.online">Web App</a>
+      <a href="https://ceova.buildmyceo.com/privacy">Privacy Policy</a>
+      <a href="https://ceova.buildmyceo.com/terms">Terms of Service</a>
+      <a href="https://github.com/buildmyceo/ceova-ai-2026/releases/latest" target="_blank">Releases</a>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      const APP_VER = "1.2.6";
+      const GITHUB_REPO = "buildmyceo/ceova-ai-2026";
+      
+      const LINKS = {
+        winExe: `https://github.com/${GITHUB_REPO}/releases/latest/download/CEOVA_${APP_VER}_x64-setup.exe`,
+        winMsi: `https://github.com/${GITHUB_REPO}/releases/latest/download/CEOVA_${APP_VER}_x64_en-US.msi`,
+        macArm: `https://github.com/${GITHUB_REPO}/releases/latest/download/CEOVA_${APP_VER}_aarch64.dmg`,
+        macIntel: `https://github.com/${GITHUB_REPO}/releases/latest/download/CEOVA_${APP_VER}_x64.dmg`
+      };
+
+      // Detect OS
+      const ua = navigator.userAgent.toLowerCase();
+      const isWindows = ua.includes('win');
+      const isMac = ua.includes('mac');
+
+      const primaryBtn = document.getElementById('primaryDlBtn');
+      const primaryIcon = document.getElementById('primaryOsIcon');
+      const primaryTitle = document.getElementById('primaryBtnTitle');
+      const primaryDesc = document.getElementById('primaryBtnDesc');
+      const primaryHelper = document.getElementById('primaryHelper');
+
+      const cardWin = document.getElementById('card-windows');
+      const cardMac = document.getElementById('card-mac');
+
+      if (isWindows) {
+        primaryBtn.href = LINKS.winExe;
+        primaryIcon.textContent = '🪟';
+        primaryTitle.textContent = 'Download for Windows';
+        primaryDesc.textContent = `64-bit Installer (.exe) • Windows 10 & 11 • v${APP_VER}`;
+        primaryHelper.innerHTML = 'Using macOS? <a href="#card-mac">Download for Mac (.dmg)</a>';
+        cardWin.classList.add('active');
+      } else {
+        primaryBtn.href = LINKS.macArm;
+        primaryIcon.textContent = '🍎';
+        primaryTitle.textContent = 'Download for macOS';
+        primaryDesc.textContent = `Apple Silicon DMG (M1/M2/M3/M4) • macOS 10.15+ • v${APP_VER}`;
+        primaryHelper.innerHTML = 'Using Windows? <a href="#card-windows">Download for Windows (.exe)</a>';
+        cardMac.classList.add('active');
+      }
+
+      // Query param direct trigger: ?os=windows or ?os=mac
+      const params = new URLSearchParams(window.location.search);
+      const targetOs = params.get('os');
+      if (targetOs === 'windows') {
+        window.location.href = LINKS.winExe;
+      } else if (targetOs === 'mac') {
+        window.location.href = LINKS.macArm;
+      }
+    })();
+  </script>
+</body>
+</html>

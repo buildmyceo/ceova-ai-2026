@@ -9,17 +9,18 @@ import './App.css';
 
 // Lazy loaded routes for bundle splitting and performance optimization
 const Home = lazy(() => import('./pages/Home'));
-const GuestHome = lazy(() => import('./pages/GuestHome'));
+const Welcome = lazy(() => import('./pages/Welcome'));
 const Login = lazy(() => import('./pages/Login'));
 const Signup = lazy(() => import('./pages/Signup'));
 const Landing = lazy(() => import('./pages/Landing'));
 const LegalCenter = lazy(() => import('./pages/LegalCenter'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const Subscription = lazy(() => import('./pages/Subscription'));
+const Download = lazy(() => import('./pages/Download'));
 
 const RESERVED_APP_PATHS = new Set([
     'dashboard', 'legal', 'privacy', 'terms', 'subscription',
-    'auth', 'login', 'signup', 'api', 'p', 'sites', 'assets', 'favicon.ico'
+    'auth', 'login', 'signup', 'download', 'api', 'p', 'sites', 'assets', 'favicon.ico'
 ]);
 
 function NotFoundOrProjectRedirect() {
@@ -29,6 +30,7 @@ function NotFoundOrProjectRedirect() {
 export default function App() {
     const { session, loading } = useAuth();
     const { resolvedTheme } = useTheme();
+    const [welcomeDismissed, setWelcomeDismissed] = useState(false);
 
     useEffect(() => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -52,7 +54,18 @@ export default function App() {
         <div className={`theme-${resolvedTheme}`}>
             <Suspense fallback={<LoadingScreen text="Loading..." />}>
                 <Routes>
-                    <Route path="/" element={session ? <Navigate to="/dashboard" replace /> : <GuestHome />} />
+                    <Route 
+                        path="/" 
+                        element={
+                            session ? (
+                                <Navigate to="/dashboard" replace />
+                            ) : !welcomeDismissed ? (
+                                <Welcome onContinue={() => setWelcomeDismissed(true)} />
+                            ) : (
+                                <Login />
+                            )
+                        } 
+                    />
                     <Route path="/legal" element={<Navigate to="/legal/privacy-policy" replace />} />
                     <Route path="/legal/:docId" element={<LegalCenter />} />
                     <Route path="/privacy" element={<Navigate to="/legal/privacy-policy" replace />} />
@@ -63,6 +76,8 @@ export default function App() {
                     <Route path="/auth/callback" element={<AuthCallback />} />
                     <Route path="/login" element={session ? <Navigate to="/dashboard" replace /> : <Login />} />
                     <Route path="/signup" element={session ? <Navigate to="/dashboard" replace /> : <Signup />} />
+                    <Route path="/download" element={<Download />} />
+                    <Route path="/download/*" element={<Download />} />
                     <Route path="*" element={<NotFoundOrProjectRedirect />} />
                 </Routes>
             </Suspense>

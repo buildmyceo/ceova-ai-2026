@@ -1,0 +1,97 @@
+name: Release CEOVA Desktop
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Build target'
+        required: true
+        default: 'windows'
+        type: choice
+        options:
+          - 'windows'
+          - 'macos'
+          - 'all'
+
+jobs:
+  build-windows:
+    if: github.event_name == 'push' || github.event.inputs.target == 'windows' || github.event.inputs.target == 'all'
+    name: Build Windows App (.exe)
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Windows Application
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v1.2.6
+          releaseName: 'CEOVA Desktop v1.2.6'
+          releaseBody: 'Official CEOVA Desktop Release for macOS and Windows.'
+          releaseDraft: false
+          prerelease: false
+
+  build-macos:
+    if: (github.event_name == 'push' || github.event.inputs.target == 'macos' || github.event.inputs.target == 'all') && github.event.inputs.target != 'windows'
+    name: Build macOS App (.dmg)
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: 'aarch64-apple-darwin'
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build macOS Application
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v1.2.6
+          releaseName: 'CEOVA Desktop v1.2.6'
+          releaseBody: 'Official CEOVA Desktop Release for macOS and Windows.'
+          releaseDraft: false
+          prerelease: false
+          args: '--target aarch64-apple-darwin'

@@ -11,6 +11,7 @@ pub fn run() {
             Some(vec![]),
         ))
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|_app| {
             Ok(())
         })

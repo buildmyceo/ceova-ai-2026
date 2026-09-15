@@ -22,7 +22,8 @@ import {
     Check, 
     Film, 
     User,
-    Lock
+    Lock,
+    Download
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import APP_CONFIG from '../config/appConfig';
@@ -278,6 +279,10 @@ export default function GuestHome() {
                             <span className="guest-nav-icon"><Sparkles size={18} /></span>
                             {sidebarOpen && <span className="guest-nav-label">See plans and pricing</span>}
                         </Link>
+                        <Link to="/download" className="guest-nav-item">
+                            <span className="guest-nav-icon"><Download size={18} /></span>
+                            {sidebarOpen && <span className="guest-nav-label">Download Desktop App</span>}
+                        </Link>
                         <button className="guest-nav-item" onClick={() => handleTriggerAuth()}>
                             <span className="guest-nav-icon"><Settings size={18} /></span>
                             {sidebarOpen && <span className="guest-nav-label">Settings</span>}
@@ -352,6 +357,28 @@ export default function GuestHome() {
                     </div>
 
                     <div className="guest-topbar-right">
+                        <Link 
+                            to="/download" 
+                            className="guest-download-btn-top"
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '7px 14px',
+                                borderRadius: '8px',
+                                fontSize: '0.85rem',
+                                fontWeight: 500,
+                                color: '#e4e4e7',
+                                background: 'rgba(255,255,255,0.06)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                textDecoration: 'none',
+                                transition: 'all 0.2s',
+                                marginRight: '6px'
+                            }}
+                        >
+                            <Download size={15} />
+                            <span>Download App</span>
+                        </Link>
                         <button 
                             className="guest-login-btn-top"
                             onClick={() => { setAuthModalMode('login'); setAuthError(''); }}

@@ -12,7 +12,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "desktop": "tauri dev",
-    "build:dmg": "tauri build && mkdir -p src-tauri/target/release/bundle/dmg && hdiutil create -volname 'CEOVA' -srcfolder src-tauri/target/release/bundle/macos/CEOVA.app -ov -format UDZO src-tauri/target/release/bundle/dmg/CEOVA_1.2.6_aarch64.dmg"
+    "build:dmg": "bash scripts/build-dmg.sh"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
@@ -28,7 +28,7 @@
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-shell": "^2.3.5",
-    "@tauri-apps/plugin-updater": "^2.10.1",
+    "@tauri-apps/plugin-updater": "^2.11.0",
     "@zxing/library": "^0.23.0",
     "browser-image-compression": "^2.0.2",
     "docx-to-pdf-wasm": "^0.1.0",

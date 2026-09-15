@@ -116,13 +116,31 @@ export function AuthProvider({ children }) {
         if (error) throw error;
         
         if (session) {
-          console.log("[AuthProvider] Session restored successfully for:", session.user.email);
-          setSession(session);
-          setUser(session.user);
+          console.log("[AuthProvider] Session restored successfully for:", session.user?.email);
+          // Refresh session if token is near expiration
+          if (session.expires_at && (session.expires_at * 1000) < (Date.now() + 60000)) {
+            console.log("[AuthProvider] Token expiring soon, refreshing session...");
+            try {
+              const { data: refreshed, error: refErr } = await supabase.auth.refreshSession();
+              if (!refErr && refreshed?.session) {
+                if (mounted) {
+                  setSession(refreshed.session);
+                  setUser(refreshed.session.user);
+                }
+                return;
+              }
+            } catch (rErr) {
+              console.warn("[AuthProvider] Refresh session error:", rErr);
+            }
+          }
+          if (mounted) {
+            setSession(session);
+            setUser(session.user);
+          }
         } else {
           // Fallback check for user (sometimes more reliable in some environments)
           const { data: { user }, error: userError } = await supabase.auth.getUser();
-          if (!userError && user) {
+          if (!userError && user && mounted) {
             console.log("[AuthProvider] User found via getUser fallback:", user.email);
             setUser(user);
           }
@@ -199,21 +217,21 @@ export function AuthProvider({ children }) {
               }
             }
           }
-        } else {
+        } else if (event === 'SIGNED_OUT') {
+          console.log("[AuthProvider] Explicit SIGNED_OUT event received. Clearing session and cache.");
           setSession(null);
           setUser(null);
+          setLoading(false);
           
           try {
             await cacheManager.clearAll();
             localStorage.removeItem('chat_id');
-            console.log("[AuthProvider] Cleared local cache on sign out / missing session");
+            console.log("[AuthProvider] Cleared local cache on explicit sign out");
           } catch(e) {
             console.error("[AuthProvider] Error clearing cache:", e);
           }
-
-          if (event === 'SIGNED_OUT' || event === 'INITIAL_SESSION' || !isOAuthRedirect) {
-            setLoading(false);
-          }
+        } else if (event === 'INITIAL_SESSION') {
+          console.log("[AuthProvider] INITIAL_SESSION with null session. Awaiting checkSession completion.");
         }
       }
     );

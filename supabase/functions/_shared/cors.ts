@@ -13,6 +13,7 @@
  */
 
 const ALLOWED_ORIGINS = [
+    'https://app.ceova.online',
     'https://ceova.online',
     'https://www.ceova.online',
     'http://localhost:12827',
