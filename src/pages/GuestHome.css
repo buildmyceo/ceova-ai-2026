@@ -44,7 +44,7 @@
 
 /* Sidebar Top Section */
 .guest-sidebar-top {
-    padding: 12px 14px;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 12px 14px;
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -226,11 +226,14 @@
 
 /* Top Navigation Bar */
 .guest-topbar {
-    height: 60px;
+    min-height: 60px;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    padding-bottom: 8px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 20px;
     z-index: 100;
     background: transparent;
 }
