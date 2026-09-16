@@ -8,11 +8,21 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "cap:sync": "cap sync android",
+    "cap:build": "npm run build && cap sync android",
+    "android:build": "npm run build && cap sync android && cd android && ./gradlew assembleDebug",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/keyboard": "^8.0.5",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "@google/generative-ai": "^0.21.0",
     "@monaco-editor/react": "^4.7.0",
     "@pdfsmaller/pdf-encrypt-lite": "^1.0.2",
@@ -48,6 +58,7 @@
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@eslint/js": "^9.39.4",
     "@tauri-apps/cli": "^2.11.4",
     "@types/react": "^19.2.14",

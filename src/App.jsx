@@ -1,5 +1,8 @@
 import React, { useEffect, useState, Suspense, lazy } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { StatusBar, Style } from '@capacitor/status-bar';
 import { supabase } from './services/supabase';
 import { useAuth } from './contexts/AuthProvider';
 import { useTheme } from './contexts/ThemeContext';
@@ -29,6 +32,53 @@ function NotFoundOrProjectRedirect() {
 export default function App() {
     const { session, loading } = useAuth();
     const { resolvedTheme } = useTheme();
+    const navigate = useNavigate();
+
+    // Android Hardware Back Button integration
+    useEffect(() => {
+        if (!Capacitor.isNativePlatform()) return;
+
+        let backListener;
+        CapApp.addListener('backButton', ({ canGoBack }) => {
+            const path = window.location.pathname;
+            if (path === '/dashboard' || path === '/' || path === '/login') {
+                CapApp.exitApp();
+            } else if (canGoBack) {
+                window.history.back();
+            } else {
+                navigate('/dashboard');
+            }
+        }).then(listener => {
+            backListener = listener;
+        });
+
+        return () => {
+            if (backListener && backListener.remove) {
+                backListener.remove();
+            }
+        };
+    }, [navigate]);
+
+    // Match Android Status Bar with active theme
+    useEffect(() => {
+        if (!Capacitor.isNativePlatform()) return;
+
+        const updateStatusBar = async () => {
+            try {
+                if (resolvedTheme === 'dark') {
+                    await StatusBar.setStyle({ style: Style.Dark });
+                    await StatusBar.setBackgroundColor({ color: '#0f172a' });
+                } else {
+                    await StatusBar.setStyle({ style: Style.Light });
+                    await StatusBar.setBackgroundColor({ color: '#ffffff' });
+                }
+            } catch (e) {
+                console.warn('StatusBar update failed:', e);
+            }
+        };
+
+        updateStatusBar();
+    }, [resolvedTheme]);
 
     useEffect(() => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
