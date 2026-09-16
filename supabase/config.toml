@@ -1,0 +1,48 @@
+
+[functions.process-email-queue]
+enabled = true
+verify_jwt = true
+import_map = "./functions/process-email-queue/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/process-email-queue/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/process-email-queue/*.html" ]
+
+[functions.email-automation-cron]
+enabled = true
+verify_jwt = true
+import_map = "./functions/email-automation-cron/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/email-automation-cron/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/email-automation-cron/*.html" ]
+
+
+[functions.razorpay-verify]
+enabled = true
+verify_jwt = true
+import_map = "./functions/razorpay-verify/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/razorpay-verify/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/razorpay-verify/*.html" ]
+
+[functions.super-endpoint]
+enabled = true
+verify_jwt = false
+
+[functions.site-host]
+enabled = true
+verify_jwt = false
+
+[functions.telegram-webhook]
+enabled = true
+verify_jwt = false
+
+

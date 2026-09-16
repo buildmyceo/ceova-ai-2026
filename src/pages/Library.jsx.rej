@@ -1,0 +1,20 @@
+@@ -107,3 +107,3 @@
+-export function CalendarCard({ item, onPreview, onVisit, onSummarize }) {
++export function CalendarCard({ item, onClick, onPreview, onVisit, onSummarize }) {
+   return (
+-    <div className="lib-card lib-card-file" onClick={() => onPreview(item)} style={{ cursor: 'pointer' }}>
++    <div className="lib-card lib-card-file" onClick={() => onClick ? onClick(item) : onPreview(item)} style={{ cursor: 'pointer' }}>
+@@ -153,3 +153,3 @@
+-export function MailCard({ item, onPreview, onVisit, onSummarize }) {
++export function MailCard({ item, onClick, onPreview, onVisit, onSummarize }) {
+   return (
+-    <div className="lib-card lib-card-file" onClick={() => onPreview(item)} style={{ cursor: 'pointer' }}>
++    <div className="lib-card lib-card-file" onClick={() => onClick ? onClick(item) : onPreview(item)} style={{ cursor: 'pointer' }}>
+@@ -315,5 +315,5 @@
+-export function FileCard({ item, onPreview, onDownload, onVisit, onSummarize, onOCR }) {
++export function FileCard({ item, onClick, onPreview, onDownload, onVisit, onSummarize, onOCR }) {
+   const { icon: Icon, color, label } = MIME_ICON(item.mime_type || '', item.name);
+ 
+   return (
+-    <div className="lib-card lib-card-file">
++    <div className="lib-card lib-card-file" onClick={() => onClick && onClick(item)} style={{ cursor: onClick ? 'pointer' : 'default' }}>

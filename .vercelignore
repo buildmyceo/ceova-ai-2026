@@ -1,0 +1,9 @@
+node_modules/
+ceova-studio/
+ceova_ide/
+src-tauri/
+.git/
+dist/
+venv/
+venv_test/
+supabase/

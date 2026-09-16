@@ -1,0 +1,142 @@
+.memory-manager-container {
+  padding: 24px;
+  background-color: var(--bg-color, #1a1a1a);
+  border-radius: 12px;
+  color: var(--text-color, #ffffff);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.memory-header h2 {
+  margin-bottom: 8px;
+  font-size: 1.5rem;
+}
+
+.memory-header p {
+  color: var(--text-muted, #a0a0a0);
+  margin-bottom: 24px;
+}
+
+.memory-search-bar {
+  display: flex;
+  align-items: center;
+  background-color: #2f2f2f;
+  padding: 10px 16px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  gap: 12px;
+}
+
+.memory-search-bar .search-icon {
+  color: #a0a0a0;
+}
+
+.memory-search-bar input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: white;
+  outline: none;
+  font-size: 1rem;
+}
+
+.memory-search-bar .clear-all-btn {
+  background-color: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.memory-search-bar .clear-all-btn:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.memory-card {
+  background-color: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 16px;
+  position: relative;
+}
+
+.memory-card-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+}
+
+.memory-category {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.memory-date {
+  color: #888;
+}
+
+.memory-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 1.1rem;
+}
+
+.memory-value {
+  color: #e5e5e5;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.memory-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.action-btn {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.action-btn.edit {
+  color: #60a5fa;
+}
+
+.action-btn.edit:hover {
+  background-color: rgba(96, 165, 250, 0.1);
+}
+
+.action-btn.delete {
+  color: #ef4444;
+}
+
+.action-btn.delete:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.memory-loading, .memory-empty {
+  text-align: center;
+  padding: 40px;
+  color: #a0a0a0;
+  font-style: italic;
+}
