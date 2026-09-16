@@ -14,7 +14,6 @@
     "autostart:default",
     "process:default",
     "fs:default",
-    "updater:default",
     {
       "identifier": "shell:allow-execute",
       "allow": [
