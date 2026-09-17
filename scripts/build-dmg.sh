@@ -17,7 +17,7 @@ ln -s /Applications "$DMG_STAGING/Applications"
 
 echo "==> Creating DMG..."
 mkdir -p src-tauri/target/release/bundle/dmg
-DMG_OUT="src-tauri/target/release/bundle/dmg/CEOVA_1.2.6_aarch64.dmg"
+DMG_OUT="src-tauri/target/release/bundle/dmg/CEOVA_1.2.7_aarch64.dmg"
 rm -f "$DMG_OUT"
 hdiutil create -volname "CEOVA" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_OUT"
 

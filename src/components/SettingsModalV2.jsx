@@ -12,6 +12,7 @@ import {
 import { supabase } from '../services/supabase';
 import UsageSection from './UsageSection';
 import { useTheme } from '../contexts/ThemeContext';
+import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
 import GoogleConnectModal from './GoogleConnectModal';
 import TelegramConnectModal from './TelegramConnectModal';
 
@@ -479,7 +480,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                 <div className="about-view">
                                     <div style={{ textAlign: 'center', padding: '30px 0' }}>
                                         <h3 style={{ marginTop: '16px', fontSize: '20px', fontWeight: '600' }}>CEOVA AI</h3>
-                                        <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>Version 1.2.6 (Production)</p>
+                                        <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>Version 1.2.7 (Production)</p>
                                     </div>
 
                                     <h4 className="section-label">Legal Center</h4>
