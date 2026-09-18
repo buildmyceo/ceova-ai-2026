@@ -195,16 +195,25 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
   }
 
   let tgChatId: string | undefined;
+  let tgThreadId: string | undefined;
+  let tgFromId: string | undefined;
   try {
     const body = await req.json();
     const message = body.message || body.edited_message || body.callback_query?.message;
     tgChatId = message?.chat?.id?.toString();
+    tgFromId = message?.from?.id?.toString() || body.callback_query?.from?.id?.toString();
+    tgThreadId = message?.message_thread_id?.toString();
+    const isTopicMessage = message?.is_topic_message || !!tgThreadId;
+    const isTopicCreated = !!message?.forum_topic_created;
+
     const tgText = (message?.text || message?.caption || "").trim();
 
     if (!tgChatId) {
       console.warn("[Telegram] Received update without chat ID:", body);
       return new Response("No chat id");
     }
+
+    const effectiveChatId = tgThreadId ? `${tgChatId}_${tgThreadId}` : tgChatId;
 
     const supabase = getAdminClient();
 
@@ -222,7 +231,8 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
           `• <code>/connect</code> — View & manage connected apps\n` +
           `• <code>/disconnect</code> — Unlink Telegram from Ceova\n` +
           `• <code>/help</code> — Get support`,
-          tgChatId
+          tgChatId,
+          tgThreadId
         );
         return new Response("ok");
       }
@@ -238,7 +248,8 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
       if (!userId) {
         await sendTelegramMessage(
           "❌ <b>Invalid or expired connection token.</b>\nPlease try connecting again from your Ceova dashboard.",
-          tgChatId
+          tgChatId,
+          tgThreadId
         );
         return new Response("ok");
       }
@@ -253,7 +264,8 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
       if (existingForChat?.user_id && existingForChat.user_id !== userId) {
         await sendTelegramMessage(
           "❌ <b>This Telegram account is already connected to another Ceova user.</b>\n\nDisconnect it from the other account first, then try again.",
-          tgChatId
+          tgChatId,
+          tgThreadId
         );
         return new Response("ok");
       }
@@ -282,7 +294,7 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
 
       if (linkErr) {
         console.error("[Telegram] Linking error:", linkErr);
-        await sendTelegramMessage("❌ <b>Connection Error</b>\nFailed to link your account. Please try again later.", tgChatId);
+        await sendTelegramMessage("❌ <b>Connection Error</b>\nFailed to link your account. Please try again later.", tgChatId, tgThreadId);
       } else {
         await sendTelegramMessage(
           `✅ <b>Successfully Connected!</b>\n\n` +
@@ -292,7 +304,8 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
           `• <code>/disconnect</code> — Unlink Telegram\n` +
           `• <code>/help</code> — Contact support\n\n` +
           `Just type any message to start chatting with your AI assistant!`,
-          tgChatId
+          tgChatId,
+          tgThreadId
         );
       }
       return new Response("ok");
@@ -308,7 +321,8 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
         `• <code>/disconnect</code> — Disconnect Telegram from Ceova\n` +
         `• <code>/help</code> — Show this help message\n\n` +
         `<i>For all other features, visit</i> <a href="https://ceova.online">ceova.online</a>`,
-        tgChatId
+        tgChatId,
+        tgThreadId
       );
       return new Response("ok");
     }
@@ -317,7 +331,7 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
       const { data: tgMapping } = await supabase
         .from("user_telegram")
         .select("user_id")
-        .eq("chat_id", tgChatId)
+        .eq("chat_id", tgFromId || tgChatId)
         .eq("connected", true)
         .maybeSingle();
       const resolvedUserId = tgMapping?.user_id;
@@ -329,13 +343,14 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
           `To link your account:\n` +
           `1️⃣ Open <a href="https://ceova.online">ceova.online</a>\n` +
           `2️⃣ Click <b>Connectors</b> → <b>Telegram</b> → Connect`,
-          tgChatId
+          tgChatId,
+          tgThreadId
         );
         return new Response("ok");
       }
 
       const summary = await buildConnectSummary(supabase, resolvedUserId);
-      await sendTelegramMessage(summary, tgChatId);
+      await sendTelegramMessage(summary, tgChatId, tgThreadId);
       return new Response("ok");
     }
 
@@ -343,14 +358,15 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
       const { data: mapping } = await supabase
         .from("user_telegram")
         .select("user_id")
-        .eq("chat_id", tgChatId)
+        .eq("chat_id", tgFromId || tgChatId)
         .eq("connected", true)
         .maybeSingle();
 
       if (!mapping?.user_id) {
         await sendTelegramMessage(
           `ℹ️ <b>Not Connected</b>\n\nThis Telegram account is not linked to any Ceova account.`,
-          tgChatId
+          tgChatId,
+          tgThreadId
         );
         return new Response("ok");
       }
@@ -359,12 +375,13 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
         .from("user_telegram")
         .update({ connected: false, updated_at: new Date().toISOString() })
         .eq("user_id", mapping.user_id)
-        .eq("chat_id", tgChatId);
+        .eq("chat_id", tgFromId || tgChatId);
 
       if (disconnectErr) {
         await sendTelegramMessage(
           `❌ <b>Disconnect Failed</b>\n\nCouldn't disconnect Telegram. Please try again or visit <a href="https://ceova.online">ceova.online</a>.`,
-          tgChatId
+          tgChatId,
+          tgThreadId
         );
         return new Response("ok");
       }
@@ -372,7 +389,8 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
       await sendTelegramMessage(
         `✅ <b>Telegram Disconnected</b>\n\nYour Telegram has been unlinked from Ceova.\n\n` +
         `To reconnect, visit <a href="https://ceova.online">ceova.online</a> → Connectors → Telegram.`,
-        tgChatId
+        tgChatId,
+        tgThreadId
       );
       return new Response("ok");
     }
@@ -380,35 +398,75 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
     const { data: tgMapping } = await supabase
       .from("user_telegram")
       .select("user_id")
-      .eq("chat_id", tgChatId)
+      .eq("chat_id", tgFromId || tgChatId)
       .eq("connected", true)
       .maybeSingle();
     const resolvedUserId = tgMapping?.user_id;
 
     if (!resolvedUserId) {
-      await sendTelegramMessage(
-        "Your Telegram is not linked to a CEOVA account. Please link it from your dashboard settings.",
-        tgChatId
-      );
+      // Don't reply to unlinked group topics to avoid spamming groups
+      if (!isTopicMessage) {
+        await sendTelegramMessage(
+          "Your Telegram is not linked to a CEOVA account. Please link it from your dashboard settings.",
+          tgChatId,
+          tgThreadId
+        );
+      }
       return new Response("ok");
     }
 
+    const effectiveTitle = message?.forum_topic_created?.name || "Telegram Chat";
+
     await supabase.from("chats").upsert(
       {
-        id: tgChatId,
+        id: effectiveChatId,
         user_id: resolvedUserId,
-        title: "Telegram Chat",
+        title: effectiveTitle,
       },
       { onConflict: "id" }
     );
 
+    if (isTopicCreated) {
+      const topicName = message.forum_topic_created?.name || "New Topic";
+      const welcomeMsg = `✅ <b>New Chat Started!</b>\n\nYour new AI chat thread "<b>${topicName}</b>" is ready. Type a message to begin!`;
+      try {
+        await supabase.from("messages").insert({
+          user_id: resolvedUserId,
+          chat_id: effectiveChatId,
+          role: "assistant",
+          content: welcomeMsg,
+          created_at: new Date().toISOString(),
+        });
+      } catch {}
+
+      await sendTelegramMessage(
+        welcomeMsg,
+        tgChatId,
+        tgThreadId
+      );
+      return new Response("ok");
+    }
+
     const { data: rawHistory } = await supabase
       .from("messages")
       .select("role, content")
-      .eq("chat_id", tgChatId)
+      .eq("chat_id", effectiveChatId)
       .order("created_at", { ascending: false })
       .limit(6);
     const history = (rawHistory || []).reverse();
+
+    const userMsgTime = new Date().toISOString();
+    try {
+      await supabase.from("messages").insert({
+        user_id: resolvedUserId,
+        chat_id: effectiveChatId,
+        role: "user",
+        content: tgText || "[Sent an attachment]",
+        created_at: userMsgTime,
+      });
+    } catch (e: any) {
+      console.error("[Telegram] Error inserting user message:", e);
+    }
 
     const attachments = [];
     if (message?.photo) {
@@ -424,10 +482,14 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
 
     const result = await handleChatAI(supabase, resolvedUserId, tgText || "Analyze this.", attachments, history);
 
-    await supabase.from("messages").insert([
-      { user_id: resolvedUserId, chat_id: tgChatId, role: "user", content: tgText || "[Sent an attachment]" },
-      { user_id: resolvedUserId, chat_id: tgChatId, role: "assistant", content: result },
-    ]);
+    const assistantMsgTime = new Date(Math.max(Date.now(), new Date(userMsgTime).getTime() + 1000)).toISOString();
+    await supabase.from("messages").insert({
+      user_id: resolvedUserId,
+      chat_id: effectiveChatId,
+      role: "assistant",
+      content: result,
+      created_at: assistantMsgTime,
+    });
 
     let formattedText = result
       .replace(/&/g, "&amp;")
@@ -442,10 +504,10 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
 
     const safeText = formattedText.length > 4000 ? formattedText.slice(0, 4000) + "..." : formattedText;
 
-    const sendRes = await sendTelegramMessage(safeText, tgChatId);
+    const sendRes = await sendTelegramMessage(safeText, tgChatId, tgThreadId);
     if (sendRes !== "ok") {
       console.error("[Telegram] Final Send Failure:", sendRes);
-      await sendTelegramMessage(result.substring(0, 4000), tgChatId);
+      await sendTelegramMessage(result.substring(0, 4000), tgChatId, tgThreadId);
     }
 
     return new Response("ok");
@@ -455,7 +517,8 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
     if (err?.message?.includes("TOKEN_LIMIT_REACHED") && tgChatId) {
       await sendTelegramMessage(
         "❌ <b>Token Limit Reached</b>\n\nYou have reached your monthly AI token limit. Please upgrade your plan to continue using CEOVA.",
-        tgChatId
+        tgChatId,
+        tgThreadId
       );
     }
 

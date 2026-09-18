@@ -14,7 +14,7 @@ export const getAdminClient = () => createClient(
 );
 
 // --- TELEGRAM NOTIFICATIONS ---
-export async function sendTelegramMessage(text: string, userIdOrChatId: string) {
+export async function sendTelegramMessage(text: string, userIdOrChatId: string, threadId?: string) {
   const token = (Deno.env.get("TELEGRAM_TOKEN") || Deno.env.get("TELEGRAM_BOT_TOKEN"));
   
   if (!token) {
@@ -45,29 +45,40 @@ export async function sendTelegramMessage(text: string, userIdOrChatId: string) 
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
   const formattedHtml = formatToTelegramHtml(text);
 
+  const payload: any = {
+    chat_id: targetChatId,
+    text: formattedHtml,
+    parse_mode: "HTML"
+  };
+  if (threadId) {
+    payload.message_thread_id = threadId;
+  }
+
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        chat_id: targetChatId,
-        text: formattedHtml,
-        parse_mode: "HTML"
-      })
+      body: JSON.stringify(payload)
     });
 
     const data = await res.json();
     if (!res.ok) {
       console.warn("Telegram API Error, trying clean plain-text fallback:", data);
+      
+      const fallbackPayload: any = {
+        chat_id: targetChatId,
+        text: stripTelegramHtml(text),
+      };
+      if (threadId) {
+        fallbackPayload.message_thread_id = threadId;
+      }
+      
       const fallbackRes = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: targetChatId,
-          text: stripTelegramHtml(text),
-        })
+        body: JSON.stringify(fallbackPayload)
       });
       const fallbackData = await fallbackRes.json();
       if (!fallbackRes.ok) {

@@ -97,13 +97,31 @@ class CacheManager {
     async getMessages(chatId) {
         const db = await this.dbPromise;
         const msgs = await db.getAllFromIndex('messages', 'chat_id', chatId);
-        return msgs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        return msgs.sort((a, b) => {
+            const timeA = new Date(a.created_at || a.time || 0).getTime();
+            const timeB = new Date(b.created_at || b.time || 0).getTime();
+            if (timeA !== timeB) return timeA - timeB;
+            const isUserA = (a.role === 'user' || a.sender === 'user');
+            const isUserB = (b.role === 'user' || b.sender === 'user');
+            if (isUserA && !isUserB) return -1;
+            if (!isUserA && isUserB) return 1;
+            return 0;
+        });
     }
 
     async getAllMessages() {
         const db = await this.dbPromise;
         const msgs = await db.getAll('messages');
-        return msgs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        return msgs.sort((a, b) => {
+            const timeA = new Date(a.created_at || a.time || 0).getTime();
+            const timeB = new Date(b.created_at || b.time || 0).getTime();
+            if (timeA !== timeB) return timeA - timeB;
+            const isUserA = (a.role === 'user' || a.sender === 'user');
+            const isUserB = (b.role === 'user' || b.sender === 'user');
+            if (isUserA && !isUserB) return -1;
+            if (!isUserA && isUserB) return 1;
+            return 0;
+        });
     }
 
     async setMessages(messages) {

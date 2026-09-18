@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical } from 'lucide-react';
+import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../services/supabase';
 import ExtensionsModal from './ExtensionsModal';
@@ -436,6 +436,14 @@ export default function InputBox({
                             {isPlusOpen && isToolsSubmenuOpen && (
                                 <div className="plus-dropdown-menu">
 
+                                    <button onClick={() => {
+                                        setIsPlusOpen(false);
+                                        setIsToolsSubmenuOpen(false);
+                                        setInput(prev => prev + (prev.trim() ? " " : "") + "/generate_image ");
+                                        textareaRef.current?.focus();
+                                    }}>
+                                        <Sparkles size={18} /> Generate Image
+                                    </button>
                                     <button onClick={() => {
                                         setIsPlusOpen(false);
                                         setIsToolsSubmenuOpen(false);

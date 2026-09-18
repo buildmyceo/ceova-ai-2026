@@ -106,10 +106,16 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "image",
-    description: "Analyze images, remove backgrounds, and process images.",
-    keywords: ["image", "photo", "picture", "background", "remove background", "analyze image", "describe image", "what is this", "ocr", "read image", "detect", "vision"],
-    toolIds: ["image_analysis", "background_remover"],
-    memoryCategories: [],
+    description: "Generate high-quality AI images, illustrations, and art from text prompts (DALL-E), analyze images, remove backgrounds, and process images.",
+    keywords: [
+      "generate image", "create image", "make image", "draw", "paint", "illustration", "generate picture", "create picture",
+      "make picture", "generate photo", "create photo", "dall-e", "dalle", "render image", "generate artwork", "draw me",
+      "design logo", "generate graphic", "generate an image", "generate a photo", "generate a picture", "create an image",
+      "create a picture", "make an image", "ai image", "artwork", "generate_image",
+      "image", "photo", "picture", "background", "remove background", "analyze image", "describe image", "what is this", "ocr", "read image", "detect", "vision"
+    ],
+    toolIds: ["generate_image", "image_analysis", "background_remover"],
+    memoryCategories: ["preferences"],
   },
   {
     id: "files",

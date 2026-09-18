@@ -21,6 +21,20 @@ function assertStringUuid(name, value) {
     }
 }
 
+export function sortMessagesChronologically(msgs) {
+    if (!Array.isArray(msgs) || msgs.length === 0) return [];
+    return [...msgs].sort((a, b) => {
+        const timeA = new Date(a.created_at || a.time || 0).getTime();
+        const timeB = new Date(b.created_at || b.time || 0).getTime();
+        if (timeA !== timeB) return timeA - timeB;
+        const isUserA = (a.role === 'user' || a.sender === 'user');
+        const isUserB = (b.role === 'user' || b.sender === 'user');
+        if (isUserA && !isUserB) return -1;
+        if (!isUserA && isUserB) return 1;
+        return 0;
+    });
+}
+
 export default function Home({ session }) {
     const [chats, setChats] = useState({});
     const [chatMetadata, setChatMetadata] = useState({}); // Stores { is_pinned, is_archived, title }
@@ -190,7 +204,8 @@ export default function Home({ session }) {
                         .order('created_at', { ascending: true });
                         
                     if (currentChatMessages) {
-                        const formattedMessages = currentChatMessages.map(msg => {
+                        const sortedCurrent = sortMessagesChronologically(currentChatMessages);
+                        const formattedMessages = sortedCurrent.map(msg => {
                             const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
                             return {
                                 id: msg.id,
@@ -204,7 +219,7 @@ export default function Home({ session }) {
                         });
                         setChats(prev => ({ ...prev, [activeChatId]: formattedMessages }));
                         // We do NOT await this so the UI doesn't block
-                        cacheManager.setMessages(currentChatMessages).catch(console.error);
+                        cacheManager.setMessages(sortedCurrent).catch(console.error);
                     }
                 }
 
@@ -217,9 +232,10 @@ export default function Home({ session }) {
                     .then(async ({ data, error }) => {
                         if (error || !data) return;
                         
-                        await cacheManager.setMessages(data);
+                        const sortedData = sortMessagesChronologically(data);
+                        await cacheManager.setMessages(sortedData);
                         
-                        const grouped = data.reduce((acc, msg) => {
+                        const grouped = sortedData.reduce((acc, msg) => {
                             if (!acc[msg.chat_id]) acc[msg.chat_id] = [];
                             const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
                             acc[msg.chat_id].push({
@@ -1071,7 +1087,8 @@ export default function Home({ session }) {
                     .order('created_at', { ascending: true });
 
                 if (chatMsgs && chatMsgs.length > 0) {
-                    const formatted = chatMsgs.map(msg => {
+                    const sortedChatMsgs = sortMessagesChronologically(chatMsgs);
+                    const formatted = sortedChatMsgs.map(msg => {
                         const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
                         return {
                             id: msg.id,

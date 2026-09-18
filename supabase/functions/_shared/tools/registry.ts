@@ -1,6 +1,7 @@
 import { Tool, ToolMetadata } from './types.ts';
 import { BackgroundRemoverTool } from './tools/background-remover.ts';
 import { ImageAnalysisTool } from './tools/image-analysis.ts';
+import { GenerateImageTool } from './tools/generate-image.ts';
 import { GmailConnectorTool } from './tools/gmail.ts';
 import { GoogleCalendarConnectorTool } from './tools/calendar.ts';
 import { GoogleDriveConnectorTool } from './tools/drive.ts';
@@ -26,6 +27,7 @@ class ToolRegistry {
   constructor() {
     this.registerTool(new BackgroundRemoverTool());
     this.registerTool(new ImageAnalysisTool());
+    this.registerTool(new GenerateImageTool());
     this.registerTool(GmailConnectorTool);
     this.registerTool(GoogleCalendarConnectorTool);
     this.registerTool(GoogleDriveConnectorTool);
