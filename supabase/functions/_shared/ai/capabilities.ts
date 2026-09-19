@@ -105,8 +105,8 @@ export const CAPABILITIES: Capability[] = [
     memoryCategories: [],
   },
   {
-    id: "image",
-    description: "Generate high-quality AI images, illustrations, and art from text prompts (DALL-E), analyze images, remove backgrounds, and process images.",
+    id: "image_gen",
+    description: "Generate high-quality AI images, illustrations, and art from text prompts using DALL-E. Use this when the user wants to CREATE/GENERATE a NEW image from a text description.",
     keywords: [
       "generate image", "create image", "make image", "draw", "paint", "illustration", "generate picture", "create picture",
       "make picture", "generate photo", "create photo", "dall-e", "dalle", "render image", "generate artwork", "draw me",
@@ -116,9 +116,20 @@ export const CAPABILITIES: Capability[] = [
       "generate a", "generate an", "draw a", "draw me", "paint a", "paint me", "sketch a", "sketch of",
       "illustration of", "picture of", "pic of", "photo of", "photograph of", "image of", "artwork of",
       "render a", "rendering of", "make a picture", "make a photo", "make an illustration", "wallpaper of",
-      "image", "photo", "picture", "background", "remove background", "analyze image", "describe image", "what is this", "ocr", "read image", "detect", "vision"
+      "image", "photo", "picture"
     ],
-    toolIds: ["generate_image", "image_analysis", "background_remover"],
+    toolIds: ["generate_image"],
+    memoryCategories: ["preferences"],
+  },
+  {
+    id: "image_process",
+    description: "Analyze images, remove backgrounds, describe image contents, and perform OCR. Use this when the user has ATTACHED an existing image and wants it processed.",
+    keywords: [
+      "background", "remove background", "analyze image", "describe image", "what is this",
+      "ocr", "read image", "detect", "vision", "remove bg", "transparent", "cutout",
+      "what's in this", "identify", "extract text"
+    ],
+    toolIds: ["image_analysis", "background_remover"],
     memoryCategories: ["preferences"],
   },
   {

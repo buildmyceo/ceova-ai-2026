@@ -27,7 +27,7 @@ export class AIRouter {
         messages: any[],
         taskType: TaskType,
         userId: string,
-        options: { temperature?: number, maxTokens?: number, tools?: any[] } = {}
+        options: { temperature?: number, maxTokens?: number, tools?: any[], toolChoice?: any } = {}
     ): Promise<string> {
         const apiKey = Deno.env.get("OPEN_AI") || Deno.env.get("OPENAI_API_KEY");
         if (!apiKey) throw new Error("OPEN_AI is not configured.");
@@ -65,7 +65,7 @@ export class AIRouter {
 
                 if (options.tools && options.tools.length > 0) {
                     requestBody.tools = options.tools;
-                    requestBody.tool_choice = "auto";
+                    requestBody.tool_choice = options.toolChoice || "auto";
                     if (currentModel.includes('luna')) {
                         requestBody.reasoning_effort = "none";
                     }

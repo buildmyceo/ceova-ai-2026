@@ -186,8 +186,11 @@ export function routeIntent(
   const matchedCapabilities: Capability[] = [];
 
   if (hasImage) {
-    const imageCap = CAPABILITIES.find(c => c.id === "image");
-    if (imageCap) matchedCapabilities.push(imageCap);
+    const imageProcessCap = CAPABILITIES.find(c => c.id === "image_process");
+    if (imageProcessCap) matchedCapabilities.push(imageProcessCap);
+    // Also check if user wants to generate a NEW image (e.g. "generate a similar image")
+    const imageGenCap = CAPABILITIES.find(c => c.id === "image_gen");
+    if (imageGenCap) matchedCapabilities.push(imageGenCap);
   }
 
   // ── Document always needs document tools ───────────────────────────────────
