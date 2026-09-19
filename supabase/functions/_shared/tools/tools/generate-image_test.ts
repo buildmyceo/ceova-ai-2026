@@ -57,7 +57,11 @@ Deno.test({
       "create a picture of a cute cat wearing a spacesuit",
       "/generate_image logo with a phoenix rising from flames",
       "draw me an avatar for my profile",
-      "make an image of a luxury modern villa"
+      "make an image of a luxury modern villa",
+      "genrate a image of cat with a car",
+      "genrate a cat with a car",
+      "pic of a cat",
+      "photo of a cat with a car"
     ];
 
     for (const prompt of testPrompts) {

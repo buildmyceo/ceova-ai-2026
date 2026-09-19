@@ -64,7 +64,8 @@ serve(async (req) => {
 
     // Process each item
     for (const item of queueItems) {
-      const campaign = item.email_campaigns;
+      const rawCampaign = item.email_campaigns;
+      const campaign: any = Array.isArray(rawCampaign) ? rawCampaign[0] : rawCampaign;
       
       try {
         // Mark as sending

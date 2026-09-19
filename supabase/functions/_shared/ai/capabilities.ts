@@ -112,6 +112,10 @@ export const CAPABILITIES: Capability[] = [
       "make picture", "generate photo", "create photo", "dall-e", "dalle", "render image", "generate artwork", "draw me",
       "design logo", "generate graphic", "generate an image", "generate a photo", "generate a picture", "create an image",
       "create a picture", "make an image", "ai image", "artwork", "generate_image",
+      "genrate", "genrate image", "genrate picture", "genrate photo", "genrate a", "genrate an", "genrate artwork",
+      "generate a", "generate an", "draw a", "draw me", "paint a", "paint me", "sketch a", "sketch of",
+      "illustration of", "picture of", "pic of", "photo of", "photograph of", "image of", "artwork of",
+      "render a", "rendering of", "make a picture", "make a photo", "make an illustration", "wallpaper of",
       "image", "photo", "picture", "background", "remove background", "analyze image", "describe image", "what is this", "ocr", "read image", "detect", "vision"
     ],
     toolIds: ["generate_image", "image_analysis", "background_remover"],
