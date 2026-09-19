@@ -33,23 +33,51 @@ export class MemoryRetriever {
       return '';
     }
 
-    const maxTokens = options.maxTokens || 120;
-    const maxItems = options.maxItems || 3;
+    const maxTokens = options.maxTokens || 300;
+    const maxItems = options.maxItems || 6;
     const retrievedFacts: string[] = [];
 
-    // Strategy 1: Targeted Full-Text Search for explicit/self-referential queries
-    if (evaluation.searchQuery) {
+    // Strategy 1: Direct Category Query for Self-Referential / Identity Inquiries
+    // This is 100% resilient against typos (e.g. "whta is my name", "who am i")
+    if (evaluation.reason === 'self_referential') {
       try {
-        const { data: ftsMatches, error: ftsErr } = await supabase.rpc('search_memory_longterm_fts', {
-          search_query: evaluation.searchQuery,
-          user_id_filter: userId,
-          max_results: maxItems
-        });
+        const { data: directMemories, error: directErr } = await supabase
+          .from('user_memory_longterm')
+          .select('category, title, value')
+          .eq('user_id', userId)
+          .in('category', ['Profile', 'Business', 'Preference', 'General'])
+          .order('updated_at', { ascending: false })
+          .limit(maxItems);
 
-        if (!ftsErr && Array.isArray(ftsMatches) && ftsMatches.length > 0) {
-          for (const m of ftsMatches) {
+        if (!directErr && Array.isArray(directMemories) && directMemories.length > 0) {
+          for (const m of directMemories) {
             if (m.title && m.value) {
               retrievedFacts.push(`• [${m.category || 'Profile'}] ${m.title}: ${m.value}`);
+            }
+          }
+        }
+      } catch (e: any) {
+        console.warn('[MemoryRetriever] Direct memory query skipped:', e.message);
+      }
+    }
+
+    // Strategy 2: Targeted Full-Text Search for specific search terms
+    if (evaluation.searchQuery && retrievedFacts.length < maxItems) {
+      try {
+        // Clean query to alphanumeric terms to prevent tsquery syntax errors
+        const cleanQuery = evaluation.searchQuery.replace(/[^a-zA-Z0-9\s]/g, ' ').trim();
+        if (cleanQuery.length > 2) {
+          const { data: ftsMatches, error: ftsErr } = await supabase.rpc('search_memory_longterm_fts', {
+            search_query: cleanQuery,
+            user_id_filter: userId,
+            max_results: maxItems - retrievedFacts.length
+          });
+
+          if (!ftsErr && Array.isArray(ftsMatches) && ftsMatches.length > 0) {
+            for (const m of ftsMatches) {
+              if (m.title && m.value && !retrievedFacts.some(f => f.includes(m.title))) {
+                retrievedFacts.push(`• [${m.category || 'Profile'}] ${m.title}: ${m.value}`);
+              }
             }
           }
         }

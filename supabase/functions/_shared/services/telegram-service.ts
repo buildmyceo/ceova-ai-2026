@@ -16,6 +16,7 @@ import { routeIntent, isQuestionOrInquiry } from "../ai/intent-router.ts";
 import { getCapabilitySummary } from "../ai/capabilities.ts";
 import { TokenOptimizerService } from "../ai/token-optimizer.ts";
 import { MemoryRetriever } from "../ai/memory-retriever.ts";
+import { MemoryExtractor } from "../ai/memory-extractor.ts";
 import { checkRateLimit } from "../rate-limit.ts";
 import { quotaCache } from "../quota-cache.ts";
 import { Logger } from "./logger.ts";
@@ -1043,6 +1044,15 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
     !!existingProjectId
   );
 
+  // ── 8b. Instant Deterministic Memory Extraction ─────────────────────────────
+  if (effectiveMessage && effectiveMessage.trim().length > 3) {
+    try {
+      await MemoryExtractor.extractAndSaveSync(supabase, userId, effectiveMessage);
+    } catch (e: any) {
+      console.warn('[telegram-service] Deterministic memory extraction skipped:', e.message);
+    }
+  }
+
   // ── 9. Relevance-Gated Memory Retrieval (JIT) ──────────────────────────────
   const memoryContext = await MemoryRetriever.getRelevantContext(
     supabase,
@@ -1099,7 +1109,7 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
 
   let systemPrompt: string;
   if (intent.isCasualChat && !isAskingCapabilities) {
-    systemPrompt = `You are Ceova, a friendly, intelligent, and helpful AI assistant on Telegram. Keep responses brief, polite, and conversational. Format responses using clean standard Markdown (**bold**, *italic*, \`code\`, bullet points). Do not write raw HTML tags like <b> or <a>; use Markdown syntax.${temporalContext}`;
+    systemPrompt = `You are Ceova, a friendly, intelligent, and helpful AI assistant on Telegram. Keep responses brief, polite, and conversational. Format responses using clean standard Markdown (**bold**, *italic*, \`code\`, bullet points). Do not write raw HTML tags like <b> or <a>; use Markdown syntax.${temporalContext}${memoryContext}`;
   } else {
     const activeProjContext = existingProjectId
       ? `\n- ACTIVE CLOUD PROJECT:\n  • project_id: "${existingProjectId}"\n  • slug: "${existingProjectSlug}"\n  • live_url: "https://www.ceova.online/p/${existingProjectSlug}"\n  • If modifying this website, call 'create_project' with project_id: "${existingProjectId}". If creating a brand new site, call 'create_project' without project_id.`

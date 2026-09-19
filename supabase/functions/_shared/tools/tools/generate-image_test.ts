@@ -166,4 +166,87 @@ Deno.test({
   }
 });
 
+Deno.test({
+  name: "MemoryExtractor - Deterministic factual extraction",
+  async fn() {
+    const { MemoryExtractor } = await import("../../ai/memory-extractor.ts");
+
+    // Test 1: User name from screenshot ("you know my name is harshit")
+    const nameFacts = MemoryExtractor.extractFacts("you know my name is harshit");
+    assertEquals(nameFacts.length > 0, true, "Expected name to be extracted");
+    assertEquals(nameFacts[0].title, "User Name");
+    assertEquals(nameFacts[0].value.toLowerCase(), "harshit");
+    assertEquals(nameFacts[0].category, "Profile");
+
+    // Test 2: Business name ("my company is called Ceova")
+    const coFacts = MemoryExtractor.extractFacts("my company is called Ceova");
+    assertEquals(coFacts.length > 0, true, "Expected company to be extracted");
+    assertEquals(coFacts[0].value, "Ceova");
+    assertEquals(coFacts[0].category, "Business");
+
+    // Test 3: Explicit memory request ("remember that Ceova uses Supabase as its backend")
+    const savedFacts = MemoryExtractor.extractFacts("remember that Ceova uses Supabase as its backend");
+    assertEquals(savedFacts.length > 0, true, "Expected fact to be extracted");
+    assertEquals(savedFacts[0].category, "General");
+    assertEquals(savedFacts[0].value, "Ceova uses Supabase as its backend");
+
+    // Test 4: Questions should NOT extract facts
+    const questionFacts = MemoryExtractor.extractFacts("whta is my name");
+    assertEquals(questionFacts.length, 0, "Questions should not extract facts");
+  }
+});
+
+Deno.test({
+  name: "MemoryRetriever - Retrieves profile memories for typo queries (e.g. 'whta is my name')",
+  async fn() {
+    const { MemoryRetriever } = await import("../../ai/memory-retriever.ts");
+
+    // Mock Supabase client returning direct user_memory_longterm rows
+    const mockSupabase = {
+      from(table: string) {
+        return {
+          select(cols: string) {
+            return {
+              eq(col: string, val: string) {
+                return {
+                  in(catCol: string, categories: string[]) {
+                    return {
+                      order(orderCol: string, opts: any) {
+                        return {
+                          limit(count: number) {
+                            return Promise.resolve({
+                              data: [
+                                { category: "Profile", title: "User Name", value: "Harshit Kumar" },
+                                { category: "Business", title: "Business Name", value: "Ceova" }
+                              ],
+                              error: null
+                            });
+                          }
+                        };
+                      }
+                    };
+                  }
+                };
+              }
+            };
+          }
+        };
+      },
+      rpc() {
+        return Promise.resolve({ data: [], error: null }); // FTS returns empty
+      }
+    };
+
+    // Typo query from screenshot: "whta is my name"
+    const context = await MemoryRetriever.getRelevantContext(
+      mockSupabase,
+      "test-user-id",
+      "whta is my name"
+    );
+
+    assertEquals(context.includes("User Name: Harshit Kumar"), true, "Expected direct memory to retrieve user name");
+    assertEquals(context.includes("Business Name: Ceova"), true, "Expected direct memory to retrieve business name");
+  }
+});
+
 

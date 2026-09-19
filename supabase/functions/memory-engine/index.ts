@@ -83,9 +83,13 @@ serve(async (req) => {
 Your job is to read the conversation and extract permanent, factual statements about the user.
 Extract: Profile details (Name, Location, Age), Preferences (Likes, Dislikes), Business details, or explicit goals.
 DO NOT extract transient thoughts or questions.
-Return ONLY a JSON array of objects with this exact format:
-[{"category": "Profile|Preference|Business|Goal", "title": "Key (e.g. User Name)", "value": "Extracted Fact"}]
-If no facts are present, return []. Respond with ONLY valid JSON, no markdown.`;
+Return a valid JSON object with a "memories" array in this exact format:
+{
+  "memories": [
+    {"category": "Profile|Preference|Business|Goal", "title": "Key (e.g. User Name)", "value": "Extracted Fact"}
+  ]
+}
+If no facts are present, return {"memories": []}. Respond with ONLY a valid JSON object.`;
 
           const lastUserMessage = messages.slice().reverse().find((m: any) => m.role === 'user')?.content || "";
           
@@ -104,23 +108,25 @@ If no facts are present, return []. Respond with ONLY valid JSON, no markdown.`;
 
           if (aiRes?.ok) {
             const data = await aiRes.json();
-            let jsonStr = data.choices?.[0]?.message?.content || "[]";
+            let jsonStr = data.choices?.[0]?.message?.content || "{}";
             
             // Clean markdown blocks if any
             jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
             
             // SECURITY FIX: JSON.parse wrapped in try/catch to prevent crash on malformed AI output
-            let extracted: unknown;
+            let extracted: any;
             try {
               extracted = JSON.parse(jsonStr);
             } catch {
               console.warn("[memory-engine] LLM returned invalid JSON, falling back to regex");
-              extracted = [];
+              extracted = {};
             }
 
             const extractedArray = Array.isArray(extracted)
               ? extracted
-              : ((extracted as any)?.memories || Object.values(extracted as any)[0] || []);
+              : (Array.isArray(extracted?.memories)
+                  ? extracted.memories
+                  : (Array.isArray(Object.values(extracted || {})[0]) ? Object.values(extracted || {})[0] : []));
             
             if (Array.isArray(extractedArray)) {
                 for (const item of extractedArray) {
