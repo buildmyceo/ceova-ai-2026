@@ -1,11 +1,12 @@
 import { Tool, ToolMetadata, ToolContext, ToolResult } from '../types.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
+import { Buffer } from 'node:buffer';
 
 export class GenerateImageTool implements Tool {
   metadata: ToolMetadata = {
     id: 'generate_image',
     name: 'Image Generator',
-    description: 'Generates high-quality AI images, illustrations, artworks, and visuals from a text prompt using OpenAI (DALL-E). Use this tool whenever the user wants to generate, create, draw, design, or visualize an image or picture.',
+    description: 'Generates high-quality AI images, illustrations, artworks, and visuals from a text prompt using OpenAI. Use this tool whenever the user wants to generate, create, draw, design, or visualize an image or picture.',
     category: 'AI Utilities',
     icon: 'sparkles',
     requiresImage: false,
@@ -77,113 +78,99 @@ export class GenerateImageTool implements Tool {
     const style = context.args?.style || 'vivid';
 
     try {
-      // 2. Call OpenAI Images API (DALL-E 3 with DALL-E 2 fallback)
+      // 2. Call OpenAI Images API
+      // We prioritize 'gpt-image-1' (the verified working model on this account),
+      // with graceful fallbacks to 'dall-e-3' and 'dall-e-2'.
+      const candidateModels = ['gpt-image-1', 'dall-e-3', 'dall-e-2'];
+      let lastErrorMsg = 'Image generation failed.';
       let b64Data: string | null = null;
       let revisedPrompt: string = prompt;
       let generatedUrl: string | null = null;
 
-      const requestBody: Record<string, any> = {
-        model: 'dall-e-3',
-        prompt: prompt,
-        n: 1,
-        size: size,
-        quality: quality,
-        style: style,
-        response_format: 'b64_json'
-      };
-
-      let response = await fetch('https://api.openai.com/v1/images/generations', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(90000)
-      });
-
-      let resText = await response.text();
-      let resJson: any = null;
-      try {
-        resJson = JSON.parse(resText);
-      } catch {}
-
-      if (!response.ok) {
-        console.warn(`[GenerateImageTool] DALL-E 3 error (${response.status}): ${resText}`);
-
-        // Try DALL-E 2 fallback unless it is an outright invalid API key or insufficient quota
-        const isFatalAuthOrQuota = response.status === 401 || 
-          (resText && (resText.includes('insufficient_quota') || resText.includes('billing_hard_limit_reached')));
-
-        if (!isFatalAuthOrQuota) {
-          console.info('[GenerateImageTool] Falling back to dall-e-2...');
-          const fallbackBody = {
+      for (const model of candidateModels) {
+        let requestBody: Record<string, any>;
+        if (model === 'gpt-image-1') {
+          requestBody = {
+            model: 'gpt-image-1',
+            prompt: prompt,
+            n: 1,
+            size: '1024x1024'
+          };
+        } else if (model === 'dall-e-3') {
+          requestBody = {
+            model: 'dall-e-3',
+            prompt: prompt,
+            n: 1,
+            size: size,
+            quality: quality,
+            style: style,
+            response_format: 'b64_json'
+          };
+        } else {
+          requestBody = {
             model: 'dall-e-2',
-            prompt: prompt.slice(0, 1000), // DALL-E 2 max prompt length is 1000
+            prompt: prompt.slice(0, 1000),
             n: 1,
             size: '1024x1024',
             response_format: 'b64_json'
           };
+        }
 
-          const fallbackResponse = await fetch('https://api.openai.com/v1/images/generations', {
+        try {
+          console.info(`[GenerateImageTool] Attempting image generation with model: ${model}`);
+          const response = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${apiKey}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify(fallbackBody),
+            body: JSON.stringify(requestBody),
             signal: AbortSignal.timeout(90000)
           });
 
-          const fallbackText = await fallbackResponse.text();
-          let fallbackJson: any = null;
+          const resText = await response.text();
+          let resJson: any = null;
           try {
-            fallbackJson = JSON.parse(fallbackText);
+            resJson = JSON.parse(resText);
           } catch {}
 
-          if (fallbackResponse.ok && fallbackJson?.data?.[0]) {
-            response = fallbackResponse;
-            resJson = fallbackJson;
-            resText = fallbackText;
+          if (response.ok && resJson?.data?.[0]) {
+            const imageObj = resJson.data[0];
+            b64Data = imageObj.b64_json || null;
+            revisedPrompt = imageObj.revised_prompt || prompt;
+            generatedUrl = imageObj.url || null;
+            console.info(`[GenerateImageTool] Successfully generated image with ${model}`);
+            break;
           } else {
-            console.warn(`[GenerateImageTool] DALL-E 2 fallback also failed (${fallbackResponse.status}): ${fallbackText}`);
-            if (fallbackJson?.error?.message) {
-              resJson = fallbackJson;
+            lastErrorMsg = resJson?.error?.message || `Error (${response.status}): ${resText.slice(0, 200)}`;
+            console.warn(`[GenerateImageTool] Model ${model} failed (${response.status}): ${lastErrorMsg}`);
+            
+            // Fatal auth or billing error -> stop trying
+            if (response.status === 401 || (resText && (resText.includes('insufficient_quota') || resText.includes('billing_hard_limit_reached')))) {
+              throw new Error(lastErrorMsg);
             }
           }
-        }
-
-        if (!response.ok) {
-          const parsedError = resJson?.error?.message || `Image generation failed (${response.status}): ${resText.slice(0, 300)}`;
-          throw new Error(parsedError);
+        } catch (fetchErr: any) {
+          lastErrorMsg = fetchErr.message;
+          if (fetchErr.message?.includes('insufficient_quota') || fetchErr.message?.includes('invalid_api_key')) {
+            throw fetchErr;
+          }
         }
       }
 
-      const resData = resJson;
-      const imageObj = resData?.data?.[0];
-      if (!imageObj) {
-        throw new Error('No image returned from generation provider.');
+      if (!b64Data && !generatedUrl) {
+        throw new Error(lastErrorMsg || 'No image returned from generation provider.');
       }
-
-      b64Data = imageObj.b64_json || null;
-      revisedPrompt = imageObj.revised_prompt || prompt;
-      generatedUrl = imageObj.url || null;
 
       updateStatus('Saving generated image…');
 
-      // 3. Persist to Supabase Storage if binary data available
+      // 3. Persist to Supabase Storage
       let publicUrl = generatedUrl || '';
 
       if (b64Data) {
         try {
-          const binaryStr = atob(b64Data);
-          const len = binaryStr.length;
-          const bytes = new Uint8Array(len);
-          for (let i = 0; i < len; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-          }
-
-          const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+          const buffer = Buffer.from(b64Data, 'base64');
+          const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://jqpbgcmrlpfqnellznhz.supabase.co';
           const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || '';
 
           if (supabaseUrl && supabaseKey) {
@@ -193,7 +180,7 @@ export class GenerateImageTool implements Tool {
 
             const { error: uploadError } = await supabase.storage
               .from('processed_images')
-              .upload(fileName, bytes.buffer, {
+              .upload(fileName, buffer, {
                 contentType: 'image/png',
                 upsert: true
               });
@@ -213,7 +200,7 @@ export class GenerateImageTool implements Tool {
                     name: `AI_Image_${Date.now()}.png`,
                     mime_type: 'image/png',
                     category: 'images',
-                    size: bytes.byteLength,
+                    size: buffer.byteLength,
                     web_download_link: publicUrl,
                     web_view_link: publicUrl
                   });
@@ -238,8 +225,8 @@ export class GenerateImageTool implements Tool {
         try {
           const imgFetch = await fetch(generatedUrl);
           if (imgFetch.ok) {
-            const imgBytes = new Uint8Array(await imgFetch.arrayBuffer());
-            const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+            const imgBuffer = Buffer.from(await imgFetch.arrayBuffer());
+            const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://jqpbgcmrlpfqnellznhz.supabase.co';
             const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || '';
             if (supabaseUrl && supabaseKey) {
               const supabase = createClient(supabaseUrl, supabaseKey);
@@ -247,7 +234,7 @@ export class GenerateImageTool implements Tool {
               const fileName = `${userFolder}/${Date.now()}-ai-image.png`;
               const { error: uploadError } = await supabase.storage
                 .from('processed_images')
-                .upload(fileName, imgBytes.buffer, {
+                .upload(fileName, imgBuffer, {
                   contentType: 'image/png',
                   upsert: true
                 });
