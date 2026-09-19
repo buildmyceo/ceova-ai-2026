@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
 import { aiRouter } from "../_shared/services/ai-router.ts";
 import { toolRegistry } from '../_shared/tools/registry.ts';
 import { ToolExecutor } from '../_shared/tools/executor.ts';
-import { routeIntent } from '../_shared/ai/intent-router.ts';
+import { routeIntent, isQuestionOrInquiry } from '../_shared/ai/intent-router.ts';
 import { getCapabilitySummary } from '../_shared/ai/capabilities.ts';
 import { CloudDevOrchestrator } from '../_shared/ai/cloud-dev-orchestrator.ts';
 import { TokenOptimizerService } from '../_shared/ai/token-optimizer.ts';
@@ -305,7 +305,7 @@ serve(async (req) => {
                         user.id,
                         message || '',
                         intent,
-                        { maxTokens: 100 }
+                        { maxTokens: 300 }
                     );
 
                     // ── Cloud Development Fast Path & Follow-up Iteration ────────────────────
@@ -453,11 +453,14 @@ serve(async (req) => {
                     // Tool schemas are injected ONLY when the intent router selected them.
                     // For casual chat, zero tool tokens are sent to OpenAI.
                     const hasTools = intent.toolSchemas.length > 0;
+                    const isQuestion = isQuestionOrInquiry(message || '');
 
-                    // ── Detect clear image generation intent ────────────────────────────────
-                    const isImageGenIntent = /(?:generate|create|make|draw|paint|sketch|render|design)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner)/i.test(message || '') ||
-                      /(?:genrate|genrate image|genrate picture)\b/i.test(message || '') ||
-                      (/^(?:generate|create|make|draw|paint|sketch|render)\b/i.test(message || '') && intent.toolSchemas.some((s: any) => s.id === 'generate_image'));
+                    // ── Detect imperative image generation command (never for inquiries/questions) ───
+                    const isImageGenCommand = !isQuestion && (
+                      /^\s*\/?generate_image\b/i.test(message || '') ||
+                      /^\s*(?:please\s+)?(?:generate|create|make|draw|paint|sketch|render)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner)\b/i.test(message || '') ||
+                      /^\s*(?:genrate|genrate image|genrate picture|genrate a|genrate an)\s+/i.test(message || '')
+                    );
 
                     const writeFilesExample = `{"tool_call":{"tool":"write_local_files","args":{"files":[{"filename":"index.html","content":"<!DOCTYPE html>\\\\n<html lang=\\\\"en\\\\"><head><meta charset=\\\\"UTF-8\\\\"><title>My Site</title><link rel=\\\\"stylesheet\\\\" href=\\\\"styles.css\\\\"></head><body>...</body></html>"},{"filename":"styles.css","content":"* { box-sizing: border-box; } body { margin: 0; }"},{"filename":"script.js","content":"document.addEventListener(\\\\"DOMContentLoaded\\\\", () => { console.log(\\\\"ready\\\\"); });"}]}}}`;
 
@@ -552,7 +555,9 @@ serve(async (req) => {
                         systemPrompt = `You are Ceova, a friendly, intelligent AI assistant. Keep your replies natural, concise, and helpful.`;
                     } else {
                         const imageGenDirective = intent.toolSchemas.some((s: any) => s.id === 'generate_image')
-                            ? `\n\n🎨 IMAGE GENERATION DIRECTIVE (HIGHEST PRIORITY):\nYou have the 'generate_image' tool available. When the user asks to generate, create, draw, paint, visualize, sketch, render, or produce ANY image, photo, picture, illustration, graphic, artwork, logo, wallpaper, or visual content, you MUST IMMEDIATELY call the 'generate_image' tool with a detailed prompt. Do NOT output text descriptions, prompt suggestions, or refusals. NEVER say 'I cannot generate images' or 'try using an image generator'. You ARE the image generator — call the tool NOW.\n`
+                            ? `\n\n🎨 IMAGE GENERATION CAPABILITY:\nYou have the 'generate_image' tool available (powered by OpenAI gpt-image-1).
+- When the user asks you to create, draw, generate, or render an image, artwork, illustration, photo, or visual, invoke the 'generate_image' tool with a detailed prompt describing the scene.
+- When the user asks QUESTIONS about image generation, asks which model was used (OpenAI gpt-image-1), asks how it was created, or asks for advice, ALWAYS answer informatively in conversational text. DO NOT invoke 'generate_image' for informational questions.\n`
                             : '';
 
                         const toolsSection = hasTools
@@ -573,10 +578,10 @@ serve(async (req) => {
                     // ── History truncation & compaction (Requirement 15: Optimize for token efficiency) ───
                     const historyLimit = intent.isComplexTask 
                         ? MAX_HISTORY_COMPLEX 
-                        : (intent.isCasualChat ? 4 : MAX_HISTORY_MESSAGES);
+                        : (intent.isCasualChat ? 12 : MAX_HISTORY_MESSAGES);
                     const maxChars = intent.isComplexTask 
-                        ? 1200 
-                        : (intent.isCasualChat ? 300 : 600);
+                        ? 2500 
+                        : (intent.isCasualChat ? 1000 : 1500);
 
                     const truncatedHistory = TokenOptimizerService.compactConversationHistory(
                         history,
@@ -607,8 +612,8 @@ serve(async (req) => {
 
                     if (hasTools) {
                         try {
-                            // Force tool_choice when image generation intent is clear
-                            const forceImageGen = isImageGenIntent && openAITools?.some((t: any) => t.function?.name === 'generate_image');
+                            // Only force tool_choice for explicit creation commands (never on questions/inquiries)
+                            const forceImageGen = isImageGenCommand && openAITools?.some((t: any) => t.function?.name === 'generate_image');
                             const toolChoiceOverride = forceImageGen
                                 ? { type: 'function', function: { name: 'generate_image' } }
                                 : undefined;

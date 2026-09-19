@@ -135,6 +135,40 @@ const CLIENT_TOOL_SCHEMAS: Record<string, any> = {
 };
 
 /**
+ * Detects if the user is asking an informational question or inquiry
+ * about a model, tool, system, or past turn rather than commanding a tool action.
+ */
+export function isQuestionOrInquiry(message: string): boolean {
+  const trimmed = (message || "").trim().toLowerCase();
+  if (!trimmed) return false;
+  
+  // Explicit questions about models, tools, or operation
+  const metaPatterns = [
+    /\b(?:which|what)\s+model\b/i,
+    /\b(?:which|what)\s+tool\b/i,
+    /\b(?:how\s+(?:did\s+you|do\s+you|was\s+this|is\s+this|does\s+it))\b/i,
+    /\b(?:can\s+you\s+(?:explain|tell\s+me|describe|clarify))\b/i,
+    /\b(?:tell\s+me\s+(?:about|how|what|why))\b/i,
+    /\b(?:why\s+(?:did\s+you|do\s+you|is\s+it|are\s+you))\b/i,
+    /\b(?:explain\s+(?:how|why|what|the))\b/i,
+    /\b(?:what\s+is\s+the\s+difference|difference\s+between)\b/i,
+    /\b(?:cost|pricing|price)\s+of\b/i,
+    /\bhow\s+much\s+(?:does|is|did)\b/i
+  ];
+  if (metaPatterns.some(p => p.test(trimmed))) {
+    return true;
+  }
+
+  // Interrogative sentences that are NOT imperative requests
+  if (trimmed.endsWith('?')) {
+    const isActionRequest = /^(?:can\s+you|could\s+you|please)\s+(?:generate|create|make|draw|paint|sketch|build|deploy)\s+(?:a|an|me|the)\b/i.test(trimmed);
+    if (!isActionRequest) return true;
+  }
+
+  return false;
+}
+
+/**
  * Routes a user message to the appropriate tools and memory categories.
  * This is a pure function — no network calls, no async, very fast.
  */
@@ -146,30 +180,26 @@ export function routeIntent(
   history: any[] = [],
   hasCloudProject: boolean = false
 ): IntentRouterResult {
-  // Use recent conversation context so a simple "yes" doesn't drop the tool schemas
-  // If the assistant just asked "Would you like me to send this email?", we want to match "email".
-  let contextText = message;
-  const lastAssistantMsg = history.slice().reverse().find(m => m.role === 'assistant');
-  if (lastAssistantMsg && typeof lastAssistantMsg.content === 'string') {
-    contextText = lastAssistantMsg.content + " " + message;
+  const lowerMessage = (message || '').toLowerCase().trim();
+  const isQuestion = isQuestionOrInquiry(lowerMessage);
+
+  // Only inherit previous assistant text for short confirmatory replies (e.g. "yes", "proceed")
+  // For normal messages or questions, evaluate the user's message itself to prevent history leakage.
+  const isShortConfirmation = /^(?:yes|yep|yeah|sure|ok|okay|proceed|go ahead|build it|do it|approved|start|lets do it|let's do it)\b/i.test(lowerMessage);
+  let contextText = lowerMessage;
+  if (isShortConfirmation && history && Array.isArray(history)) {
+    const lastAssistantMsg = history.slice().reverse().find(m => m.role === 'assistant');
+    if (lastAssistantMsg && typeof lastAssistantMsg.content === 'string') {
+      contextText = lastAssistantMsg.content + " " + lowerMessage;
+    }
   }
 
-  // We only use the contextText for casual pattern testing if the user's message itself is casual.
-  // Wait, if the user's message is "yes", we don't want to just return casual chat.
-  // We want to evaluate the whole context.
-  const lowerMessage = message.toLowerCase().trim();
   const lowerContext = contextText.toLowerCase().trim();
 
   // ── Casual chat check — load nothing ────────────────────────────────────────
-  // We only treat it as casual if BOTH the message AND the recent context are casual.
-  // Or rather, if the user says "yes" but the assistant was asking about an "email", it's NOT casual.
   let isCasual = false;
   if (!hasImage && !hasDocument && !hasCloudProject && CASUAL_PATTERNS.some(p => p.test(lowerMessage))) {
-    // User sent a casual message. Let's see if the context suggests a tool.
-    // If context contains keywords for tools, we should NOT treat it as casual.
     isCasual = CASUAL_PATTERNS.some(p => p.test(lowerContext));
-    
-    // If even with context it's casual, return casual.
     if (isCasual) {
       return {
         toolIds: [],
@@ -226,7 +256,13 @@ export function routeIntent(
   // ── Keyword matching across all capabilities ─────────────────────────────────
   for (const cap of CAPABILITIES) {
     if (matchedCapabilities.includes(cap)) continue; // already added
-    // Match against the combined context (last assistant message + user message)
+
+    // If the message is an inquiry/question about how tools work or what model is used,
+    // do not load action tools unless the user explicitly requested an action.
+    if (isQuestion && ['image_gen', 'image_process', 'tools', 'files'].includes(cap.id)) {
+      continue;
+    }
+
     const matched = cap.keywords.some(kw => lowerContext.includes(kw.toLowerCase()));
     if (matched) {
       matchedCapabilities.push(cap);

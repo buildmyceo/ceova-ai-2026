@@ -46,8 +46,8 @@ export class MemoryGate {
   static evaluate(message: string, intent?: IntentRouterResult): MemoryEvaluationResult {
     const trimmed = (message || '').trim();
 
-    // Gate 1: Empty or casual chat never retrieves memory
-    if (!trimmed || intent?.isCasualChat) {
+    // Gate 1: Empty input check
+    if (!trimmed) {
       return { shouldRetrieve: false, targetCategories: [], reason: 'none' };
     }
 
@@ -69,6 +69,11 @@ export class MemoryGate {
           reason: 'self_referential',
         };
       }
+    }
+
+    // Gate 3: Casual chat never retrieves memory
+    if (intent?.isCasualChat) {
+      return { shouldRetrieve: false, targetCategories: [], reason: 'none' };
     }
 
     // Gate 3: Generic technical questions with no personal pronouns reject memory retrieval

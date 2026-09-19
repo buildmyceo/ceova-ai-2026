@@ -6,7 +6,7 @@ export class GenerateImageTool implements Tool {
   metadata: ToolMetadata = {
     id: 'generate_image',
     name: 'Image Generator',
-    description: 'Generates high-quality AI images, illustrations, artworks, and visuals from a text prompt using OpenAI. Use this tool whenever the user wants to generate, create, draw, design, or visualize an image or picture.',
+    description: 'Generates high-quality AI images, illustrations, artworks, and visuals from a text prompt using OpenAI (gpt-image-1). Use this tool when the user commands to generate, create, draw, design, or visualize an image. Do NOT call this tool for informational questions about models, tools, or how images are made.',
     category: 'AI Utilities',
     icon: 'sparkles',
     requiresImage: false,

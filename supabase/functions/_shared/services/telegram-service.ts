@@ -12,7 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.2";
 import { aiRouter } from "./ai-router.ts";
 import { toolRegistry } from "../tools/registry.ts";
 import { ToolExecutor } from "../tools/executor.ts";
-import { routeIntent } from "../ai/intent-router.ts";
+import { routeIntent, isQuestionOrInquiry } from "../ai/intent-router.ts";
 import { getCapabilitySummary } from "../ai/capabilities.ts";
 import { TokenOptimizerService } from "../ai/token-optimizer.ts";
 import { MemoryRetriever } from "../ai/memory-retriever.ts";
@@ -1049,7 +1049,7 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
     userId,
     effectiveMessage,
     intent,
-    { maxTokens: 100 }
+    { maxTokens: 300 }
   );
 
   // Enforce Tool Quotas
@@ -1079,11 +1079,14 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
   }
 
   const hasTools = intent.toolSchemas.length > 0;
+  const isQuestion = isQuestionOrInquiry(effectiveMessage);
 
-  // ── Detect clear image generation intent ────────────────────────────────
-  const isImageGenIntent = /(?:generate|create|make|draw|paint|sketch|render|design)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner)/i.test(effectiveMessage) ||
-    /(?:genrate|genrate image|genrate picture)\b/i.test(effectiveMessage) ||
-    (/^(?:generate|create|make|draw|paint|sketch|render)\b/i.test(effectiveMessage) && intent.toolSchemas.some((s: any) => s.id === 'generate_image'));
+  // ── Detect imperative image generation command (never for inquiries/questions) ───
+  const isImageGenCommand = !isQuestion && (
+    /^\s*\/?generate_image\b/i.test(effectiveMessage) ||
+    /^\s*(?:please\s+)?(?:generate|create|make|draw|paint|sketch|render)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner)\b/i.test(effectiveMessage) ||
+    /^\s*(?:genrate|genrate image|genrate picture|genrate a|genrate an)\s+/i.test(effectiveMessage)
+  );
 
   // ── 10. Assemble System Prompt ──────────────────────────────────────────────
   const isAskingCapabilities = /(?:what\s+can\s+you\s+do|what\s+are\s+you|who\s+are\s+you|tell\s+me\s+about\s+yourself|capabilities|features|help)/i.test(effectiveMessage);
@@ -1103,7 +1106,9 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
       : "";
 
     const imageGenDirective = intent.toolSchemas.some((s: any) => s.id === 'generate_image')
-      ? `\n\n🎨 IMAGE GENERATION DIRECTIVE (HIGHEST PRIORITY):\nYou have the 'generate_image' tool available. When the user asks to generate, create, draw, paint, visualize, sketch, render, or produce ANY image, photo, picture, illustration, graphic, artwork, logo, wallpaper, or visual content, you MUST IMMEDIATELY call the 'generate_image' tool with a detailed prompt. Do NOT output text descriptions, prompt suggestions, or refusals. NEVER say 'I cannot generate images' or 'try using an image generator'. You ARE the image generator — call the tool NOW.\n`
+      ? `\n\n🎨 IMAGE GENERATION CAPABILITY:\nYou have the 'generate_image' tool available (powered by OpenAI gpt-image-1).
+- When the user asks you to create, draw, generate, or render an image, artwork, illustration, photo, or visual, invoke the 'generate_image' tool with a detailed prompt describing the scene.
+- When the user asks QUESTIONS about image generation, asks which model was used (OpenAI gpt-image-1), asks how it was created, or asks for advice, ALWAYS answer informatively in conversational text. DO NOT invoke 'generate_image' for informational questions.\n`
       : '';
 
     const toolsPromptSection = hasTools
@@ -1115,8 +1120,8 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
 
   const truncatedHistory = TokenOptimizerService.compactConversationHistory(history, {
     isExistingProject: !!existingProjectId,
-    maxMessages: intent.isCasualChat ? 4 : MAX_HISTORY_MESSAGES,
-    maxCharsPerMessage: intent.isCasualChat ? 300 : 800,
+    maxMessages: intent.isCasualChat ? 10 : MAX_HISTORY_MESSAGES,
+    maxCharsPerMessage: intent.isCasualChat ? 1000 : 1500,
   });
 
   const llmMessages = [
@@ -1140,8 +1145,8 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
   let toolCallMatch: { tool: string; args: any } | null = null;
 
   try {
-    // Force tool_choice when image generation intent is clear
-    const forceImageGen = isImageGenIntent && openAITools?.some((t: any) => t.function?.name === 'generate_image');
+    // Only force tool_choice for explicit creation commands (never on questions/inquiries)
+    const forceImageGen = isImageGenCommand && openAITools?.some((t: any) => t.function?.name === 'generate_image');
     const toolChoiceOverride = forceImageGen
       ? { type: 'function', function: { name: 'generate_image' } }
       : undefined;

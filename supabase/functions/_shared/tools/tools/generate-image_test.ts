@@ -80,3 +80,90 @@ Deno.test({
   }
 });
 
+Deno.test({
+  name: "IntentRouter - Questions & inquiries do NOT trigger generate_image",
+  async fn() {
+    Deno.env.set("SUPABASE_URL", "https://dummy.supabase.co");
+    Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "dummy-key");
+    const { routeIntent, isQuestionOrInquiry } = await import("../../ai/intent-router.ts");
+
+    const inquiryPrompts = [
+      "which model are you using to genrate the image",
+      "which model are you using to generate the image?",
+      "how does this image generation work?",
+      "what model did you use for that picture?",
+      "can you tell me which ai model generates the images?",
+      "how much does it cost to generate an image?",
+      "why did you generate this image?",
+      "what tools do you use to create images?",
+      "explain the process of generating images"
+    ];
+
+    for (const prompt of inquiryPrompts) {
+      assertEquals(
+        isQuestionOrInquiry(prompt),
+        true,
+        `Expected isQuestionOrInquiry to be true for: "${prompt}"`
+      );
+
+      const routed = routeIntent(prompt);
+      assertEquals(
+        routed.toolIds.includes("generate_image"),
+        false,
+        `Expected generate_image NOT to be routed for question: "${prompt}"`
+      );
+    }
+  }
+});
+
+Deno.test({
+  name: "IntentRouter - Multi-turn follow-up question does not re-generate image",
+  async fn() {
+    Deno.env.set("SUPABASE_URL", "https://dummy.supabase.co");
+    Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "dummy-key");
+    const { routeIntent } = await import("../../ai/intent-router.ts");
+
+    // History contains an image generation turn
+    const history = [
+      { role: "user", content: "genrate a image of cat and dog" },
+      { role: "assistant", content: "Here is your image:\n\n![A cat and dog](https://example.com/image.png)" }
+    ];
+
+    // User asks a follow-up question about the model used
+    const followUp = "which model are you using to genrate the image";
+    const routed = routeIntent(followUp, false, false, false, history, false);
+
+    assertEquals(
+      routed.toolIds.includes("generate_image"),
+      false,
+      "Expected follow-up inquiry NOT to re-trigger generate_image"
+    );
+  }
+});
+
+Deno.test({
+  name: "MemoryGate - Evaluates self-referential queries accurately",
+  async fn() {
+    const { MemoryGate } = await import("../../ai/memory-gate.ts");
+
+    const selfQueries = [
+      "who am i",
+      "what is my name",
+      "what do you remember about me",
+      "do you remember my company",
+      "what is my business"
+    ];
+
+    for (const q of selfQueries) {
+      const result = MemoryGate.evaluate(q);
+      assertEquals(
+        result.shouldRetrieve,
+        true,
+        `Expected MemoryGate to retrieve memory for self query: "${q}"`
+      );
+      assertEquals(result.reason, "self_referential");
+    }
+  }
+});
+
+

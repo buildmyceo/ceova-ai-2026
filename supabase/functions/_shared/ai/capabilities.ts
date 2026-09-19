@@ -106,17 +106,16 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "image_gen",
-    description: "Generate high-quality AI images, illustrations, and art from text prompts using DALL-E. Use this when the user wants to CREATE/GENERATE a NEW image from a text description.",
+    description: "Generate high-quality AI images, illustrations, and visual art from text prompts using OpenAI gpt-image-1. Use this when the user explicitly requests to CREATE, DRAW, or GENERATE a new image.",
     keywords: [
       "generate image", "create image", "make image", "draw", "paint", "illustration", "generate picture", "create picture",
       "make picture", "generate photo", "create photo", "dall-e", "dalle", "render image", "generate artwork", "draw me",
       "design logo", "generate graphic", "generate an image", "generate a photo", "generate a picture", "create an image",
       "create a picture", "make an image", "ai image", "artwork", "generate_image",
-      "genrate", "genrate image", "genrate picture", "genrate photo", "genrate a", "genrate an", "genrate artwork",
+      "genrate image", "genrate picture", "genrate photo", "genrate a", "genrate an", "genrate artwork",
       "generate a", "generate an", "draw a", "draw me", "paint a", "paint me", "sketch a", "sketch of",
       "illustration of", "picture of", "pic of", "photo of", "photograph of", "image of", "artwork of",
-      "render a", "rendering of", "make a picture", "make a photo", "make an illustration", "wallpaper of",
-      "image", "photo", "picture"
+      "render a", "rendering of", "make a picture", "make a photo", "make an illustration", "wallpaper of"
     ],
     toolIds: ["generate_image"],
     memoryCategories: ["preferences"],

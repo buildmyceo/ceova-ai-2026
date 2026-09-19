@@ -148,20 +148,20 @@ export class TokenOptimizerService {
 
     const {
       isExistingProject = true,
-      maxMessages = 8,
-      maxCharsPerMessage = 600
+      maxMessages = 15,
+      maxCharsPerMessage = 1500
     } = options;
 
     const slice = history.slice(-maxMessages);
 
-    return slice.map((msg: any, index: number) => {
+    return slice.map((msg: any, index: number): { role: "user" | "assistant"; content: string } => {
       const isLatestTurn = index >= slice.length - 2;
-      const role = msg.role === 'assistant' ? 'assistant' : 'user';
+      const role: "user" | "assistant" = msg.role === 'assistant' ? 'assistant' : 'user';
       let content = typeof msg.content === 'string' ? msg.content : '';
 
       if (role === 'assistant') {
         // Strip out large code blocks (```html ... ```, ```javascript ... ```, etc.)
-        content = content.replace(/```[a-zA-Z]*\n[\s\S]*?\n```/g, (match) => {
+        content = content.replace(/```[a-zA-Z]*\n[\s\S]*?\n```/g, (match: string) => {
           // If latest turn and short, keep it; otherwise replace with lean summary
           if (isLatestTurn && match.length < 250) return match;
           return `[Code block omitted for token efficiency; targeted files available in project workspace]`;
@@ -175,9 +175,14 @@ export class TokenOptimizerService {
           );
         }
 
-        // If older message exceeds limit, truncate cleanly
+        // If older message exceeds limit, truncate cleanly (preserving image links)
         if (!isLatestTurn && content.length > maxCharsPerMessage) {
-          content = content.slice(0, maxCharsPerMessage).trim() + ' ... [Older response compacted for token efficiency]';
+          // If message contains markdown image, keep the image link intact
+          const imgMatch = content.match(/!\[.*?\]\(.*?\)/);
+          const truncated = content.slice(0, maxCharsPerMessage).trim();
+          content = imgMatch && !truncated.includes(imgMatch[0])
+            ? `${truncated} ... [Older response compacted]\n${imgMatch[0]}`
+            : `${truncated} ... [Older response compacted]`;
         }
       } else {
         // User message — NEVER truncate user messages.
