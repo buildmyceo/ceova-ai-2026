@@ -249,4 +249,39 @@ Deno.test({
   }
 });
 
+Deno.test({
+  name: "IntentRouter - Greetings cost 0 tool tokens and are strictly casual (even with active project)",
+  async fn() {
+    Deno.env.set("SUPABASE_URL", "https://dummy.supabase.co");
+    Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "dummy-key");
+    const { routeIntent } = await import("../../ai/intent-router.ts");
+
+    const greetings = [
+      "hy",
+      "hy bro",
+      "hi",
+      "hello",
+      "hello ceova",
+      "hey there",
+      "good morning",
+      "good evening",
+      "how are you",
+      "thanks",
+      "cool"
+    ];
+
+    for (const g of greetings) {
+      const routedWithProject = routeIntent(g, false, false, false, [], true);
+      assertEquals(routedWithProject.isCasualChat, true, `Expected isCasualChat true for: "${g}" with project`);
+      assertEquals(routedWithProject.toolIds.length, 0, `Expected 0 tools for: "${g}" with project`);
+      assertEquals(routedWithProject.toolSchemas.length, 0, `Expected 0 tool schemas for: "${g}" with project`);
+
+      const routedNoProject = routeIntent(g, false, false, false, [], false);
+      assertEquals(routedNoProject.isCasualChat, true, `Expected isCasualChat true for: "${g}" without project`);
+      assertEquals(routedNoProject.toolIds.length, 0, `Expected 0 tools for: "${g}" without project`);
+    }
+  }
+});
+
+
 

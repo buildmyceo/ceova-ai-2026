@@ -31,11 +31,14 @@ export interface IntentRouterResult {
 
 // Patterns for casual chat — no tools needed at all
 const CASUAL_PATTERNS = [
-  /^(hi+|hello+|hey+|hii+|helo+|hai+|hy+|hye+|yo+|hola|namaste|gm|gn|good\s+(morning|evening|afternoon|night))[\s!?.]*$/i,
-  /^(how are you|what's up|whatsup|wassup|sup)[\s!?.]*$/i,
-  /^(thanks|thank you|ty|thx|ok|okay|got it|cool|nice|great|awesome|perfect|sure|yes|no|nope|yep|yeah)[\s!?.]*$/i,
-  /^(bye|goodbye|see you|cya|later)[\s!?.]*$/i,
-  /^(what can you do|what are you|who are you|tell me about yourself)[\s?!.]*$/i,
+  // Greetings with optional friendly suffix (e.g. "hy", "hy bro", "hello ceova", "hey there", "good morning everyone")
+  /^(?:hi+|hello+|hey+|hii+|helo+|hai+|hy+|hye+|yo+|hola|namaste|gm|gn)\b(?:\s+(?:bro|bhai|mate|friend|buddy|ceova|there|everyone|all|team|sir|ji|bot|dear))?[\s!?.]*$/i,
+  /^(?:good\s+(?:morning|evening|afternoon|night))(?:\s+(?:bro|bhai|mate|friend|buddy|ceova|there|everyone|all|sir|ji))?[\s!?.]*$/i,
+  /^(?:how\s+(?:are\s+you|is\s+it\s+going|are\s+things|r\s+u|do\s+you\s+do|have\s+you\s+been))[\s!?.]*$/i,
+  /^(?:what's\s+up|whatsup|wassup|sup)[\s!?.]*$/i,
+  /^(?:thanks|thank\s+you|ty|thx|cool|nice|great|awesome|perfect|sure|got\s+it|ok|okay)[\s!?.]*$/i,
+  /^(?:bye|goodbye|see\s+you|cya|later|take\s+care)[\s!?.]*$/i,
+  /^(?:what\s+can\s+you\s+do|what\s+are\s+you|who\s+are\s+you|tell\s+me\s+about\s+yourself|who\s+made\s+you|who\s+created\s+you)[\s?!.]*$/i,
   /^[\s!?.]{0,5}$/,  // Empty or just punctuation
 ];
 
@@ -196,21 +199,28 @@ export function routeIntent(
 
   const lowerContext = contextText.toLowerCase().trim();
 
-  // ── Casual chat check — load nothing ────────────────────────────────────────
-  let isCasual = false;
-  if (!hasImage && !hasDocument && !hasCloudProject && CASUAL_PATTERNS.some(p => p.test(lowerMessage))) {
-    isCasual = CASUAL_PATTERNS.some(p => p.test(lowerContext));
-    if (isCasual) {
-      return {
-        toolIds: [],
-        toolSchemas: [],
-        memoryCategories: [],
-        isComplexTask: false,
-        isCasualChat: true,
-        taskScope: 'simple',
-      };
-    }
+  // ── Casual chat check — load nothing (saves 4,000+ tokens on greetings) ────
+  if (!hasImage && !hasDocument && CASUAL_PATTERNS.some(p => p.test(lowerMessage))) {
+    return {
+      toolIds: [],
+      toolSchemas: [],
+      memoryCategories: [],
+      isComplexTask: false,
+      isCasualChat: true,
+      taskScope: 'simple',
+    };
   }
+
+  // Helper to match keywords cleanly with word boundaries (prevents "guide" matching "ui", etc.)
+  const matchesKeyword = (text: string, kw: string): boolean => {
+    const cleanKw = kw.trim().toLowerCase();
+    if (!cleanKw) return false;
+    if (cleanKw.includes(" ")) {
+      return text.includes(cleanKw);
+    }
+    const escaped = cleanKw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
+  };
 
   // ── Image always needs image tools ───────────────────────────────────────────
   const matchedCapabilities: Capability[] = [];
@@ -235,18 +245,16 @@ export function routeIntent(
     if (videoCap && !matchedCapabilities.includes(videoCap)) matchedCapabilities.push(videoCap);
   }
 
-  // ── Existing cloud project in request or history always enables cloud_dev capability ───
-  const hasCloudProjectInHistory = hasCloudProject || (history && Array.isArray(history) && history.some(m => 
-    (m.attachments && Array.isArray(m.attachments) && m.attachments.some((a: any) => a.type === 'cloud_project')) ||
-    (typeof m.content === 'string' && (
-      m.content.includes('ceova.online') ||
-      m.content.includes('Cloud Project') ||
-      m.content.includes('Deployment Successful') ||
-      /plan|website|create_project|landing page/i.test(m.content)
-    ))
-  ));
+  // ── Web Dev Action & Confirmation Check ─────────────────────────────────────
+  // Having an existing project only loads cloud_dev if the user actually commands a site change
+  // (e.g. "change background to black", "fix navbar", "update font") or confirms a pending plan.
+  // Casual queries or general chit-chat do NOT load website builder tools.
+  const isWebDevAction = /change|update|add|fix|modify|edit|style|design|make|set|remove|replace|rewrite|tweak|improve|deploy|publish|navbar|footer|header|button|hero|section|background|color/i.test(lowerMessage);
+  const isWebDevConfirmation = isShortConfirmation && history && Array.isArray(history) && history.some(m => 
+    typeof m.content === 'string' && /website|web\s*app|site|project|build|plan|ceova\.online|create_project/i.test(m.content)
+  );
 
-  if (hasCloudProjectInHistory) {
+  if ((hasCloudProject && isWebDevAction) || isWebDevConfirmation) {
     const cloudCap = CAPABILITIES.find(c => c.id === "cloud_dev");
     if (cloudCap && !matchedCapabilities.includes(cloudCap)) {
       matchedCapabilities.push(cloudCap);
@@ -263,14 +271,14 @@ export function routeIntent(
       continue;
     }
 
-    const matched = cap.keywords.some(kw => lowerContext.includes(kw.toLowerCase()));
+    const matched = cap.keywords.some(kw => matchesKeyword(lowerContext, kw));
     if (matched) {
       matchedCapabilities.push(cap);
     }
   }
 
   // ── Determine Task Scope (Requirement 13) ───────────────────────────────────
-  const taskScope = determineTaskScope(message, { isExistingProject: hasCloudProjectInHistory });
+  const taskScope = determineTaskScope(message, { isExistingProject: !!hasCloudProject });
 
   // ── If no capability matched, treat as general chat (no tools) ───────────────
   if (matchedCapabilities.length === 0) {
@@ -279,7 +287,7 @@ export function routeIntent(
       toolSchemas: [],
       memoryCategories: [],
       isComplexTask: false,
-      isCasualChat: false,
+      isCasualChat: true,
       taskScope,
     };
   }

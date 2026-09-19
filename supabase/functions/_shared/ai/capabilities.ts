@@ -54,38 +54,20 @@ export const CAPABILITIES: Capability[] = [
     keywords: [
       // Website creation
       "website", "build website", "create website", "make website", "develop website", "design website",
-      "web app", "landing page", "landing", "page", "pages", "cloud project", "deploy", "ceova.online",
-      "restaurant website", "portfolio", "store", "ecommerce", "saas", "frontend", "build app", "create app",
-      "site", "webpage", "web page", "dashboard", "fullstack app", "build me", "create me",
+      "web app", "landing page", "cloud project", "deploy website", "ceova.online",
+      "restaurant website", "portfolio website", "ecommerce store", "saas app", "frontend", "build app", "create app",
+      "webpage", "web page", "dashboard app", "fullstack app", "build me a website", "create me a website",
       // Modifications
-      "update", "modify", "change", "add page", "make that pages", "fix website", "edit website",
+      "update website", "modify website", "fix website", "edit website", "redesign website",
       // Plan/approval flow
-      "plan", "implementation plan", "proceed", "build it", "website plan", "go ahead", "approved",
-      "start building", "looks good", "approve", "use placeholders", "placeholder", "placeholders", "build", "cafe website",
-      // UI component keywords
-      "buttons", "tab", "tabs", "navigation", "nav", "navbar", "change navbar", "update navbar",
-      "hero", "menu", "overview", "calendar", "event", "user", "header", "footer",
-      "section", "modal", "card", "badge", "banner", "announcement",
-      "restaurant name", "button text", "hero heading", "contact number",
-      "change name", "change heading", "change text", "change image", "smaller button",
-      // Technical specification terms — so detailed prompts always trigger tools
-      "html", "css", "javascript", "js", "responsive", "layout", "flex", "grid", "flexbox",
-      "media query", "breakpoint", "viewport", "mobile", "desktop", "tablet",
-      "animation", "transition", "hover", "sticky", "fixed", "position", "z-index",
-      "font", "typography", "color palette", "background", "border", "padding", "margin",
-      "container", "wrapper", "component", "design system", "ui", "ux", "interface",
-      "index.html", "style.css", "app.js", "script", "stylesheet",
-      "react", "vue", "tailwind", "bootstrap", "gsap", "three.js", "chart.js",
-      "cdn", "inline", "single file", "self-contained",
-      // Specification / detailed prompt indicators
-      "specification", "spec", "requirement", "requirements", "detailed", "implement",
-      "i want", "i need", "please create", "please build", "please make", "please design",
-      "build a", "create a", "make a", "design a", "develop a",
-      // Website types
-      "blog", "portfolio", "agency", "startup", "product", "service", "booking",
-      "hotel", "travel", "food", "cafe", "salon", "gym", "fitness", "clinic",
-      "school", "education", "real estate", "property", "finance", "crypto",
-      "music", "photography", "artist", "gallery", "event", "wedding",
+      "implementation plan", "proceed with website", "build the website", "website plan",
+      "start building", "use placeholders", "placeholder content",
+      // UI component keywords (specific)
+      "navbar", "change navbar", "update navbar", "hero section", "header section", "footer section",
+      // Technical specification terms
+      "index.html", "style.css", "app.js", "tailwind css", "responsive layout", "three.js", "chart.js",
+      // Specific creation triggers
+      "please create a website", "please build a website", "build a website", "create a website", "design a website"
     ],
     toolIds: ["create_project"],
     memoryCategories: ["coding", "projects", "design_preferences"],
