@@ -102,12 +102,20 @@ export class GenerateImageTool implements Tool {
         signal: AbortSignal.timeout(90000)
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.warn(`[GenerateImageTool] DALL-E 3 error (${response.status}): ${errorText}`);
+      let resText = await response.text();
+      let resJson: any = null;
+      try {
+        resJson = JSON.parse(resText);
+      } catch {}
 
-        // If model not found or invalid size for DALL-E 3, try DALL-E 2 fallback
-        if (response.status === 404 || errorText.includes('model_not_found')) {
+      if (!response.ok) {
+        console.warn(`[GenerateImageTool] DALL-E 3 error (${response.status}): ${resText}`);
+
+        // Try DALL-E 2 fallback unless it is an outright invalid API key or insufficient quota
+        const isFatalAuthOrQuota = response.status === 401 || 
+          (resText && (resText.includes('insufficient_quota') || resText.includes('billing_hard_limit_reached')));
+
+        if (!isFatalAuthOrQuota) {
           console.info('[GenerateImageTool] Falling back to dall-e-2...');
           const fallbackBody = {
             model: 'dall-e-2',
@@ -117,7 +125,7 @@ export class GenerateImageTool implements Tool {
             response_format: 'b64_json'
           };
 
-          response = await fetch('https://api.openai.com/v1/images/generations', {
+          const fallbackResponse = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${apiKey}`,
@@ -126,21 +134,33 @@ export class GenerateImageTool implements Tool {
             body: JSON.stringify(fallbackBody),
             signal: AbortSignal.timeout(90000)
           });
+
+          const fallbackText = await fallbackResponse.text();
+          let fallbackJson: any = null;
+          try {
+            fallbackJson = JSON.parse(fallbackText);
+          } catch {}
+
+          if (fallbackResponse.ok && fallbackJson?.data?.[0]) {
+            response = fallbackResponse;
+            resJson = fallbackJson;
+            resText = fallbackText;
+          } else {
+            console.warn(`[GenerateImageTool] DALL-E 2 fallback also failed (${fallbackResponse.status}): ${fallbackText}`);
+            if (fallbackJson?.error?.message) {
+              resJson = fallbackJson;
+            }
+          }
         }
 
         if (!response.ok) {
-          const finalErrorText = await response.text();
-          let parsedError = 'Failed to generate image.';
-          try {
-            const errJson = JSON.parse(finalErrorText);
-            parsedError = errJson.error?.message || parsedError;
-          } catch {}
+          const parsedError = resJson?.error?.message || `Image generation failed (${response.status}): ${resText.slice(0, 300)}`;
           throw new Error(parsedError);
         }
       }
 
-      const resData = await response.json();
-      const imageObj = resData.data?.[0];
+      const resData = resJson;
+      const imageObj = resData?.data?.[0];
       if (!imageObj) {
         throw new Error('No image returned from generation provider.');
       }
@@ -212,6 +232,35 @@ export class GenerateImageTool implements Tool {
         // Fallback to data URL if upload failed and no URL
         if (!publicUrl) {
           publicUrl = `data:image/png;base64,${b64Data}`;
+        }
+      } else if (generatedUrl) {
+        // If provider returned a temporary remote URL, cache it in Supabase storage so it persists
+        try {
+          const imgFetch = await fetch(generatedUrl);
+          if (imgFetch.ok) {
+            const imgBytes = new Uint8Array(await imgFetch.arrayBuffer());
+            const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+            const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || '';
+            if (supabaseUrl && supabaseKey) {
+              const supabase = createClient(supabaseUrl, supabaseKey);
+              const userFolder = context.userId || 'system';
+              const fileName = `${userFolder}/${Date.now()}-ai-image.png`;
+              const { error: uploadError } = await supabase.storage
+                .from('processed_images')
+                .upload(fileName, imgBytes.buffer, {
+                  contentType: 'image/png',
+                  upsert: true
+                });
+              if (!uploadError) {
+                const { data: { publicUrl: pUrl } } = supabase.storage
+                  .from('processed_images')
+                  .getPublicUrl(fileName);
+                publicUrl = pUrl;
+              }
+            }
+          }
+        } catch (storageErr: any) {
+          console.warn('[GenerateImageTool] Could not cache remote URL:', storageErr.message);
         }
       }
 
