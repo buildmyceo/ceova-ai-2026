@@ -7,7 +7,7 @@ import { cacheManager } from './CacheManager';
  * @param {string} [token] - Supabase auth token
  * @returns {Promise<string>} Clean 3-4 word title
  */
-export async function generateChatTitle(messages = [], token) {
+export async function generateChatTitle(messages = [], token, userMemories = []) {
     if (!messages || messages.length === 0) return "New Chat";
 
     try {
@@ -24,6 +24,16 @@ export async function generateChatTitle(messages = [], token) {
 
         if (formatted.length === 0) return "New Chat";
 
+        const hour = new Date().getHours();
+        let timeOfDay = 'morning';
+        if (hour >= 12 && hour < 17) timeOfDay = 'afternoon';
+        else if (hour >= 17 && hour < 22) timeOfDay = 'evening';
+        else if (hour >= 22 || hour < 5) timeOfDay = 'night';
+
+        const memorySnippet = Array.isArray(userMemories) && userMemories.length > 0
+            ? userMemories.map(m => `${m.title || m.category}: ${m.value}`).slice(0, 3).join(', ')
+            : '';
+
         const res = await fetch(`${SUPABASE_URL}/functions/v1/super-endpoint/generate-title`, {
             method: 'POST',
             headers: {
@@ -32,7 +42,9 @@ export async function generateChatTitle(messages = [], token) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                messages: formatted
+                messages: formatted,
+                time_of_day: timeOfDay,
+                user_memory: memorySnippet
             })
         });
 
@@ -82,7 +94,7 @@ function fallbackTitle(messages) {
  * Automatically renames legacy or raw chat titles in the background
  * using gpt-4o-mini so past user chat history gets clean 3-4 word titles.
  */
-export async function renameLegacyChats({ chats, chatMetadata, setChatMetadata, token }) {
+export async function renameLegacyChats({ chats, chatMetadata, setChatMetadata, token, userMemories = [] }) {
     if (!chats || typeof chats !== 'object') return;
 
     const chatIds = Object.keys(chats).filter(id => {
@@ -128,7 +140,7 @@ export async function renameLegacyChats({ chats, chatMetadata, setChatMetadata, 
                     continue;
                 }
 
-                const newTitle = await generateChatTitle(chatMsgs.slice(0, 4), token);
+                const newTitle = await generateChatTitle(chatMsgs.slice(0, 4), token, userMemories);
                 if (newTitle && newTitle !== 'New Chat' && !/\b(of|the|a|an|in|on|at|for|to|with)\s*$/i.test(newTitle)) {
                     // Update Supabase
                     await supabase.from('chats').update({ title: newTitle }).eq('id', chatId);

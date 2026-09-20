@@ -104,6 +104,7 @@ export default function Home({ session }) {
     
     const [inGracePeriod, setInGracePeriod] = useState(false);
     const [isRetryingPayment, setIsRetryingPayment] = useState(false);
+    const [userMemories, setUserMemories] = useState([]);
 
     useEffect(() => {
         localStorage.setItem('ceova_sidebar_state', isSidebarOpen ? 'open' : 'closed');
@@ -182,6 +183,16 @@ export default function Home({ session }) {
 
     useEffect(() => {
         if (!session) return;
+
+        // Fetch user memories to personalize greeting and AI context
+        supabase
+            .from('user_memory_longterm')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .order('created_at', { ascending: false })
+            .then(({ data, error }) => {
+                if (!error && data) setUserMemories(data);
+            });
         
         async function fetchChats() {
             try {
@@ -276,7 +287,8 @@ export default function Home({ session }) {
                                 chats: merged,
                                 chatMetadata: metaMap,
                                 setChatMetadata,
-                                token: session?.access_token
+                                token: session?.access_token,
+                                userMemories
                             });
                             return merged;
                         });
@@ -981,7 +993,7 @@ export default function Home({ session }) {
                         generateChatTitle([
                             { role: 'user', content: text },
                             { role: 'assistant', content: aiRawText }
-                        ], session?.access_token).then(async (newTitle) => {
+                        ], session?.access_token, userMemories).then(async (newTitle) => {
                             if (newTitle && newTitle !== 'New Chat') {
                                 await supabase.from('chats').update({ title: newTitle }).eq('id', idToUse);
                                 const cached = await cacheManager.getChat(idToUse);
@@ -1002,7 +1014,7 @@ export default function Home({ session }) {
                             { role: 'user', content: text },
                             { role: 'assistant', content: aiRawText }
                         ];
-                        generateChatTitle(firstTurns, session?.access_token).then(async (finalTitle) => {
+                        generateChatTitle(firstTurns, session?.access_token, userMemories).then(async (finalTitle) => {
                             if (finalTitle && finalTitle !== 'New Chat') {
                                 await supabase.from('chats').update({ title: finalTitle }).eq('id', idToUse);
                                 const cached = await cacheManager.getChat(idToUse);
@@ -1575,16 +1587,57 @@ export default function Home({ session }) {
                                                 <p>This chat won't appear in history or be used to train our models. For safety purposes, we may keep a copy of this chat for up to 30 days.</p>
                                             </>
                                         ) : (
-                                            <h2>
+                                            <>
+                                                <h2>
+                                                    {(() => {
+                                                        const hour = new Date().getHours();
+                                                        // 1. Resolve preferred name from user memory first, then OAuth metadata, then email
+                                                        const nameMemory = userMemories.find(m => 
+                                                            m.title?.toLowerCase().includes('name') || 
+                                                            (m.category?.toLowerCase() === 'profile' && m.title?.toLowerCase().includes('user'))
+                                                        );
+                                                        let name = nameMemory?.value?.trim();
+                                                        if (name) {
+                                                            name = name.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                                                        } else {
+                                                            name = session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'User';
+                                                        }
+
+                                                        // 2. Format title strictly according to time of day: morning, afternoon, evening, night
+                                                        if (hour >= 5 && hour < 12) {
+                                                            return `Good morning, ${name}`;
+                                                        } else if (hour >= 12 && hour < 17) {
+                                                            return `Good afternoon, ${name}`;
+                                                        } else if (hour >= 17 && hour < 22) {
+                                                            return `Good evening, ${name}`;
+                                                        } else {
+                                                            return `Good night, ${name}`;
+                                                        }
+                                                    })()}
+                                                </h2>
                                                 {(() => {
                                                     const hour = new Date().getHours();
-                                                    const name = session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'User';
-                                                    if (hour >= 5 && hour < 12) return `Good morning, ${name}`;
-                                                    if (hour >= 12 && hour < 17) return `Good afternoon, ${name}`;
-                                                    if (hour >= 17 && hour < 22) return `Good evening, ${name}`;
-                                                    return `How can I help, ${name}?`;
+                                                    const roleMemory = userMemories.find(m => 
+                                                        m.title?.toLowerCase().includes('role') || 
+                                                        m.title?.toLowerCase().includes('job') || 
+                                                        m.title?.toLowerCase().includes('project') || 
+                                                        m.category?.toLowerCase() === 'work'
+                                                    );
+                                                    if (roleMemory?.value) {
+                                                        return <p className="home-greeting-sub">Continuing your work on {roleMemory.value}?</p>;
+                                                    }
+                                                    if (hour >= 22 || hour < 5) {
+                                                        return <p className="home-greeting-sub">Burning the midnight oil? How can Ceova help you tonight?</p>;
+                                                    }
+                                                    if (hour >= 5 && hour < 12) {
+                                                        return <p className="home-greeting-sub">How can Ceova help you kick off your day?</p>;
+                                                    }
+                                                    if (hour >= 12 && hour < 17) {
+                                                        return <p className="home-greeting-sub">What would you like to build or explore this afternoon?</p>;
+                                                    }
+                                                    return <p className="home-greeting-sub">How can Ceova assist you this evening?</p>;
                                                 })()}
-                                            </h2>
+                                            </>
                                         )}
                                     </motion.div>
                                 </AnimatePresence>
