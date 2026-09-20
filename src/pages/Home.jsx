@@ -11,6 +11,7 @@ import { Search, MoreVertical, Menu, Share2, Check, Camera, BarChart3, Zap, Brai
 import { motion, AnimatePresence } from 'framer-motion';
 import Login from './Login';
 import { buildSystemPrompt } from '../lib/systemPromptBuilder';
+import { generateChatTitle, renameLegacyChats } from '../services/titleGenerator';
 
 const CURRENT_CHAT_KEY = "chat_id";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -270,6 +271,13 @@ export default function Home({ session }) {
                                     merged[key] = prev[key];
                                 }
                             });
+                            // Automatically rename legacy or raw chat titles in the background
+                            renameLegacyChats({
+                                chats: merged,
+                                chatMetadata: metaMap,
+                                setChatMetadata,
+                                token: session?.access_token
+                            });
                             return merged;
                         });
                     }).catch(console.error);
@@ -317,6 +325,8 @@ export default function Home({ session }) {
             currentMessages = currentMessages.slice(0, indexToSlice);
             setEditingMessage(null); // Clear editing state
         }
+
+        const initialMessageCount = currentMessages.filter(m => !m.isTitleFallback).length;
         
         // --- OPTIMISTIC UI RENDER ---
         const localAttachments = files.map(file => ({
@@ -963,6 +973,49 @@ export default function Home({ session }) {
                 } catch (dbErr) {
                     console.error("Local Persistence Error (AI Msg):", dbErr);
                 }
+
+                // Dynamic AI Title Generation using gpt-4o-mini (Turn 1 & Turn 2)
+                if (!isTemporary && !localStorage.getItem('user_renamed_' + idToUse)) {
+                    if (initialMessageCount === 0) {
+                        // Turn 1: Generate clean 3-4 word title right after 1st chat exchange
+                        generateChatTitle([
+                            { role: 'user', content: text },
+                            { role: 'assistant', content: aiRawText }
+                        ], session?.access_token).then(async (newTitle) => {
+                            if (newTitle && newTitle !== 'New Chat') {
+                                await supabase.from('chats').update({ title: newTitle }).eq('id', idToUse);
+                                const cached = await cacheManager.getChat(idToUse);
+                                if (cached) await cacheManager.setChat({ ...cached, title: newTitle });
+                                setChatMetadata(prev => ({
+                                    ...prev,
+                                    [idToUse]: { ...(prev[idToUse] || {}), title: newTitle }
+                                }));
+                            }
+                        }).catch(console.error);
+                    } else if (initialMessageCount <= 3 && !sessionStorage.getItem('ai_titled_' + idToUse)) {
+                        // Turn 2: Finalize 3-4 word title with full 2-turn conversation context
+                        const firstTurns = [
+                            ...(currentMessages.filter(m => !m.isTitleFallback).slice(0, 2).map(m => ({
+                                role: m.sender === 'user' ? 'user' : 'assistant',
+                                content: m.text
+                            }))),
+                            { role: 'user', content: text },
+                            { role: 'assistant', content: aiRawText }
+                        ];
+                        generateChatTitle(firstTurns, session?.access_token).then(async (finalTitle) => {
+                            if (finalTitle && finalTitle !== 'New Chat') {
+                                await supabase.from('chats').update({ title: finalTitle }).eq('id', idToUse);
+                                const cached = await cacheManager.getChat(idToUse);
+                                if (cached) await cacheManager.setChat({ ...cached, title: finalTitle });
+                                setChatMetadata(prev => ({
+                                    ...prev,
+                                    [idToUse]: { ...(prev[idToUse] || {}), title: finalTitle }
+                                }));
+                            }
+                            sessionStorage.setItem('ai_titled_' + idToUse, 'true');
+                        }).catch(console.error);
+                    }
+                }
             }
 
             const now = new Date().toISOString();
@@ -1289,6 +1342,8 @@ export default function Home({ session }) {
     const renameChat = async (id, newTitle) => {
         if (!id || !newTitle || !newTitle.trim()) return;
         const trimmedTitle = newTitle.trim();
+        localStorage.setItem('user_renamed_' + id, 'true');
+        sessionStorage.setItem('ai_titled_' + id, 'true');
         try {
             const { error: metaErr } = await supabase.from('chats').upsert({
                 id: id,
