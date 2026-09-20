@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Login from './Login';
 import { buildSystemPrompt } from '../lib/systemPromptBuilder';
 import { generateChatTitle, renameLegacyChats } from '../services/titleGenerator';
+import { getGreetingName, getGreetingHeadline, getTimePeriod, getGreetingSubtitle } from '../constants/greetings';
 
 const CURRENT_CHAT_KEY = "chat_id";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -105,6 +106,7 @@ export default function Home({ session }) {
     const [inGracePeriod, setInGracePeriod] = useState(false);
     const [isRetryingPayment, setIsRetryingPayment] = useState(false);
     const [userMemories, setUserMemories] = useState([]);
+    const [greetingIndex, setGreetingIndex] = useState(() => Math.floor(Math.random() * 10));
 
     useEffect(() => {
         localStorage.setItem('ceova_sidebar_state', isSidebarOpen ? 'open' : 'closed');
@@ -1188,6 +1190,7 @@ export default function Home({ session }) {
     };
 
     const createNewChat = (specificId = null, skipSwitch = false) => {
+        setGreetingIndex(prev => (prev + 1) % 10);
         // ensure specificId is a string, not an event object if called from onClick
         const idToUse = (typeof specificId === 'string' && specificId) ? specificId : crypto.randomUUID();
         setChats(prev => ({ ...prev, [idToUse]: prev[idToUse] || [] }));
@@ -1590,52 +1593,24 @@ export default function Home({ session }) {
                                             <>
                                                 <h2>
                                                     {(() => {
-                                                        const hour = new Date().getHours();
-                                                        // 1. Resolve preferred name from user memory first, then OAuth metadata, then email
-                                                        const nameMemory = userMemories.find(m => 
-                                                            m.title?.toLowerCase().includes('name') || 
-                                                            (m.category?.toLowerCase() === 'profile' && m.title?.toLowerCase().includes('user'))
-                                                        );
-                                                        let name = nameMemory?.value?.trim();
-                                                        if (name) {
-                                                            name = name.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-                                                        } else {
-                                                            name = session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'User';
-                                                        }
-
-                                                        // 2. Format title strictly according to time of day: morning, afternoon, evening, night
-                                                        if (hour >= 5 && hour < 12) {
-                                                            return `Good morning, ${name}`;
-                                                        } else if (hour >= 12 && hour < 17) {
-                                                            return `Good afternoon, ${name}`;
-                                                        } else if (hour >= 17 && hour < 22) {
-                                                            return `Good evening, ${name}`;
-                                                        } else {
-                                                            return `Good night, ${name}`;
-                                                        }
+                                                        const timePeriod = getTimePeriod();
+                                                        const userName = getGreetingName(session, userMemories);
+                                                        return getGreetingHeadline(timePeriod, greetingIndex, userName);
                                                     })()}
                                                 </h2>
                                                 {(() => {
-                                                    const hour = new Date().getHours();
-                                                    const roleMemory = userMemories.find(m => 
-                                                        m.title?.toLowerCase().includes('role') || 
-                                                        m.title?.toLowerCase().includes('job') || 
-                                                        m.title?.toLowerCase().includes('project') || 
-                                                        m.category?.toLowerCase() === 'work'
-                                                    );
+                                                    const timePeriod = getTimePeriod();
+                                                    // Only look for role/project memory in profile or work categories, never business customer info
+                                                    const roleMemory = Array.isArray(userMemories) ? userMemories.find(m => {
+                                                        const cat = String(m.category || '').toLowerCase().trim();
+                                                        const title = String(m.title || '').toLowerCase().trim();
+                                                        return (cat === 'profile' || cat === 'work') && 
+                                                            (title.includes('role') || title.includes('job') || title.includes('project'));
+                                                    }) : null;
                                                     if (roleMemory?.value) {
                                                         return <p className="home-greeting-sub">Continuing your work on {roleMemory.value}?</p>;
                                                     }
-                                                    if (hour >= 22 || hour < 5) {
-                                                        return <p className="home-greeting-sub">Burning the midnight oil? How can Ceova help you tonight?</p>;
-                                                    }
-                                                    if (hour >= 5 && hour < 12) {
-                                                        return <p className="home-greeting-sub">How can Ceova help you kick off your day?</p>;
-                                                    }
-                                                    if (hour >= 12 && hour < 17) {
-                                                        return <p className="home-greeting-sub">What would you like to build or explore this afternoon?</p>;
-                                                    }
-                                                    return <p className="home-greeting-sub">How can Ceova assist you this evening?</p>;
+                                                    return <p className="home-greeting-sub">{getGreetingSubtitle(timePeriod, greetingIndex)}</p>;
                                                 })()}
                                             </>
                                         )}

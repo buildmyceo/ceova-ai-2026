@@ -30,8 +30,11 @@ export async function generateChatTitle(messages = [], token, userMemories = [])
         else if (hour >= 17 && hour < 22) timeOfDay = 'evening';
         else if (hour >= 22 || hour < 5) timeOfDay = 'night';
 
-        const memorySnippet = Array.isArray(userMemories) && userMemories.length > 0
-            ? userMemories.map(m => `${m.title || m.category}: ${m.value}`).slice(0, 3).join(', ')
+        const profileMemories = Array.isArray(userMemories)
+            ? userMemories.filter(m => String(m.category || '').toLowerCase().trim() === 'profile')
+            : [];
+        const memorySnippet = profileMemories.length > 0
+            ? profileMemories.map(m => `${m.title || m.category}: ${m.value}`).slice(0, 3).join(', ')
             : '';
 
         const res = await fetch(`${SUPABASE_URL}/functions/v1/super-endpoint/generate-title`, {
