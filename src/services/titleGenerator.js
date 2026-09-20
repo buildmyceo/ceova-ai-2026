@@ -1,4 +1,4 @@
-import { supabase, SUPABASE_URL } from './supabase';
+import { supabase, SUPABASE_URL, SUPABASE_KEY } from './supabase';
 import { cacheManager } from './CacheManager';
 
 /**
@@ -17,10 +17,6 @@ export async function generateChatTitle(messages = [], token) {
             authToken = data?.session?.access_token;
         }
 
-        if (!authToken) {
-            return fallbackTitle(messages);
-        }
-
         const formatted = messages.slice(0, 4).map(m => ({
             role: m.role === 'assistant' || m.sender === 'ai' || m.sender === 'assistant' ? 'assistant' : 'user',
             content: typeof m.content === 'string' ? m.content : (typeof m.text === 'string' ? m.text : '')
@@ -31,11 +27,11 @@ export async function generateChatTitle(messages = [], token) {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/super-endpoint/generate-title`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${authToken}`,
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${authToken || SUPABASE_KEY}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                action: 'generate-title',
                 messages: formatted
             })
         });
@@ -94,24 +90,25 @@ export async function renameLegacyChats({ chats, chatMetadata, setChatMetadata, 
         const msgList = chats[id] || [];
         if (msgList.length === 0) return false;
 
-        // Skip if already processed in this browser session
-        if (sessionStorage.getItem(`ai_titled_${id}`)) return false;
+        // Skip if already processed with AI
+        if (sessionStorage.getItem(`ai_titled_v5_${id}`)) return false;
 
         const currentTitle = (chatMetadata[id]?.title || '').trim();
 
         // Detect if title needs AI generation:
-        // 1. Generic placeholder
-        // 2. Starts with raw user greetings like "hy", "hello"
-        // 3. Raw prompt starts like "genarte a logo", "genrate a image"
-        // 4. Ends with ellipsis "..." (was truncated by slice(0, 30))
+        // 1. Generic placeholder or missing
+        // 2. Starts with raw user greetings like "hy", "hello", "hi"
+        // 3. Raw prompt starts like "genarte", "genrate", "generate", "creat", "create", "make"
+        // 4. Ends with ellipsis "..." or dangling prepositions like " of", " the", " a", " to", " in"
         // 5. Contains more than 4 words or is entirely lowercase raw text
         const isDefaultOrRaw = (
             !currentTitle ||
             currentTitle === 'New Chat' ||
             currentTitle.startsWith('Topic ') ||
             currentTitle.endsWith('...') ||
+            /\b(of|the|a|an|in|on|at|for|to|with)\s*$/i.test(currentTitle) ||
             /^(hy|hey|hi|hello|whats|what is|whta)\b/i.test(currentTitle) ||
-            /^(genarte|genrate|generate)\b/i.test(currentTitle) ||
+            /^(genarte|genrate|generate|creat|create|make)\b/i.test(currentTitle) ||
             currentTitle.split(/\s+/).length > 4 ||
             (currentTitle.length > 5 && currentTitle === currentTitle.toLowerCase())
         );
@@ -127,12 +124,12 @@ export async function renameLegacyChats({ chats, chatMetadata, setChatMetadata, 
             try {
                 const chatMsgs = chats[chatId] || [];
                 if (chatMsgs.length === 0) {
-                    sessionStorage.setItem(`ai_titled_${chatId}`, 'true');
+                    sessionStorage.setItem(`ai_titled_v5_${chatId}`, 'true');
                     continue;
                 }
 
                 const newTitle = await generateChatTitle(chatMsgs.slice(0, 4), token);
-                if (newTitle && newTitle !== 'New Chat') {
+                if (newTitle && newTitle !== 'New Chat' && !/\b(of|the|a|an|in|on|at|for|to|with)\s*$/i.test(newTitle)) {
                     // Update Supabase
                     await supabase.from('chats').update({ title: newTitle }).eq('id', chatId);
 
@@ -147,13 +144,11 @@ export async function renameLegacyChats({ chats, chatMetadata, setChatMetadata, 
                         ...prev,
                         [chatId]: { ...(prev[chatId] || {}), title: newTitle }
                     }));
+                    sessionStorage.setItem(`ai_titled_v5_${chatId}`, 'true');
                 }
-
-                sessionStorage.setItem(`ai_titled_${chatId}`, 'true');
                 await new Promise(r => setTimeout(r, 350));
             } catch (err) {
                 console.warn(`[titleGenerator] Error renaming legacy chat ${chatId}:`, err);
-                sessionStorage.setItem(`ai_titled_${chatId}`, 'true');
             }
         }
     })();

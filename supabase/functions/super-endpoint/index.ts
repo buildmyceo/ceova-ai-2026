@@ -139,6 +139,77 @@ serve(async (req) => {
         }
     }
 
+    // ── Fast Route: Title Generation using gpt-4o-mini ──────────────────────────
+    if (url.pathname.endsWith('/generate-title') || url.pathname.includes('/generate-title')) {
+        try {
+            const reqBody = await req.json();
+            const rawMessages = reqBody.messages || [];
+            const conversationSnippet = rawMessages.slice(0, 4).map((m: any) => {
+                const role = m.role === 'assistant' || m.sender === 'ai' || m.sender === 'assistant' ? 'Assistant' : 'User';
+                const text = typeof m.content === 'string' ? m.content : (typeof m.text === 'string' ? m.text : '');
+                return `${role}: ${text.slice(0, 300)}`;
+            }).filter((line: string) => line.length > 3).join('\n');
+
+            const apiKey = Deno.env.get("OPEN_AI") || Deno.env.get("OPENAI_API_KEY");
+            if (!apiKey) {
+                return new Response(JSON.stringify({ error: "OpenAI API key not configured" }), {
+                    status: 500,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${apiKey}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    model: "gpt-4o-mini",
+                    messages: [
+                        {
+                            role: "system",
+                            content: "You are a concise conversation title generator. Output ONLY a short, meaningful title summarizing the main topic or question based on the user and AI messages.\n\nSTRICT RULES:\n1. Maximum 3 to 4 words total.\n2. Do NOT use quotation marks, punctuation, or emojis.\n3. Title Case (e.g. 'Asking About Day', 'Logo Design Help', 'React Debugging', 'User Name Query').\n4. If the user only says a generic greeting like 'hi' or 'hello' and there is no subsequent question, output 'New Chat'. Otherwise, capture their specific question or topic.\n5. Output ONLY the 3-4 word title and nothing else."
+                        },
+                        {
+                            role: "user",
+                            content: conversationSnippet || "User: New conversation"
+                        }
+                    ],
+                    max_tokens: 20,
+                    temperature: 0.3
+                })
+            });
+
+            if (!openAiRes.ok) {
+                const errText = await openAiRes.text();
+                console.error("Title generation OpenAI error:", errText);
+                return new Response(JSON.stringify({ error: "OpenAI error", details: errText }), {
+                    status: 500,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            const data = await openAiRes.json();
+            let title = data.choices?.[0]?.message?.content?.trim() || "New Chat";
+            title = title.replace(/^["'`]|["'`]$/g, '').replace(/[.!?:;]+$/g, '').trim();
+            const words = title.split(/\s+/).filter(Boolean);
+            if (words.length > 4) {
+                title = words.slice(0, 4).join(' ');
+            }
+
+            return new Response(JSON.stringify({ title }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        } catch (err: any) {
+            console.error("Title generation error:", err);
+            return new Response(JSON.stringify({ error: err.message }), {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+    }
+
     try {
         const authHeader = req.headers.get('Authorization');
         if (!authHeader) throw new Error("Missing auth header");
@@ -165,76 +236,6 @@ serve(async (req) => {
         }
 
         const reqBody = await req.json();
-
-        // ── Fast Route: Title Generation using gpt-4o-mini ──────────────────────────
-        if (url.pathname.endsWith('/generate-title') || reqBody?.action === 'generate-title') {
-            const rawMessages = reqBody.messages || [];
-            const conversationSnippet = rawMessages.slice(0, 4).map((m: any) => {
-                const role = m.role === 'assistant' || m.sender === 'ai' || m.sender === 'assistant' ? 'Assistant' : 'User';
-                const text = typeof m.content === 'string' ? m.content : (typeof m.text === 'string' ? m.text : '');
-                return `${role}: ${text.slice(0, 300)}`;
-            }).filter((line: string) => line.length > 3).join('\n');
-
-            const apiKey = Deno.env.get("OPEN_AI") || Deno.env.get("OPENAI_API_KEY");
-            if (!apiKey) {
-                return new Response(JSON.stringify({ error: "OpenAI API key not configured" }), {
-                    status: 500,
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                });
-            }
-
-            try {
-                const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${apiKey}`,
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        model: "gpt-4o-mini",
-                        messages: [
-                            {
-                                role: "system",
-                                content: "You are a concise conversation title generator. Output ONLY a short, meaningful title summarizing the main topic or question.\n\nSTRICT RULES:\n1. Maximum 3 to 4 words total.\n2. Do NOT use quotation marks, punctuation, or emojis.\n3. Title Case (e.g. 'Asking About Day', 'Logo Design Help', 'React Debugging').\n4. If the user only says a generic greeting like 'hi' or 'hello', output 'New Chat'. Otherwise, capture their specific question or topic.\n5. Output ONLY the 3-4 word title and nothing else."
-                            },
-                            {
-                                role: "user",
-                                content: conversationSnippet || "User: New conversation"
-                            }
-                        ],
-                        max_tokens: 15,
-                        temperature: 0.3
-                    })
-                });
-
-                if (!openAiRes.ok) {
-                    const errText = await openAiRes.text();
-                    console.error("Title generation OpenAI error:", errText);
-                    return new Response(JSON.stringify({ error: "OpenAI error", details: errText }), {
-                        status: 500,
-                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                    });
-                }
-
-                const data = await openAiRes.json();
-                let title = data.choices?.[0]?.message?.content?.trim() || "New Chat";
-                title = title.replace(/^["']|["']$/g, '').replace(/[.!?:;]+$/g, '').trim();
-                const words = title.split(/\s+/);
-                if (words.length > 4) {
-                    title = words.slice(0, 4).join(' ');
-                }
-
-                return new Response(JSON.stringify({ title }), {
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                });
-            } catch (err: any) {
-                console.error("Title generation error:", err);
-                return new Response(JSON.stringify({ error: err.message }), {
-                    status: 500,
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                });
-            }
-        }
 
         // ── Zod Validation ────────────────────────────────────────────────────────
         const { z } = await import("https://deno.land/x/zod@v3.22.4/mod.ts");

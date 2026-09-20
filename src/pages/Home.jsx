@@ -992,7 +992,7 @@ export default function Home({ session }) {
                                 }));
                             }
                         }).catch(console.error);
-                    } else if (initialMessageCount <= 3 && !sessionStorage.getItem('ai_titled_' + idToUse)) {
+                    } else if (initialMessageCount <= 3 && !sessionStorage.getItem('ai_titled_final_' + idToUse)) {
                         // Turn 2: Finalize 3-4 word title with full 2-turn conversation context
                         const firstTurns = [
                             ...(currentMessages.filter(m => !m.isTitleFallback).slice(0, 2).map(m => ({
@@ -1012,7 +1012,7 @@ export default function Home({ session }) {
                                     [idToUse]: { ...(prev[idToUse] || {}), title: finalTitle }
                                 }));
                             }
-                            sessionStorage.setItem('ai_titled_' + idToUse, 'true');
+                            sessionStorage.setItem('ai_titled_final_' + idToUse, 'true');
                         }).catch(console.error);
                     }
                 }
