@@ -689,9 +689,6 @@ export default function InputBox({
                     </div>
                 </div>
             </div>
-            <div className="input-footer">
-                Ceova can make mistakes. Check important info.
-            </div>
             
             <ExtensionsModal 
                 isOpen={isExtensionsModalOpen} 

@@ -1590,29 +1590,13 @@ export default function Home({ session }) {
                                                 <p>This chat won't appear in history or be used to train our models. For safety purposes, we may keep a copy of this chat for up to 30 days.</p>
                                             </>
                                         ) : (
-                                            <>
-                                                <h2>
-                                                    {(() => {
-                                                        const timePeriod = getTimePeriod();
-                                                        const userName = getGreetingName(session, userMemories);
-                                                        return getGreetingHeadline(timePeriod, greetingIndex, userName);
-                                                    })()}
-                                                </h2>
+                                            <h2>
                                                 {(() => {
                                                     const timePeriod = getTimePeriod();
-                                                    // Only look for role/project memory in profile or work categories, never business customer info
-                                                    const roleMemory = Array.isArray(userMemories) ? userMemories.find(m => {
-                                                        const cat = String(m.category || '').toLowerCase().trim();
-                                                        const title = String(m.title || '').toLowerCase().trim();
-                                                        return (cat === 'profile' || cat === 'work') && 
-                                                            (title.includes('role') || title.includes('job') || title.includes('project'));
-                                                    }) : null;
-                                                    if (roleMemory?.value) {
-                                                        return <p className="home-greeting-sub">Continuing your work on {roleMemory.value}?</p>;
-                                                    }
-                                                    return <p className="home-greeting-sub">{getGreetingSubtitle(timePeriod, greetingIndex)}</p>;
+                                                    const userName = getGreetingName(session, userMemories);
+                                                    return getGreetingHeadline(timePeriod, greetingIndex, userName);
                                                 })()}
-                                            </>
+                                            </h2>
                                         )}
                                     </motion.div>
                                 </AnimatePresence>
