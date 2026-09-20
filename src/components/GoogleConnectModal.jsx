@@ -28,7 +28,7 @@ export default function GoogleConnectModal({ isOpen, onClose, onProceed }) {
                         animate={{ opacity: 1 }} 
                         exit={{ opacity: 0 }} 
                         onClick={onClose} 
-                        style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 2000, background: 'rgba(0, 0, 0, 0.7)' }}
+                        style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 2000, background: 'rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
                     />
                     <motion.div 
                         className="settings-card"
@@ -36,10 +36,12 @@ export default function GoogleConnectModal({ isOpen, onClose, onProceed }) {
                         transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
                         style={{
                             ...(!isMobile ? { top: "50%", left: "50%", position: "fixed", width: '600px' } : { bottom: 0, left: 0, position: "fixed", width: '100%', height: 'auto', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }),
-                            background: '#111111',
-                            border: '1px solid rgba(255, 255, 255, 0.08)',
-                            borderRadius: '16px',
-                            boxShadow: '0 24px 60px rgba(0,0,0,0.5)',
+                            background: 'rgba(20, 20, 24, 0.84)',
+                            backdropFilter: 'blur(28px) saturate(190%)',
+                            WebkitBackdropFilter: 'blur(28px) saturate(190%)',
+                            border: '1px solid rgba(255, 255, 255, 0.12)',
+                            borderRadius: '20px',
+                            boxShadow: '0 28px 70px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
                             zIndex: 2001,
                             padding: '32px',
                             display: 'flex',
