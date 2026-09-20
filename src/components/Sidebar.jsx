@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LogOut, Plus, Search, Settings, HelpCircle, Archive, X, Clock, Pin, PinOff, SquareCheck, Glasses, Code2, PanelLeft, PanelLeftClose, Edit, BookOpen, MoreVertical, Trash2, Check } from 'lucide-react';
+import { LogOut, Plus, Search, Settings, HelpCircle, Archive, X, Clock, Pin, PinOff, SquareCheck, Glasses, Code2, PanelLeft, PanelLeftClose, Edit, BookOpen, MoreHorizontal, Trash2, Check, MessageCircle } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
 export default function Sidebar({ 
@@ -165,7 +165,7 @@ export default function Sidebar({
                 ) : (
                     <>
                         <div className="chat-item-content">
-                            {isPinned && <Pin size={12} className="chat-pinned-indicator" />}
+                            {isPinned && <MessageCircle size={16} strokeWidth={1.75} className="chat-pinned-icon" />}
                             <span className="chat-title" title={title}>{title}</span>
                         </div>
                         
@@ -176,7 +176,7 @@ export default function Sidebar({
                                 title="Chat options"
                                 onClick={(e) => toggleMenu(e, chatId)}
                             >
-                                <MoreVertical size={15} />
+                                <MoreHorizontal size={16} />
                             </button>
 
                             {isMenuActive && (
@@ -391,12 +391,11 @@ export default function Sidebar({
             </div>
 
             {isSidebarOpen && (
-                <div className="chats-section" style={{ padding: '0 12px', flexGrow: 1, overflowY: 'auto' }}>
+                <div className="chats-section">
                     {pinnedChatIds.length > 0 && (
-                        <div className="chat-group" style={{ marginBottom: '16px' }}>
-                            <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Pin size={11} style={{ transform: 'rotate(45deg)', color: '#4285F4' }} />
-                                <span>Pinned</span>
+                        <div className="chat-group">
+                            <div className="section-title">
+                                Pinned
                             </div>
                             <div className="chat-list">
                                 {pinnedChatIds.map(chatId => renderChatItem(chatId, true))}
@@ -406,7 +405,7 @@ export default function Sidebar({
 
                     <div className="chat-group">
                         <div className="section-title">
-                            {pinnedChatIds.length > 0 ? 'Recent' : 'Recent'}
+                            Recents
                         </div>
                         <div className="chat-list">
                             {recentChatIds.map(chatId => renderChatItem(chatId, false))}
@@ -414,7 +413,7 @@ export default function Sidebar({
                     </div>
 
                     {pinnedChatIds.length === 0 && recentChatIds.length === 0 && (
-                        <div style={{ padding: '16px 14px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        <div className="chat-empty-state">
                             {searchQuery ? 'No chats match search' : 'No chats yet'}
                         </div>
                     )}
