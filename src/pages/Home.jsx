@@ -38,7 +38,25 @@ export function sortMessagesChronologically(msgs) {
 export default function Home({ session }) {
     const [chats, setChats] = useState({});
     const [chatMetadata, setChatMetadata] = useState({}); // Stores { is_pinned, is_archived, title }
-    const [currentChatId, setCurrentChatId] = useState(() => localStorage.getItem(CURRENT_CHAT_KEY) || null);
+    const [currentChatId, setCurrentChatId] = useState(() => {
+        try {
+            // Clean up any legacy localStorage entry
+            localStorage.removeItem(CURRENT_CHAT_KEY);
+            const navEntries = typeof performance !== 'undefined' && performance.getEntriesByType ? performance.getEntriesByType('navigation') : [];
+            const isReload = navEntries.length > 0
+                ? navEntries[0].type === 'reload'
+                : (typeof performance !== 'undefined' && performance.navigation ? performance.navigation.type === 1 : false);
+
+            if (isReload) {
+                return sessionStorage.getItem(CURRENT_CHAT_KEY) || null;
+            } else {
+                sessionStorage.removeItem(CURRENT_CHAT_KEY);
+                return null;
+            }
+        } catch (e) {
+            return null;
+        }
+    });
     const [temporaryChatId, setTemporaryChatId] = useState(null);
     const [localDirectoryHandle, setLocalDirectoryHandle] = useState(null);
     const localDirectoryHandleRef = useRef(null);
@@ -188,13 +206,8 @@ export default function Home({ session }) {
                     setChatMetadata(metaMap);
                 }
 
-                // Fast Sync: Fetch messages just for the current active chat to populate main window instantly
+                // Fast Sync: Fetch messages just for the current active chat if one is set (e.g. on page reload)
                 let activeChatId = currentChatId;
-                if (!activeChatId && mData && mData.length > 0) {
-                    activeChatId = mData[mData.length - 1].id; // Fallback to last created
-                    setCurrentChatId(activeChatId);
-                    localStorage.setItem(CURRENT_CHAT_KEY, activeChatId);
-                }
 
                 if (activeChatId) {
                     const { data: currentChatMessages, error: activeErr } = await supabase
@@ -280,6 +293,7 @@ export default function Home({ session }) {
         setIsLoading(true);
 
         const idToUse = currentChatId || crypto.randomUUID();
+        sessionStorage.setItem(CURRENT_CHAT_KEY, idToUse);
         if (!currentChatId) {
             createNewChat(idToUse, false);
         }
@@ -1075,7 +1089,7 @@ export default function Home({ session }) {
         setCurrentChatId(id);
         setEditingMessage(null);
         setInput("");
-        localStorage.setItem(CURRENT_CHAT_KEY, id);
+        sessionStorage.setItem(CURRENT_CHAT_KEY, id);
         if (isMobile) setIsSidebarOpen(false);
 
         if (id && !id.startsWith('temp_') && (!chats[id] || chats[id].length === 0)) {
@@ -1115,6 +1129,7 @@ export default function Home({ session }) {
         if (!skipSwitch) {
             switchChat(idToUse);
             if (!specificId || typeof specificId !== 'string') {
+                sessionStorage.removeItem(CURRENT_CHAT_KEY);
                 localStorage.removeItem(CURRENT_CHAT_KEY);
             }
         }
@@ -1213,17 +1228,59 @@ export default function Home({ session }) {
     const togglePinChat = async (id, isPinned) => {
         const newStatus = !isPinned;
         try {
-            await supabase.from('chats').upsert({
+            const { error: pinErr } = await supabase.from('chats').upsert({
                 id: id,
                 user_id: session.user.id,
                 is_pinned: newStatus
             });
+            if (pinErr) throw pinErr;
+
             setChatMetadata(prev => ({
                 ...prev,
-                [id]: { ...prev[id], is_pinned: newStatus }
+                [id]: { ...(prev[id] || {}), is_pinned: newStatus }
             }));
+
+            try {
+                const cached = await cacheManager.getChat(id);
+                if (cached) {
+                    await cacheManager.setChat({ ...cached, is_pinned: newStatus });
+                }
+            } catch (e) {}
+
+            showToast(newStatus ? "Chat pinned" : "Chat unpinned", "success");
         } catch (e) {
             console.error("Pin error", e);
+            showToast("Failed to update pin", "error");
+        }
+    };
+
+    const renameChat = async (id, newTitle) => {
+        if (!id || !newTitle || !newTitle.trim()) return;
+        const trimmedTitle = newTitle.trim();
+        try {
+            const { error: metaErr } = await supabase.from('chats').upsert({
+                id: id,
+                user_id: session.user.id,
+                title: trimmedTitle
+            });
+            if (metaErr) throw metaErr;
+
+            setChatMetadata(prev => ({
+                ...prev,
+                [id]: { ...(prev[id] || {}), title: trimmedTitle }
+            }));
+
+            try {
+                const cached = await cacheManager.getChat(id);
+                if (cached) {
+                    await cacheManager.setChat({ ...cached, title: trimmedTitle });
+                }
+            } catch (e) {}
+
+            showToast("Chat renamed", "success");
+        } catch (e) {
+            console.error("Rename error", e);
+            showToast("Failed to rename chat", "error");
         }
     };
 
@@ -1266,6 +1323,7 @@ export default function Home({ session }) {
                     onOpenLibrary={() => { setIsLibraryOpen(true); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}
                     togglePinChat={togglePinChat}
                     deleteChat={deleteChat}
+                    renameChat={renameChat}
                     userEmail={session?.user?.email}
                     userMetadata={session?.user?.user_metadata}
                     isSidebarOpen={isSidebarOpen}

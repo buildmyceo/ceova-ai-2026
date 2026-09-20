@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { LogOut, Plus, Search, Settings, HelpCircle, Archive, X, Clock, Pin, PinOff, SquareCheck, Glasses, Code2, PanelLeft, PanelLeftClose, Edit, BookOpen } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { LogOut, Plus, Search, Settings, HelpCircle, Archive, X, Clock, Pin, PinOff, SquareCheck, Glasses, Code2, PanelLeft, PanelLeftClose, Edit, BookOpen, MoreVertical, Trash2, Check } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
 export default function Sidebar({ 
     chats, chatMetadata = {}, currentChatId, switchChat, createNewChat, createTemporaryChat, 
-    onTaskClick, togglePinChat, deleteChat, userEmail, userMetadata, onLogout, 
+    onTaskClick, togglePinChat, deleteChat, renameChat, userEmail, userMetadata, onLogout, 
     temporaryChatId, onToggleSettings, onOpenSearch, onOpenLibrary, isSidebarOpen, setSidebarOpen 
 }) {
     const userName = userMetadata?.full_name || (userEmail ? userEmail.split('@')[0] : "User");
@@ -12,6 +12,58 @@ export default function Sidebar({
     const themeMod = resolvedTheme;
     const [searchQuery, setSearchQuery] = useState('');
     const [isLogoHovered, setIsLogoHovered] = useState(false);
+    const [activeMenuChatId, setActiveMenuChatId] = useState(null);
+    const [menuPlacement, setMenuPlacement] = useState('bottom');
+    const [renamingChatId, setRenamingChatId] = useState(null);
+    const [renameValue, setRenameValue] = useState('');
+    const renameInputRef = useRef(null);
+    const menuRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (activeMenuChatId && !e.target.closest('.chat-item-menu-container')) {
+                setActiveMenuChatId(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [activeMenuChatId]);
+
+    const handleStartRename = (chatId, currentTitle) => {
+        setRenamingChatId(chatId);
+        setRenameValue(currentTitle);
+        setTimeout(() => {
+            if (renameInputRef.current) {
+                renameInputRef.current.focus();
+                renameInputRef.current.select();
+            }
+        }, 50);
+    };
+
+    const handleSaveRename = (chatId) => {
+        if (renameValue.trim()) {
+            renameChat?.(chatId, renameValue.trim());
+        }
+        setRenamingChatId(null);
+        setRenameValue('');
+    };
+
+    const handleCancelRename = () => {
+        setRenamingChatId(null);
+        setRenameValue('');
+    };
+
+    const toggleMenu = (e, chatId) => {
+        e.stopPropagation();
+        if (activeMenuChatId === chatId) {
+            setActiveMenuChatId(null);
+        } else {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const isNearBottom = rect.bottom > window.innerHeight - 160;
+            setMenuPlacement(isNearBottom ? 'top' : 'bottom');
+            setActiveMenuChatId(chatId);
+        }
+    };
 
     const fullLogoSrc = '/ceova logo dark.png';
     const logoSrc = fullLogoSrc;
@@ -25,13 +77,19 @@ export default function Sidebar({
         }
     };
 
+    const getChatTitle = (chatId) => {
+        if (chatMetadata[chatId]?.title) return chatMetadata[chatId].title;
+        const firstUserMsg = chats[chatId]?.find(m => m.sender === 'user')?.text;
+        return firstUserMsg || (chats[chatId]?.[0]?.isTitleFallback ? chats[chatId][0].text : "New Chat");
+    };
+
     const sortedChatIds = Object.keys(chats).filter(id => {
         // Hide temporary chats from sidebar
         if (id.startsWith('temp_')) return false;
-        return chats[id].length > 0;
+        return chats[id]?.length > 0;
     }).sort((a, b) => {
-        const isAPinned = chatMetadata[a]?.is_pinned;
-        const isBPinned = chatMetadata[b]?.is_pinned;
+        const isAPinned = !!chatMetadata[a]?.is_pinned;
+        const isBPinned = !!chatMetadata[b]?.is_pinned;
         if (isAPinned && !isBPinned) return -1;
         if (!isAPinned && isBPinned) return 1;
         
@@ -43,11 +101,130 @@ export default function Sidebar({
     });
 
     const filteredChatIds = sortedChatIds.filter(chatId => {
-        // Handle sync titles - if it has messages, use the first user message, else use placeholder
-        const firstUserMsg = chats[chatId].find(m => m.sender === 'user')?.text;
-        const title = firstUserMsg || (chats[chatId][0]?.isTitleFallback ? chats[chatId][0].text : "New Chat");
+        const title = getChatTitle(chatId);
         return title.toLowerCase().includes(searchQuery.toLowerCase());
     });
+
+    const pinnedChatIds = filteredChatIds.filter(id => !!chatMetadata[id]?.is_pinned);
+    const recentChatIds = filteredChatIds.filter(id => !chatMetadata[id]?.is_pinned);
+
+    const renderChatItem = (chatId, isPinned) => {
+        const title = getChatTitle(chatId);
+        const isRenaming = renamingChatId === chatId;
+        const isMenuActive = activeMenuChatId === chatId;
+
+        return (
+            <div 
+                key={chatId} 
+                className={`chat-item ${currentChatId === chatId ? 'active' : ''} ${isPinned ? 'pinned-item' : ''}`}
+                onClick={() => {
+                    if (!isRenaming) {
+                        handleAction(() => switchChat(chatId));
+                    }
+                }}
+            >
+                {isRenaming ? (
+                    <div className="chat-rename-wrapper" onClick={e => e.stopPropagation()}>
+                        <input 
+                            ref={renameInputRef}
+                            type="text"
+                            className="chat-rename-input"
+                            value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') handleSaveRename(chatId);
+                                else if (e.key === 'Escape') handleCancelRename();
+                            }}
+                            autoFocus
+                        />
+                        <div className="chat-rename-actions">
+                            <button 
+                                type="button"
+                                className="chat-rename-btn save" 
+                                title="Save" 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSaveRename(chatId);
+                                }}
+                            >
+                                <Check size={13} />
+                            </button>
+                            <button 
+                                type="button"
+                                className="chat-rename-btn cancel" 
+                                title="Cancel" 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCancelRename();
+                                }}
+                            >
+                                <X size={13} />
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        <div className="chat-item-content">
+                            {isPinned && <Pin size={12} className="chat-pinned-indicator" />}
+                            <span className="chat-title" title={title}>{title}</span>
+                        </div>
+                        
+                        <div className="chat-item-menu-container" onClick={e => e.stopPropagation()}>
+                            <button 
+                                type="button"
+                                className={`chat-item-more-btn ${isMenuActive ? 'active' : ''}`}
+                                title="Chat options"
+                                onClick={(e) => toggleMenu(e, chatId)}
+                            >
+                                <MoreVertical size={15} />
+                            </button>
+
+                            {isMenuActive && (
+                                <div className={`chat-item-dropdown placement-${menuPlacement}`} ref={menuRef}>
+                                    <button 
+                                        type="button"
+                                        className="chat-dropdown-item" 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveMenuChatId(null);
+                                            togglePinChat(chatId, isPinned);
+                                        }}
+                                    >
+                                        {isPinned ? <PinOff size={14} /> : <Pin size={14} />}
+                                        <span>{isPinned ? 'Unpin' : 'Pin'}</span>
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        className="chat-dropdown-item" 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveMenuChatId(null);
+                                            handleStartRename(chatId, title);
+                                        }}
+                                    >
+                                        <Edit size={14} />
+                                        <span>Rename</span>
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        className="chat-dropdown-item danger" 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveMenuChatId(null);
+                                            deleteChat(chatId);
+                                        }}
+                                    >
+                                        <Trash2 size={14} />
+                                        <span>Delete</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+    };
 
     return (
         <aside id="sidebar" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -214,27 +391,34 @@ export default function Sidebar({
             </div>
 
             {isSidebarOpen && (
-                <>
-                    <div className="chats-section" style={{ padding: '0 12px', flexGrow: 1, overflowY: 'auto' }}>
-                        <div className="section-title">Recent</div>
+                <div className="chats-section" style={{ padding: '0 12px', flexGrow: 1, overflowY: 'auto' }}>
+                    {pinnedChatIds.length > 0 && (
+                        <div className="chat-group" style={{ marginBottom: '16px' }}>
+                            <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Pin size={11} style={{ transform: 'rotate(45deg)', color: '#4285F4' }} />
+                                <span>Pinned</span>
+                            </div>
+                            <div className="chat-list">
+                                {pinnedChatIds.map(chatId => renderChatItem(chatId, true))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="chat-group">
+                        <div className="section-title">
+                            {pinnedChatIds.length > 0 ? 'Recent' : 'Recent'}
+                        </div>
                         <div className="chat-list">
-                            {filteredChatIds.slice(0, 15).map(chatId => {
-                                const firstUserMsg = chats[chatId].find(m => m.sender === 'user')?.text;
-                                const title = firstUserMsg || (chats[chatId][0]?.isTitleFallback ? chats[chatId][0].text : "New Chat");
-                                
-                                return (
-                                    <div 
-                                        key={chatId} 
-                                        className={`chat-item ${currentChatId === chatId ? 'active' : ''}`}
-                                        onClick={() => handleAction(() => switchChat(chatId))}
-                                    >
-                                        <span className="chat-title">{title}</span>
-                                    </div>
-                                );
-                            })}
+                            {recentChatIds.map(chatId => renderChatItem(chatId, false))}
                         </div>
                     </div>
-                </>
+
+                    {pinnedChatIds.length === 0 && recentChatIds.length === 0 && (
+                        <div style={{ padding: '16px 14px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                            {searchQuery ? 'No chats match search' : 'No chats yet'}
+                        </div>
+                    )}
+                </div>
             )}
 
             {/* When sidebar is closed, flexGrow to push bottom to bottom */}

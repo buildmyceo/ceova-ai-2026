@@ -2322,58 +2322,227 @@ body {
     background: rgba(255,255,255,0.03);
 }
 
-/* CHAT ITEM TOOLS (Pin/Delete) */
+/* CHAT ITEM TOOLS & DROPDOWN MENU */
 .chat-item {
     position: relative;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 12px;
-    margin: 4px 0;
-    border-radius: 12px;
+    padding: 8px 10px;
+    margin: 2px 0;
+    border-radius: 8px;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
-.chat-item-main {
+.chat-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+}
+
+.chat-item.active {
+    background: rgba(255, 255, 255, 0.09);
+    color: white;
+    font-weight: 500;
+}
+
+.chat-item.pinned-item {
+    background: rgba(66, 133, 244, 0.04);
+}
+
+.chat-item.pinned-item:hover {
+    background: rgba(66, 133, 244, 0.08);
+}
+
+.chat-item.pinned-item.active {
+    background: rgba(66, 133, 244, 0.14);
+}
+
+.chat-item-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     flex: 1;
+    min-width: 0;
     overflow: hidden;
 }
 
-.chat-item-actions {
+.chat-pinned-indicator {
+    color: #4285F4;
+    flex-shrink: 0;
+    transform: rotate(45deg);
+}
+
+.chat-item-menu-container {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 4px;
-    opacity: 0;
-    transition: opacity 0.2s;
+    flex-shrink: 0;
+    margin-left: 4px;
 }
 
-.chat-item:hover .chat-item-actions,
-.chat-item.active .chat-item-actions {
-    opacity: 1;
-}
-
-.pin-chat-btn, .delete-chat-btn {
+.chat-item-more-btn {
     background: transparent;
     border: none;
     color: var(--text-muted);
-    padding: 4px;
+    cursor: pointer;
+    padding: 3px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.chat-item:hover .chat-item-more-btn,
+.chat-item.active .chat-item-more-btn,
+.chat-item-more-btn.active {
+    opacity: 1;
+}
+
+.chat-item-more-btn:hover,
+.chat-item-more-btn.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-main);
+}
+
+@media (max-width: 768px) {
+    .chat-item-more-btn {
+        opacity: 0.75;
+    }
+}
+
+.chat-item-dropdown {
+    position: absolute;
+    right: 0;
+    background: #1c1c1e;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+    padding: 5px;
+    z-index: 1000;
+    min-width: 140px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.chat-item-dropdown.placement-bottom {
+    top: calc(100% + 4px);
+}
+
+.chat-item-dropdown.placement-top {
+    bottom: calc(100% + 4px);
+}
+
+.chat-dropdown-item {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    padding: 7px 10px;
+    font-size: 0.8rem;
+    font-weight: 500;
     border-radius: 6px;
     cursor: pointer;
     display: flex;
     align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
-.pin-chat-btn:hover { color: #4285F4; background: rgba(66, 133, 244, 0.1); }
-.delete-chat-btn:hover { color: #EA4335; background: rgba(234, 67, 53, 0.1); }
+.chat-dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+}
 
-.pin-chat-btn.active { color: #4285F4; opacity: 1; }
+.chat-dropdown-item.danger {
+    color: #ef4444;
+}
 
-.chat-item.pinned-item {
-    background: rgba(66, 133, 244, 0.03);
-    border-left: 3px solid #4285F4;
+.chat-dropdown-item.danger:hover {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ff6b6b;
+}
+
+/* Rename field styles */
+.chat-rename-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+}
+
+.chat-rename-input {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    color: var(--text-main);
+    font-size: 0.82rem;
+    padding: 4px 8px;
+    flex: 1;
+    min-width: 0;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.chat-rename-input:focus {
+    border-color: #4285F4;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.chat-rename-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.chat-rename-btn {
+    background: transparent;
+    border: none;
+    padding: 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+}
+
+.chat-rename-btn.save {
+    color: #22c55e;
+}
+
+.chat-rename-btn.save:hover {
+    background: rgba(34, 197, 94, 0.18);
+}
+
+.chat-rename-btn.cancel {
+    color: #ef4444;
+}
+
+.chat-rename-btn.cancel:hover {
+    background: rgba(239, 68, 68, 0.18);
+}
+
+.theme-light .chat-item-dropdown {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.12);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+.theme-light .chat-rename-input {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.15);
+}
+
+.theme-light .chat-rename-input:focus {
+    background: rgba(0, 0, 0, 0.08);
 }
 
 /* UNIFIED MESSAGE ACTIONS (AI & USER) */
