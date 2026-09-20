@@ -7,7 +7,7 @@ import SettingsModal from '../components/SettingsModalV2';
 import SearchModal from '../components/SearchModal';
 import Library from './Library';
 import { cacheManager } from '../services/CacheManager';
-import { Search, MoreVertical, Menu, Share2, Check, Camera, BarChart3, Zap, Brain, Link, Send, Glasses, Edit, ChevronDown, Compass, Image, Globe, MessageCircleDashed, CheckCircle2 } from 'lucide-react';
+import { Search, MoreVertical, Menu, Share2, Check, Camera, BarChart3, Zap, Brain, Link, Send, Glasses, Edit, ChevronDown, Compass, Image, Globe, MessageCircleDashed, CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Login from './Login';
 import { buildSystemPrompt } from '../lib/systemPromptBuilder';
@@ -1323,12 +1323,37 @@ export default function Home({ session }) {
             <AnimatePresence>
                 {toast && (
                     <motion.div
-                        initial={{ opacity: 0, y: -20, x: '-50%' }}
-                        animate={{ opacity: 1, y: 0, x: '-50%' }}
-                        exit={{ opacity: 0, y: -20, x: '-50%' }}
-                        className={`share-toast ${toast.type || 'error'}`}
+                        key="app-toast"
+                        initial={{ opacity: 0, y: -24, x: '-50%', scale: 0.94, filter: 'blur(4px)' }}
+                        animate={{ opacity: 1, y: 0, x: '-50%', scale: 1, filter: 'blur(0px)' }}
+                        exit={{ opacity: 0, y: -16, x: '-50%', scale: 0.96, filter: 'blur(4px)' }}
+                        transition={{ type: "spring", stiffness: 450, damping: 30 }}
+                        className={`share-toast ${toast.type || 'success'}`}
+                        onClick={() => setToast(null)}
                     >
-                        {toast.message}
+                        <div className={`toast-icon-badge ${toast.type || 'success'}`}>
+                            {toast.type === 'error' ? (
+                                <AlertCircle size={14} strokeWidth={2.4} />
+                            ) : toast.type === 'warning' ? (
+                                <AlertTriangle size={14} strokeWidth={2.4} />
+                            ) : toast.type === 'info' ? (
+                                <Info size={14} strokeWidth={2.4} />
+                            ) : (
+                                <CheckCircle2 size={14} strokeWidth={2.4} />
+                            )}
+                        </div>
+                        <span className="toast-message">{toast.message}</span>
+                        <button 
+                            type="button" 
+                            className="toast-close-btn"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setToast(null);
+                            }}
+                            title="Dismiss"
+                        >
+                            <X size={12} strokeWidth={2.2} />
+                        </button>
                     </motion.div>
                 )}
             </AnimatePresence>
