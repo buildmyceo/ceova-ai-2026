@@ -62,25 +62,20 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
         setLoading(true);
 
         try {
-            // Check subscription plan phone limit (Spark: max 1 email, Flow: max 5 emails)
             const { data: { user } } = await supabase.auth.getUser();
-            const { data: limitCheck, error: limitErr } = await supabase.rpc('check_phone_link_limit', {
-                target_phone: fullPhone,
-                check_user_id: user?.id || null
+            if (!user) throw new Error('Please sign in to link your phone.');
+
+            // Call send-link-otp directly: checks plan limit, sends OTP to Phone + Gmail
+            const { data: res, error: fnErr } = await supabase.functions.invoke('send-sms-hook', {
+                body: {
+                    action: 'send-link-otp',
+                    phone: fullPhone,
+                    userId: user.id
+                }
             });
 
-            if (limitCheck && limitCheck.allowed === false) {
-                setError(limitCheck.reason || 'This phone number cannot be linked under your current plan.');
-                setLoading(false);
-                return;
-            }
-
-            const { error: updateError } = await supabase.auth.updateUser({
-                phone: fullPhone
-            });
-
-            if (updateError) {
-                throw updateError;
+            if (fnErr || (res && res.success === false)) {
+                throw new Error(res?.error || fnErr?.message || 'Failed to send verification code.');
             }
 
             setStep('otp');
@@ -139,28 +134,20 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
         setLoading(true);
 
         try {
-            const { error: verifyError } = await supabase.auth.verifyOtp({
-                phone: fullPhone,
-                token,
-                type: 'phone_change'
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('Session expired. Please sign in again.');
+
+            const { data: res, error: fnErr } = await supabase.functions.invoke('send-sms-hook', {
+                body: {
+                    action: 'verify-link-otp',
+                    phone: fullPhone,
+                    otp: token,
+                    userId: user.id
+                }
             });
 
-            if (verifyError) {
-                throw verifyError;
-            }
-
-            // Record link in public.user_phone_links table
-            try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                    await supabase.rpc('record_phone_link', {
-                        link_user_id: user.id,
-                        link_phone: fullPhone,
-                        link_email: user.email
-                    });
-                }
-            } catch (rErr) {
-                console.warn('[PhoneLinkModal] Could not record phone link:', rErr);
+            if (fnErr || (res && res.success === false)) {
+                throw new Error(res?.error || fnErr?.message || 'Invalid or expired OTP code.');
             }
 
             await supabase.auth.refreshSession();
@@ -183,10 +170,17 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
         setError('');
         setLoading(true);
         try {
-            const { error: resendErr } = await supabase.auth.updateUser({
-                phone: fullPhone
+            const { data: { user } } = await supabase.auth.getUser();
+            const { data: res, error: fnErr } = await supabase.functions.invoke('send-sms-hook', {
+                body: {
+                    action: 'send-link-otp',
+                    phone: fullPhone,
+                    userId: user?.id
+                }
             });
-            if (resendErr) throw resendErr;
+            if (fnErr || (res && res.success === false)) {
+                throw new Error(res?.error || fnErr?.message || 'Failed to resend OTP.');
+            }
             setResendTimer(60);
             setCanResend(false);
         } catch (err) {

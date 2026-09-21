@@ -53,31 +53,42 @@ export default function Login({ onClose }) {
 
     const fullPhone = `${countryCode}${phoneNumber.replace(/\D/g, '')}`;
 
-    const handleSendPhoneOtp = async () => {
+    const [linkedAccounts, setLinkedAccounts] = useState([]);
+    const [selectedLoginEmail, setSelectedLoginEmail] = useState('');
+
+    const handleSendPhoneOtp = async (overrideEmail = '') => {
         const cleanNumber = phoneNumber.replace(/\D/g, '');
         if (cleanNumber.length < 7) {
             setAuthError("Please enter a valid phone number.");
             return;
         }
 
+        const emailToSend = overrideEmail || selectedLoginEmail;
+
         setAuthError("Sending OTP code...");
         setPhoneLoading(true);
 
         try {
-            // Require user to have registered with Google first (shouldCreateUser: false)
-            const { error } = await supabase.auth.signInWithOtp({
-                phone: fullPhone,
-                options: { shouldCreateUser: false }
+            const { data: res, error: fnErr } = await supabase.functions.invoke('send-sms-hook', {
+                body: {
+                    action: 'send-login-otp',
+                    phone: fullPhone,
+                    email: emailToSend || undefined
+                }
             });
 
-            if (error) {
-                // If phone is not linked to any existing user account
-                if (error.status === 422 || error.code === 'otp_disabled' || String(error.message).toLowerCase().includes('signups not allowed')) {
-                    setAuthError("No account found with this phone number. Please sign in with Google first to link your phone number.");
-                } else {
-                    setAuthError(error.message || "Failed to send OTP.");
-                }
+            if (fnErr || (res && res.success === false)) {
+                throw new Error(res?.error || fnErr?.message || "Failed to send OTP.");
+            }
+
+            if (res?.require_account_selection && Array.isArray(res?.accounts)) {
+                setLinkedAccounts(res.accounts);
+                setAuthError("Select which account you wish to sign in with:");
                 return;
+            }
+
+            if (res?.full_email) {
+                setSelectedLoginEmail(res.full_email);
             }
 
             setAuthError("");
@@ -121,28 +132,34 @@ export default function Login({ onClose }) {
         setPhoneLoading(true);
 
         try {
-            const { error } = await supabase.auth.verifyOtp({
-                phone: fullPhone,
-                token,
-                type: 'sms'
+            const { data: res, error: fnErr } = await supabase.functions.invoke('send-sms-hook', {
+                body: {
+                    action: 'verify-login-otp',
+                    phone: fullPhone,
+                    otp: token,
+                    email: selectedLoginEmail || undefined
+                }
             });
 
-            if (error) {
-                setAuthError(error.message || "Invalid or expired verification code.");
-                return;
+            if (fnErr || (res && res.success === false)) {
+                throw new Error(res?.error || fnErr?.message || "Invalid or expired verification code.");
+            }
+
+            if (!res?.token_hash) {
+                throw new Error("Could not authenticate session.");
+            }
+
+            const { error: verifyError } = await supabase.auth.verifyOtp({
+                token_hash: res.token_hash,
+                type: 'magiclink'
+            });
+
+            if (verifyError) {
+                throw verifyError;
             }
 
             setAuthError("");
-            // Sync with user_phone_links
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                await supabase.rpc('record_phone_link', {
-                    link_user_id: user.id,
-                    link_phone: fullPhone,
-                    link_email: user.email
-                }).catch(() => {});
-            }
-            // AuthProvider will detect the new session and redirect
+            // AuthProvider will automatically detect session and redirect
         } catch (err) {
             setAuthError(err?.message || "Verification failed. Please try again.");
         } finally {
@@ -155,11 +172,16 @@ export default function Login({ onClose }) {
         setAuthError("Resending OTP...");
         setPhoneLoading(true);
         try {
-            const { error } = await supabase.auth.signInWithOtp({
-                phone: fullPhone,
-                options: { shouldCreateUser: false }
+            const { data: res, error: fnErr } = await supabase.functions.invoke('send-sms-hook', {
+                body: {
+                    action: 'send-login-otp',
+                    phone: fullPhone,
+                    email: selectedLoginEmail || undefined
+                }
             });
-            if (error) throw error;
+            if (fnErr || (res && res.success === false)) {
+                throw new Error(res?.error || fnErr?.message || "Failed to resend OTP.");
+            }
             setAuthError("");
             setResendTimer(60);
             setCanResend(false);
@@ -370,6 +392,36 @@ export default function Login({ onClose }) {
                                         autoFocus
                                     />
                                 </div>
+                                {linkedAccounts.length > 1 && (
+                                    <div style={{ margin: '12px 0', display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' }}>
+                                        <div style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Multiple accounts found. Select one to sign in:</div>
+                                        {linkedAccounts.map(acc => (
+                                            <button
+                                                key={acc.email}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedLoginEmail(acc.email);
+                                                    handleSendPhoneOtp(acc.email);
+                                                }}
+                                                style={{
+                                                    padding: '10px 14px',
+                                                    borderRadius: '8px',
+                                                    border: selectedLoginEmail === acc.email ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.12)',
+                                                    background: selectedLoginEmail === acc.email ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
+                                                    color: '#fff',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.85rem',
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center'
+                                                }}
+                                            >
+                                                <span>{acc.email}</span>
+                                                <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>Send OTP &rarr;</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                                 <button 
                                     className="auth-submit-btn" 
                                     type="submit"
