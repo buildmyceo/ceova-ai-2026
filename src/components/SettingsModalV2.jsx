@@ -463,8 +463,8 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                                 <Smartphone size={18} /> 
                                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                                                     <span>Phone Login</span>
-                                                    <span style={{ fontSize: '10px', opacity: 0.6 }}>
-                                                        {session?.user?.phone ? "Verified for SMS login" : "Not linked — click to add"}
+                                                    <span style={{ fontSize: '10px', opacity: 0.7 }}>
+                                                        {session?.user?.phone ? `${session.user.phone} linked to ${userEmail || session?.user?.email || "your account"}` : "Not linked — click to add"}
                                                     </span>
                                                 </div>
                                             </div>

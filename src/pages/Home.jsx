@@ -1708,10 +1708,16 @@ export default function Home({ session }) {
                             sessionStorage.setItem('ceova_phone_prompt_dismissed', 'true');
                         }}
                         initialPhone={session?.user?.phone || ''}
+                        userEmail={session?.user?.email || ''}
+                        userId={session?.user?.id || ''}
                         onSuccess={(verifiedPhone) => {
                             showToast(`Phone number linked successfully! (${verifiedPhone})`, 'success');
                             setIsPhoneModalOpen(false);
                             sessionStorage.setItem('ceova_phone_prompt_dismissed', 'true');
+                        }}
+                        onDisconnect={() => {
+                            showToast('Phone number disconnected successfully.', 'info');
+                            setIsPhoneModalOpen(false);
                         }}
                     />
                 )}

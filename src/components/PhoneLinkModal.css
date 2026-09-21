@@ -381,3 +381,161 @@
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
 }
+
+/* Badge variants */
+.phone-badge-success {
+    background: rgba(16, 185, 129, 0.12) !important;
+    border-color: rgba(16, 185, 129, 0.28) !important;
+    color: #34d399 !important;
+}
+
+.phone-badge-danger {
+    background: rgba(239, 68, 68, 0.12) !important;
+    border-color: rgba(239, 68, 68, 0.28) !important;
+    color: #f87171 !important;
+}
+
+/* Plan Limit Pill */
+.phone-limit-pill {
+    font-size: 0.78rem;
+    color: #9ca3af;
+    margin-bottom: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Linked State Card */
+.phone-linked-card {
+    width: 100%;
+    background: #18181b;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 12px;
+    padding: 16px 14px;
+    margin-bottom: 1.15rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+}
+
+.phone-linked-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: #34d399;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 3px 9px;
+    border-radius: 16px;
+    margin-bottom: 2px;
+}
+
+.phone-linked-text {
+    font-size: 0.95rem;
+    color: #f4f4f5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    text-align: center;
+}
+
+.phone-linked-text .phone-highlight {
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: #ffffff;
+    letter-spacing: 0.02em;
+}
+
+.phone-linked-text .link-connector {
+    font-size: 0.78rem;
+    color: #71717a;
+    text-transform: lowercase;
+}
+
+.phone-linked-text .email-highlight {
+    font-weight: 500;
+    color: #a1a1aa;
+    font-size: 0.88rem;
+    word-break: break-all;
+}
+
+/* Disconnect Button */
+.phone-disconnect-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 42px;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.22);
+    color: #fca5a5;
+    transition: all 0.15s ease;
+    margin-bottom: 0.45rem;
+    box-sizing: border-box;
+}
+
+.phone-disconnect-btn:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.16);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #ef4444;
+}
+
+.phone-disconnect-btn:disabled {
+    background: #1f1f23;
+    color: #52525b;
+    border-color: rgba(255, 255, 255, 0.04);
+    cursor: not-allowed;
+}
+
+/* Confirm Disconnect Action Button */
+.phone-disconnect-confirm-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 42px;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-bottom: 0.45rem;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+}
+
+.phone-disconnect-confirm-btn:not(:disabled) {
+    background: #ef4444;
+    border-color: #ef4444;
+    color: #ffffff;
+}
+
+.phone-disconnect-confirm-btn:not(:disabled):hover {
+    background: #dc2626;
+    border-color: #dc2626;
+}
+
+.phone-disconnect-confirm-btn:disabled {
+    background: #1f1f23;
+    color: #52525b;
+    border-color: rgba(255, 255, 255, 0.04);
+    cursor: not-allowed;
+    font-weight: 500;
+}

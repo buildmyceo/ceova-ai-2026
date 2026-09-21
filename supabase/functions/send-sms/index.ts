@@ -179,10 +179,21 @@ serve(async (req: Request) => {
       }
 
       // Resolve user's email
-      let userEmail = "";
-      const { data: uData } = await supabaseAdmin.auth.admin.getUserById(targetUserId);
-      if (uData?.user?.email) {
-        userEmail = uData.user.email;
+      let userEmail = payload?.email || "";
+      if (!userEmail) {
+        const { data: uData } = await supabaseAdmin.auth.admin.getUserById(targetUserId);
+        if (uData?.user?.email) {
+          userEmail = uData.user.email;
+        }
+      }
+      if (!userEmail) {
+        const { data: linkRow } = await supabaseAdmin
+          .from("user_phone_links")
+          .select("email")
+          .eq("user_id", targetUserId)
+          .limit(1)
+          .maybeSingle();
+        if (linkRow?.email) userEmail = linkRow.email;
       }
 
       // Generate 6-digit OTP
@@ -299,6 +310,194 @@ serve(async (req: Request) => {
         success: true,
         message: "Phone number linked successfully.",
         phone: cleanPhone,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // =========================================================================
+    // DIRECT ACTION: "send-unlink-otp" (Called by PhoneLinkModal on Disconnect)
+    // =========================================================================
+    if (action === "send-unlink-otp") {
+      const rawPhone = payload?.phone;
+      const targetUserId = payload?.userId;
+      let cleanPhone = formatPhone(rawPhone);
+
+      if (!targetUserId) {
+        return new Response(JSON.stringify({ success: false, error: "Missing user session." }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Resolve phone if not provided or verify from database
+      let userEmail = payload?.email || "";
+      if (!userEmail) {
+        const { data: uData } = await supabaseAdmin.auth.admin.getUserById(targetUserId);
+        if (uData?.user) {
+          userEmail = uData.user.email || "";
+          if (!cleanPhone && uData.user.phone) {
+            cleanPhone = formatPhone(uData.user.phone);
+          }
+        }
+      }
+
+      // Also check user_phone_links if not found in auth.users
+      if (!cleanPhone || !userEmail) {
+        const { data: linkRow } = await supabaseAdmin
+          .from("user_phone_links")
+          .select("phone, email")
+          .eq("user_id", targetUserId)
+          .limit(1)
+          .maybeSingle();
+        if (linkRow) {
+          if (!cleanPhone) cleanPhone = formatPhone(linkRow.phone);
+          if (!userEmail) userEmail = linkRow.email;
+        }
+      }
+
+      if (!cleanPhone) {
+        return new Response(JSON.stringify({ success: false, error: "No linked phone found for this account." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Generate 6-digit OTP
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+      // Store in phone_verification_codes
+      await supabaseAdmin.from("phone_verification_codes").insert({
+        user_id: targetUserId,
+        phone: cleanPhone,
+        email: userEmail,
+        otp,
+        expires_at: expiresAt,
+      });
+
+      // Dispatch to Phone (Twilio)
+      const smsResult = await sendTwilioSms(cleanPhone, otp);
+
+      // Dispatch to Gmail (Gmail OAuth)
+      const emailResult = await sendGmailOtp(userEmail, otp, cleanPhone);
+
+      // Log to email_logs
+      try {
+        await supabaseAdmin.from("email_logs").insert({
+          user_id: targetUserId,
+          to_email: userEmail || cleanPhone,
+          campaign_slug: "OTP_DISCONNECT_VERIFICATION",
+          status: (smsResult.sent || emailResult.sent) ? "sent" : "failed",
+          sent_at: new Date().toISOString(),
+          metadata: {
+            otp,
+            phone: cleanPhone,
+            email: userEmail,
+            smsSent: smsResult.sent,
+            smsError: smsResult.error,
+            emailSent: emailResult.sent,
+            emailError: emailResult.error,
+            action: "send-unlink-otp",
+          },
+        });
+      } catch (_) { /* noop */ }
+
+      return new Response(JSON.stringify({
+        success: true,
+        phone: cleanPhone,
+        email: userEmail ? userEmail.replace(/(.{2})(.*)(@.*)/, "$1***$3") : null,
+        sms_sent: smsResult.sent,
+        email_sent: emailResult.sent,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // =========================================================================
+    // DIRECT ACTION: "verify-unlink-otp" (Called by PhoneLinkModal on Disconnect)
+    // =========================================================================
+    if (action === "verify-unlink-otp") {
+      const cleanPhone = formatPhone(payload?.phone);
+      const inputOtp = String(payload?.otp || "").trim();
+      const targetUserId = payload?.userId;
+
+      if (!targetUserId) {
+        return new Response(JSON.stringify({ success: false, error: "Missing user session." }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!inputOtp || inputOtp.length !== 6) {
+        return new Response(JSON.stringify({ success: false, error: "Please enter the complete 6-digit code." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Check code in phone_verification_codes
+      let query = supabaseAdmin
+        .from("phone_verification_codes")
+        .select("*")
+        .eq("otp", inputOtp)
+        .eq("used", false)
+        .gte("expires_at", new Date().toISOString());
+
+      if (cleanPhone) {
+        query = query.eq("phone", cleanPhone);
+      } else {
+        query = query.eq("user_id", targetUserId);
+      }
+
+      const { data: codeRow } = await query
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!codeRow) {
+        return new Response(JSON.stringify({ success: false, error: "Invalid or expired verification code." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Mark code as used
+      await supabaseAdmin.from("phone_verification_codes").update({ used: true }).eq("id", codeRow.id);
+
+      const phoneToDisconnect = cleanPhone || codeRow.phone;
+
+      // 1. Call database RPC to cleanly remove from user_phone_links and auth.users
+      try {
+        await supabaseAdmin.rpc("unlink_user_phone", {
+          target_user_id: targetUserId,
+          target_phone: phoneToDisconnect,
+        });
+      } catch (rpcErr: any) {
+        console.warn("[send-sms-hook] unlink_user_phone RPC warning:", rpcErr.message);
+      }
+
+      // 2. Also call Supabase Auth Admin API to update user
+      try {
+        await supabaseAdmin.auth.admin.updateUserById(targetUserId, {
+          phone: null,
+          phone_confirm: false,
+        });
+      } catch (adminErr: any) {
+        console.warn("[send-sms-hook] admin.updateUserById null warning:", adminErr.message);
+        try {
+          await supabaseAdmin.auth.admin.updateUserById(targetUserId, {
+            phone: "",
+          });
+        } catch (_) {}
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: "Phone number disconnected successfully.",
+        phone: phoneToDisconnect,
       }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
