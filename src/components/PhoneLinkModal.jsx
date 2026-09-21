@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Smartphone, ArrowRight, CheckCircle2, RotateCcw, ShieldCheck, AlertCircle, Loader2, ChevronDown, Unlink, ShieldAlert, ArrowLeft, Flag, HelpCircle } from 'lucide-react';
+import { X, Smartphone, ArrowRight, CheckCircle2, RotateCcw, ShieldCheck, AlertCircle, Loader2, ChevronDown, Unlink, ShieldAlert, ArrowLeft, Flag, HelpCircle, Lock } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { COUNTRY_CODES } from '../constants/countryCodes';
 import './PhoneLinkModal.css';
@@ -763,7 +763,7 @@ export default function PhoneLinkModal({
                             transition={{ duration: 0.15 }}
                             className="phone-modal-content"
                         >
-                            <div className="phone-modal-icon-badge phone-badge-conflict">
+                            <div className="phone-modal-icon-badge">
                                 <ShieldAlert size={22} strokeWidth={1.8} />
                             </div>
 
@@ -780,7 +780,7 @@ export default function PhoneLinkModal({
                                 </div>
                                 <div className="phone-conflict-divider" />
                                 <div className="phone-conflict-plan-note">
-                                    <span>🔒</span>
+                                    <Lock size={12} strokeWidth={2} style={{ color: '#9ca3af', flexShrink: 0 }} />
                                     <span>
                                         Limit: 1 email per phone in <strong>Spark</strong> plan. Upgrade to <strong>Flow</strong> to connect up to 5 emails to this number.
                                     </span>

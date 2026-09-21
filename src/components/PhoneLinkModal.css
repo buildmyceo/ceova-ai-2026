@@ -533,9 +533,9 @@
 /* ========================================================================= */
 
 .phone-badge-conflict {
-    background: rgba(245, 158, 11, 0.1) !important;
-    border-color: rgba(245, 158, 11, 0.25) !important;
-    color: #fbbf24 !important;
+    background: #1c1c20 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #f4f4f5 !important;
 }
 
 .phone-conflict-card {
@@ -576,13 +576,15 @@
 .phone-conflict-email {
     font-size: 0.95rem;
     font-weight: 600;
-    color: #fbbf24;
-    background: rgba(245, 158, 11, 0.08);
-    border: 1px solid rgba(245, 158, 11, 0.2);
-    padding: 3px 12px;
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 4px 14px;
     border-radius: 20px;
     word-break: break-all;
     display: inline-block;
+    letter-spacing: 0.01em;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .phone-conflict-divider {
