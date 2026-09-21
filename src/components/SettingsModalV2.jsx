@@ -469,7 +469,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                                 </div>
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span className="version-info" style={{ color: session?.user?.phone ? '#10a37f' : 'inherit' }}>
+                                                <span className="version-info" style={{ color: session?.user?.phone ? '#e4e4e7' : 'inherit' }}>
                                                     {session?.user?.phone || "Link Phone"}
                                                 </span>
                                                 <ChevronRight size={14} className="chevron" />

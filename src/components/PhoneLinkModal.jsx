@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Smartphone, ArrowRight, CheckCircle2, RotateCcw, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
+import { X, Smartphone, ArrowRight, CheckCircle2, RotateCcw, ShieldCheck, AlertCircle, Loader2, ChevronDown } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { COUNTRY_CODES } from '../constants/countryCodes';
 import './PhoneLinkModal.css';
@@ -14,11 +14,11 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
     const [error, setError] = useState('');
     const [resendTimer, setResendTimer] = useState(60);
     const [canResend, setCanResend] = useState(false);
+    const [isInputFocused, setIsInputFocused] = useState(false);
     const otpRefs = useRef([]);
 
     useEffect(() => {
         if (initialPhone) {
-            // Check if initialPhone has country code
             const matchedCode = COUNTRY_CODES.find(c => initialPhone.startsWith(c.code));
             if (matchedCode) {
                 setCountryCode(matchedCode.code);
@@ -62,7 +62,6 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
         setLoading(true);
 
         try {
-            // When already logged in, updateUser({ phone }) initiates phone verification with OTP
             const { error: updateError } = await supabase.auth.updateUser({
                 phone: fullPhone
             });
@@ -97,6 +96,19 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
         }
     };
 
+    const handleOtpPaste = (e) => {
+        e.preventDefault();
+        const pasteData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+        if (!pasteData) return;
+        const newOtp = [...otp];
+        for (let i = 0; i < pasteData.length; i++) {
+            newOtp[i] = pasteData[i];
+        }
+        setOtp(newOtp);
+        const nextIdx = Math.min(pasteData.length, 5);
+        otpRefs.current[nextIdx]?.focus();
+    };
+
     const handleOtpKeyDown = (index, e) => {
         if (e.key === 'Backspace' && !otp[index] && index > 0) {
             otpRefs.current[index - 1]?.focus();
@@ -106,7 +118,7 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
     const handleVerifyOtp = async () => {
         const token = otp.join('');
         if (token.length !== 6) {
-            setError('Please enter the full 6-digit OTP code.');
+            setError('Please enter the full 6-digit verification code.');
             return;
         }
 
@@ -114,7 +126,6 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
         setLoading(true);
 
         try {
-            // Verify OTP for phone linking on current authenticated user
             const { error: verifyError } = await supabase.auth.verifyOtp({
                 phone: fullPhone,
                 token,
@@ -125,14 +136,13 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
                 throw verifyError;
             }
 
-            // Refresh user session to ensure session.user.phone is updated
             await supabase.auth.refreshSession();
 
             setStep('success');
             setTimeout(() => {
                 onSuccess?.(fullPhone);
                 onClose();
-            }, 2000);
+            }, 1800);
         } catch (err) {
             console.error('[PhoneLinkModal] Verify OTP error:', err);
             setError(err.message || 'Invalid or expired OTP code. Please try again.');
@@ -159,63 +169,76 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
         }
     };
 
+    const isPhoneValid = phoneNumber.replace(/\D/g, '').length >= 7;
+
     return (
         <div className="phone-modal-overlay" onClick={onClose}>
             <motion.div 
                 className="phone-modal-card"
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                initial={{ opacity: 0, scale: 0.97, y: 12 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                exit={{ opacity: 0, scale: 0.97, y: 12 }}
+                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                 onClick={(e) => e.stopPropagation()}
             >
-                <button className="phone-modal-close" onClick={onClose}>
-                    <X size={18} />
+                <button className="phone-modal-close" onClick={onClose} aria-label="Close">
+                    <X size={16} />
                 </button>
 
                 <AnimatePresence mode="wait">
                     {step === 'input' && (
                         <motion.div 
                             key="input"
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 10 }}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -6 }}
+                            transition={{ duration: 0.15 }}
                             className="phone-modal-content"
                         >
                             <div className="phone-modal-icon-badge">
-                                <Smartphone size={28} />
+                                <Smartphone size={22} strokeWidth={1.8} />
                             </div>
 
                             <h3 className="phone-modal-title">Link Your Phone Number</h3>
                             <p className="phone-modal-subtitle">
-                                Connect your phone number to access your Ceova AI account seamlessly with SMS OTP from any device.
+                                Connect your phone number to access your Ceova AI account securely with SMS OTP from any device.
                             </p>
 
                             {error && (
                                 <div className="phone-modal-error">
-                                    <AlertCircle size={16} />
+                                    <AlertCircle size={15} />
                                     <span>{error}</span>
                                 </div>
                             )}
 
-                            <div className="phone-input-row">
-                                <select 
-                                    className="phone-country-select"
-                                    value={countryCode}
-                                    onChange={(e) => setCountryCode(e.target.value)}
-                                >
-                                    {COUNTRY_CODES.map((c) => (
-                                        <option key={`${c.code}-${c.country}`} value={c.code}>
-                                            {c.flag} {c.code} ({c.country})
-                                        </option>
-                                    ))}
-                                </select>
+                            <div className={`phone-unified-input ${isInputFocused ? 'focused' : ''} ${error ? 'has-error' : ''}`}>
+                                <div className="phone-country-picker">
+                                    <select 
+                                        className="phone-country-select"
+                                        value={countryCode}
+                                        onChange={(e) => setCountryCode(e.target.value)}
+                                        onFocus={() => setIsInputFocused(true)}
+                                        onBlur={() => setIsInputFocused(false)}
+                                    >
+                                        {COUNTRY_CODES.map((c) => (
+                                            <option key={`${c.code}-${c.country}`} value={c.code}>
+                                                {c.flag} {c.code} ({c.country})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown size={13} className="phone-country-chevron" />
+                                </div>
+
+                                <div className="phone-input-separator" />
 
                                 <input 
                                     type="tel"
-                                    className="phone-number-input"
+                                    className="phone-number-field"
                                     placeholder="Phone number"
                                     value={phoneNumber}
                                     onChange={(e) => setPhoneNumber(e.target.value)}
+                                    onFocus={() => setIsInputFocused(true)}
+                                    onBlur={() => setIsInputFocused(false)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleSendOtp()}
                                     autoFocus
                                 />
@@ -224,17 +247,17 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
                             <button 
                                 className="phone-modal-submit-btn"
                                 onClick={handleSendOtp}
-                                disabled={loading || !phoneNumber.trim()}
+                                disabled={loading || !isPhoneValid}
                             >
                                 {loading ? (
                                     <>
-                                        <Loader2 size={18} className="spin-animate" />
-                                        <span>Sending OTP...</span>
+                                        <Loader2 size={16} className="spin-animate" />
+                                        <span>Sending Code...</span>
                                     </>
                                 ) : (
                                     <>
                                         <span>Send Verification Code</span>
-                                        <ArrowRight size={18} />
+                                        <ArrowRight size={16} />
                                     </>
                                 )}
                             </button>
@@ -248,13 +271,14 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
                     {step === 'otp' && (
                         <motion.div 
                             key="otp"
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 10 }}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -6 }}
+                            transition={{ duration: 0.15 }}
                             className="phone-modal-content"
                         >
                             <div className="phone-modal-icon-badge">
-                                <ShieldCheck size={28} />
+                                <ShieldCheck size={22} strokeWidth={1.8} />
                             </div>
 
                             <h3 className="phone-modal-title">Enter Verification Code</h3>
@@ -270,7 +294,7 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
 
                             {error && (
                                 <div className="phone-modal-error">
-                                    <AlertCircle size={16} />
+                                    <AlertCircle size={15} />
                                     <span>{error}</span>
                                 </div>
                             )}
@@ -287,6 +311,7 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
                                         value={digit}
                                         onChange={(e) => handleOtpChange(idx, e.target.value)}
                                         onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                                        onPaste={handleOtpPaste}
                                     />
                                 ))}
                             </div>
@@ -294,11 +319,11 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
                             <div className="phone-resend-row">
                                 {canResend ? (
                                     <button 
-                                        className="phone-resend-btn active"
+                                        className="phone-resend-btn"
                                         onClick={handleResend}
                                         disabled={loading}
                                     >
-                                        <RotateCcw size={14} /> Resend Code
+                                        <RotateCcw size={13} /> Resend Code
                                     </button>
                                 ) : (
                                     <span className="phone-resend-timer">
@@ -314,13 +339,13 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
                             >
                                 {loading ? (
                                     <>
-                                        <Loader2 size={18} className="spin-animate" />
+                                        <Loader2 size={16} className="spin-animate" />
                                         <span>Verifying...</span>
                                     </>
                                 ) : (
                                     <>
                                         <span>Verify & Link Account</span>
-                                        <ArrowRight size={18} />
+                                        <ArrowRight size={16} />
                                     </>
                                 )}
                             </button>
@@ -330,16 +355,16 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
                     {step === 'success' && (
                         <motion.div 
                             key="success"
-                            initial={{ opacity: 0, scale: 0.9 }}
+                            initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            className="phone-modal-content phone-modal-success"
+                            className="phone-modal-content"
                         >
-                            <div className="phone-modal-success-icon">
-                                <CheckCircle2 size={48} color="#10a37f" />
+                            <div className="phone-modal-success-badge">
+                                <CheckCircle2 size={26} strokeWidth={2} />
                             </div>
-                            <h3 className="phone-modal-title">Phone Number Verified!</h3>
+                            <h3 className="phone-modal-title">Phone Number Linked</h3>
                             <p className="phone-modal-subtitle">
-                                Your phone number (<strong>{fullPhone}</strong>) has been linked to your account. You can now use it to log in anytime.
+                                Your phone number (<strong>{fullPhone}</strong>) has been successfully verified and connected to your Ceova account.
                             </p>
                         </motion.div>
                     )}
