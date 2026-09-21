@@ -138,6 +138,13 @@ serve(async (req: Request) => {
       }
     };
 
+    const maskEmailThreeChars = (email: string): string => {
+      if (!email || !email.includes("@")) return "xxx****@email.com";
+      const [local, domain] = email.split("@");
+      const prefix = local.length <= 3 ? local : local.slice(0, 3);
+      return `${prefix}****@${domain}`;
+    };
+
     // =========================================================================
     // DIRECT ACTION: "send-link-otp" (Called by PhoneLinkModal)
     // =========================================================================
@@ -167,13 +174,30 @@ serve(async (req: Request) => {
       });
 
       if (!limitErr && limitCheck && limitCheck.allowed === false) {
+        let existingEmail = limitCheck.linked_email || "";
+        if (!existingEmail) {
+          const { data: linkRow } = await supabaseAdmin
+            .from("user_phone_links")
+            .select("email")
+            .eq("phone", cleanPhone)
+            .neq("user_id", targetUserId)
+            .limit(1)
+            .maybeSingle();
+          if (linkRow?.email) existingEmail = linkRow.email;
+        }
+
+        const masked = existingEmail ? maskEmailThreeChars(existingEmail) : "another account";
+
         return new Response(JSON.stringify({
           success: false,
-          error: limitCheck.reason,
-          plan: limitCheck.plan,
-          max_allowed: limitCheck.max_allowed,
+          limit_reached: true,
+          phone: cleanPhone,
+          linked_email: masked,
+          plan: limitCheck.plan || "Spark",
+          max_allowed: limitCheck.max_allowed || 1,
+          error: `${cleanPhone} is already logged in with ${masked}. Upgrade to Flow plan to connect more emails.`,
         }), {
-          status: 403,
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -515,6 +539,38 @@ serve(async (req: Request) => {
         success: true,
         message: "Phone number disconnected successfully.",
         phone: phoneToDisconnect,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // =========================================================================
+    // DIRECT ACTION: "report-phone-dispute" (Report wrong email / dispute)
+    // =========================================================================
+    if (action === "report-phone-dispute") {
+      const cleanPhone = formatPhone(payload?.phone);
+      const reportedEmail = payload?.reportedEmail;
+      const targetUserId = payload?.userId;
+      const reason = payload?.reason || "This is my phone number, but that is not my email";
+      const details = payload?.details || "";
+
+      try {
+        await supabaseAdmin.from("phone_dispute_reports").insert({
+          user_id: targetUserId || null,
+          phone: cleanPhone || payload?.phone,
+          reported_email: reportedEmail,
+          reason,
+          details,
+          status: "pending",
+        });
+      } catch (err: any) {
+        console.warn("[send-sms-hook] phone dispute insert warning:", err?.message);
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: "Your report has been submitted. Our security team will review it.",
       }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

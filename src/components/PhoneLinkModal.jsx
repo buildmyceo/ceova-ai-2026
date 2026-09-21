@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Smartphone, ArrowRight, CheckCircle2, RotateCcw, ShieldCheck, AlertCircle, Loader2, ChevronDown, Unlink } from 'lucide-react';
+import { X, Smartphone, ArrowRight, CheckCircle2, RotateCcw, ShieldCheck, AlertCircle, Loader2, ChevronDown, Unlink, ShieldAlert, ArrowLeft, Flag, HelpCircle } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { COUNTRY_CODES } from '../constants/countryCodes';
 import './PhoneLinkModal.css';
@@ -14,10 +15,11 @@ export default function PhoneLinkModal({
     userEmail = '', 
     userId = '' 
 }) {
+    const navigate = useNavigate();
     const [countryCode, setCountryCode] = useState('+91');
     const [phoneNumber, setPhoneNumber] = useState('');
     const [otp, setOtp] = useState(['', '', '', '', '', '']);
-    const [step, setStep] = useState('input'); // 'input', 'otp', 'success', 'linked', 'disconnect_otp', 'disconnect_success'
+    const [step, setStep] = useState('input'); // 'input', 'otp', 'success', 'linked', 'disconnect_otp', 'disconnect_success', 'limit_reached'
     const [linkedPhone, setLinkedPhone] = useState('');
     const [resolvedEmail, setResolvedEmail] = useState('');
     const [currentUserId, setCurrentUserId] = useState('');
@@ -26,6 +28,12 @@ export default function PhoneLinkModal({
     const [resendTimer, setResendTimer] = useState(60);
     const [canResend, setCanResend] = useState(false);
     const [isInputFocused, setIsInputFocused] = useState(false);
+    const [conflictData, setConflictData] = useState(null);
+    const [isReporting, setIsReporting] = useState(false);
+    const [reportReason, setReportReason] = useState('not_my_email');
+    const [reportDetails, setReportDetails] = useState('');
+    const [reportLoading, setReportLoading] = useState(false);
+    const [reportSuccess, setReportSuccess] = useState(false);
     const otpRefs = useRef([]);
 
     // Initialize user and linked state
@@ -154,8 +162,46 @@ export default function PhoneLinkModal({
                 }
             });
 
+            // Check if phone number is already linked to another email / limit reached
+            let responseData = res;
+            if (!responseData && fnErr && fnErr.context) {
+                try {
+                    responseData = await fnErr.context.json();
+                } catch (_) {}
+            }
+
+            if (responseData?.limit_reached || (responseData && responseData.success === false && (responseData?.error?.includes('already logged in') || responseData?.error?.includes('already linked') || responseData?.plan))) {
+                setConflictData({
+                    phone: responseData?.phone || fullPhone,
+                    linkedEmail: responseData?.linked_email || 'another email',
+                    plan: responseData?.plan || 'Spark',
+                    maxAllowed: responseData?.max_allowed || 1,
+                    message: responseData?.error || `${formatPhoneDisplay(fullPhone)} is already logged in with ${responseData?.linked_email || 'another email'}.`
+                });
+                setIsReporting(false);
+                setReportSuccess(false);
+                setReportDetails('');
+                setStep('limit_reached');
+                return;
+            }
+
             if (fnErr || (res && res.success === false)) {
-                throw new Error(res?.error || fnErr?.message || 'Failed to send verification code.');
+                const errMsg = responseData?.error || res?.error || fnErr?.message || '';
+                if (errMsg.toLowerCase().includes('already linked') || errMsg.toLowerCase().includes('already logged in') || errMsg.toLowerCase().includes('limit')) {
+                    setConflictData({
+                        phone: fullPhone,
+                        linkedEmail: responseData?.linked_email || 'another account',
+                        plan: responseData?.plan || 'Spark',
+                        maxAllowed: responseData?.max_allowed || 1,
+                        message: errMsg
+                    });
+                    setIsReporting(false);
+                    setReportSuccess(false);
+                    setReportDetails('');
+                    setStep('limit_reached');
+                    return;
+                }
+                throw new Error(errMsg || 'Failed to send verification code.');
             }
 
             setStep('otp');
@@ -170,6 +216,39 @@ export default function PhoneLinkModal({
             setError(err.message || 'Failed to send OTP. Please check the number and try again.');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleReportDispute = async () => {
+        setReportLoading(true);
+        setError('');
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const uId = user?.id || currentUserId;
+            const targetPhone = conflictData?.phone || fullPhone;
+            const targetEmail = conflictData?.linkedEmail || '';
+
+            const { data: res, error: fnErr } = await supabase.functions.invoke('send-sms-hook', {
+                body: {
+                    action: 'report-phone-dispute',
+                    phone: targetPhone,
+                    reportedEmail: targetEmail,
+                    userId: uId,
+                    reason: reportReason,
+                    details: reportDetails
+                }
+            });
+
+            if (fnErr || (res && res.success === false)) {
+                throw new Error(res?.error || fnErr?.message || 'Failed to submit report.');
+            }
+
+            setReportSuccess(true);
+        } catch (err) {
+            console.error('[PhoneLinkModal] Report dispute error:', err);
+            setError(err.message || 'Could not submit report. Please try again.');
+        } finally {
+            setReportLoading(false);
         }
     };
 
@@ -608,11 +687,6 @@ export default function PhoneLinkModal({
                                 Connect your phone number to access your Ceova AI account securely with SMS OTP from any device.
                             </p>
 
-                            <div className="phone-limit-pill">
-                                <span>🔒</span>
-                                <span>Limit: 1 email per phone in <strong>Spark</strong>, up to 5 emails in <strong>Flow</strong> plan</span>
-                            </div>
-
                             {error && (
                                 <div className="phone-modal-error">
                                     <AlertCircle size={15} />
@@ -674,6 +748,177 @@ export default function PhoneLinkModal({
                             <button className="phone-modal-skip-btn" onClick={onClose}>
                                 Maybe later
                             </button>
+                        </motion.div>
+                    )}
+
+                    {/* ------------------------------------------------------------- */}
+                    {/* STEP: LIMIT REACHED (PHONE ALREADY LINKED NEXT SLIDE)        */}
+                    {/* ------------------------------------------------------------- */}
+                    {step === 'limit_reached' && (
+                        <motion.div 
+                            key="limit_reached"
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -6 }}
+                            transition={{ duration: 0.15 }}
+                            className="phone-modal-content"
+                        >
+                            <div className="phone-modal-icon-badge phone-badge-conflict">
+                                <ShieldAlert size={22} strokeWidth={1.8} />
+                            </div>
+
+                            <h3 className="phone-modal-title">Phone Already Linked</h3>
+                            <p className="phone-modal-subtitle">
+                                This phone number is already connected to an existing Ceova account.
+                            </p>
+
+                            <div className="phone-conflict-card">
+                                <div className="phone-conflict-main">
+                                    <span className="phone-conflict-num">{formatPhoneDisplay(conflictData?.phone || fullPhone)}</span>
+                                    <span className="phone-conflict-meta">is already logged in with</span>
+                                    <span className="phone-conflict-email">{conflictData?.linkedEmail || 'another account'}</span>
+                                </div>
+                                <div className="phone-conflict-divider" />
+                                <div className="phone-conflict-plan-note">
+                                    <span>🔒</span>
+                                    <span>
+                                        Limit: 1 email per phone in <strong>Spark</strong> plan. Upgrade to <strong>Flow</strong> to connect up to 5 emails to this number.
+                                    </span>
+                                </div>
+                            </div>
+
+                            {error && (
+                                <div className="phone-modal-error">
+                                    <AlertCircle size={15} />
+                                    <span>{error}</span>
+                                </div>
+                            )}
+
+                            {!reportSuccess ? (
+                                <>
+                                    <div className="phone-conflict-actions">
+                                        <button 
+                                            type="button" 
+                                            className="phone-conflict-btn phone-btn-secondary"
+                                            onClick={() => {
+                                                setError('');
+                                                setIsReporting(false);
+                                                setStep('input');
+                                            }}
+                                        >
+                                            <ArrowLeft size={14} />
+                                            <span>Change Number</span>
+                                        </button>
+
+                                        <button 
+                                            type="button" 
+                                            className="phone-conflict-btn phone-btn-primary"
+                                            onClick={() => {
+                                                onClose();
+                                                navigate('/subscription');
+                                            }}
+                                        >
+                                            <span>Upgrade to Flow</span>
+                                            <ArrowRight size={14} />
+                                        </button>
+                                    </div>
+
+                                    {!isReporting ? (
+                                        <button 
+                                            type="button" 
+                                            className="phone-report-toggle-btn"
+                                            onClick={() => setIsReporting(true)}
+                                        >
+                                            <Flag size={12} />
+                                            <span>Not your email? Report issue</span>
+                                        </button>
+                                    ) : (
+                                        <div className="phone-report-box">
+                                            <div className="phone-report-header">
+                                                <span>Report Incorrect Account Link</span>
+                                                <button 
+                                                    type="button" 
+                                                    className="phone-report-close-btn"
+                                                    onClick={() => setIsReporting(false)}
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+
+                                            <div className="phone-report-options">
+                                                <label className={`phone-report-radio ${reportReason === 'not_my_email' ? 'active' : ''}`}>
+                                                    <input 
+                                                        type="radio" 
+                                                        name="reportReason" 
+                                                        value="not_my_email" 
+                                                        checked={reportReason === 'not_my_email'}
+                                                        onChange={(e) => setReportReason(e.target.value)}
+                                                    />
+                                                    <span>This is my phone number, but that is not my email</span>
+                                                </label>
+                                                <label className={`phone-report-radio ${reportReason === 'lost_access' ? 'active' : ''}`}>
+                                                    <input 
+                                                        type="radio" 
+                                                        name="reportReason" 
+                                                        value="lost_access" 
+                                                        checked={reportReason === 'lost_access'}
+                                                        onChange={(e) => setReportReason(e.target.value)}
+                                                    />
+                                                    <span>I lost access to the linked email</span>
+                                                </label>
+                                                <label className={`phone-report-radio ${reportReason === 'other' ? 'active' : ''}`}>
+                                                    <input 
+                                                        type="radio" 
+                                                        name="reportReason" 
+                                                        value="other" 
+                                                        checked={reportReason === 'other'}
+                                                        onChange={(e) => setReportReason(e.target.value)}
+                                                    />
+                                                    <span>Other issue / unauthorized link</span>
+                                                </label>
+                                            </div>
+
+                                            <button 
+                                                type="button" 
+                                                className="phone-report-submit-btn"
+                                                onClick={handleReportDispute}
+                                                disabled={reportLoading}
+                                            >
+                                                {reportLoading ? (
+                                                    <>
+                                                        <Loader2 size={13} className="spin-animate" />
+                                                        <span>Submitting...</span>
+                                                    </>
+                                                ) : (
+                                                    <span>Submit Report</span>
+                                                )}
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="phone-report-success-card">
+                                    <CheckCircle2 size={20} className="phone-success-icon" />
+                                    <div className="phone-report-success-text">
+                                        <strong>Report Submitted</strong>
+                                        <p>Our security team has logged your report and will review this phone number link.</p>
+                                    </div>
+                                    <button 
+                                        type="button" 
+                                        className="phone-conflict-btn phone-btn-secondary"
+                                        onClick={() => {
+                                            setError('');
+                                            setIsReporting(false);
+                                            setReportSuccess(false);
+                                            setStep('input');
+                                        }}
+                                        style={{ marginTop: '10px' }}
+                                    >
+                                        <ArrowLeft size={14} />
+                                        <span>Change Number</span>
+                                    </button>
+                                </div>
+                            )}
                         </motion.div>
                     )}
 
