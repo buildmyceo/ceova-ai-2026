@@ -389,7 +389,7 @@ export default function Home({ session }) {
         // --- BACKGROUND UPLOAD ---
         const currentAttachments = [];
         const uploadErrors = [];
-        const isTemporary = temporaryChatId && idToUse === temporaryChatId;
+        const isTemporary = Boolean(temporaryChatId && idToUse === temporaryChatId);
 
         if (files.length > 0) {
             // Check storage limit before upload

@@ -280,9 +280,9 @@ STRICT RULES:
                 snippet: z.string().optional().nullable(),
                 from_sender: z.string().optional().nullable()
             }).passthrough()).max(30).optional().default([]),
-            is_temporary: z.boolean().optional(),
-            has_local_folder: z.boolean().optional().default(true),
-            is_thinking: z.boolean().optional().default(false),
+            is_temporary: z.any().transform(v => Boolean(v)).optional().default(false),
+            has_local_folder: z.any().transform(v => v !== false).optional().default(true),
+            is_thinking: z.any().transform(v => Boolean(v)).optional().default(false),
             user_context: z.object({
                 date: z.string().optional().nullable(),
                 time: z.string().optional().nullable(),
