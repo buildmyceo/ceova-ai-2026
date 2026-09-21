@@ -15,12 +15,6 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// Twilio Config (optional if sending via Twilio REST API)
-const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
-const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
-const TWILIO_FROM_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER") || Deno.env.get("TWILIO_FROM_NUMBER");
-const TWILIO_MESSAGING_SERVICE_SID = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
-
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -35,7 +29,128 @@ serve(async (req: Request) => {
       hasSms: !!payload?.sms,
       userId: payload?.user?.id,
       phone: payload?.user?.phone || payload?.phone,
+      isDiagnostic: !!payload?.diagnostic,
     }));
+
+    // Twilio Config
+    const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+    const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+    const senderParam = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID") || 
+                        Deno.env.get("TWILIO_PHONE_NUMBER") || 
+                        Deno.env.get("TWILIO_FROM_NUMBER");
+
+    // ── Diagnostic Mode ──
+    if (payload?.diagnostic === true) {
+      const diagPhone = payload?.phone || "+919229950815";
+      const diagOtp = payload?.otp || "481920";
+
+      // Test Twilio dispatch
+      let twilioTestResult: any = null;
+      if (twilioAccountSid && twilioAuthToken) {
+        // Test 1: If senderParam starts with VA, test Twilio Verify API!
+        if (senderParam?.startsWith("VA")) {
+          try {
+            const verifyUrl = `https://verify.twilio.com/v2/Services/${senderParam}/Verifications`;
+            const verifyParams = new URLSearchParams();
+            verifyParams.append("To", diagPhone);
+            verifyParams.append("Channel", "sms");
+            verifyParams.append("CustomCode", diagOtp);
+
+            const vRes = await fetch(verifyUrl, {
+              method: "POST",
+              headers: {
+                "Authorization": `Basic ${btoa(`${twilioAccountSid}:${twilioAuthToken}`)}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: verifyParams.toString(),
+            });
+            const vText = await vRes.text();
+            twilioTestResult = { mode: "Twilio_Verify_API", ok: vRes.ok, status: vRes.status, response: vText };
+          } catch (e: any) {
+            twilioTestResult = { mode: "Twilio_Verify_API", ok: false, error: e.message };
+          }
+        } else {
+          // Standard Messages API
+          try {
+            const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
+            const params = new URLSearchParams();
+            params.append("To", diagPhone);
+            if (senderParam?.startsWith("MG")) {
+              params.append("MessagingServiceSid", senderParam);
+            } else if (senderParam) {
+              const formattedFrom = senderParam.startsWith("+") ? senderParam : `+${senderParam}`;
+              params.append("From", formattedFrom);
+            }
+            params.append("Body", `[CEOVA Test] Verification code is: ${diagOtp}`);
+
+            const res = await fetch(twilioUrl, {
+              method: "POST",
+              headers: {
+                "Authorization": `Basic ${btoa(`${twilioAccountSid}:${twilioAuthToken}`)}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: params.toString(),
+            });
+            const text = await res.text();
+            twilioTestResult = { mode: "Twilio_Messages_API", ok: res.ok, status: res.status, response: text };
+          } catch (e: any) {
+            twilioTestResult = { mode: "Twilio_Messages_API", ok: false, error: e.message };
+          }
+        }
+      }
+
+      // Test Gmail token refresh with available secrets
+      const refreshToken = Deno.env.get("GMAIL_REFRESH_TOKEN");
+      const gmailTestResults: any[] = [];
+      const testPairs = [
+        { id: Deno.env.get("GMAIL_CLIENT_ID"), secret: Deno.env.get("GMAIL_CLIENT_SECRET"), label: "GMAIL_CLIENT" },
+        { id: Deno.env.get("GOOGLE_CLIENT_ID"), secret: Deno.env.get("GOOGLE_CLIENT_SECRET"), label: "GOOGLE_CLIENT" },
+      ];
+
+      for (const p of testPairs) {
+        if (p.id && p.secret && refreshToken) {
+          try {
+            const res = await fetch("https://oauth2.googleapis.com/token", {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                client_id: p.id.trim(),
+                client_secret: p.secret.trim(),
+                refresh_token: refreshToken.trim(),
+                grant_type: "refresh_token",
+              }),
+            });
+            const txt = await res.text();
+            gmailTestResults.push({ label: p.label, clientIdPrefix: p.id.substring(0, 10), ok: res.ok, status: res.status, response: txt });
+          } catch (e: any) {
+            gmailTestResults.push({ label: p.label, ok: false, error: e.message });
+          }
+        }
+      }
+
+      // Check user_google_tokens in DB
+      const { data: dbTokens, error: tokenErr } = await supabaseAdmin
+        .from("user_google_tokens")
+        .select("user_id, expiry_date, updated_at")
+        .order("updated_at", { ascending: false })
+        .limit(3);
+
+      return new Response(
+        JSON.stringify({
+          diagnostic: true,
+          twilioTestResult,
+          gmailTestResults,
+          refreshTokenInfo: {
+            exists: !!refreshToken,
+            length: refreshToken?.length,
+            prefix: refreshToken?.substring(0, 5),
+            suffix: refreshToken?.substring(refreshToken.length - 4),
+          },
+          googleTokens: { count: dbTokens?.length || 0, error: tokenErr?.message, tokens: dbTokens },
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
+    }
 
     // 1. Extract OTP
     const otp = payload?.sms?.otp || payload?.otp;
@@ -108,6 +223,7 @@ serve(async (req: Request) => {
 
     // 4. Dispatch identical OTP to Gmail
     let emailSent = false;
+    let emailError: string | null = null;
     if (email) {
       try {
         console.log(`[send-sms-hook] 📧 Dispatching OTP ${otp} to Gmail: ${email}`);
@@ -136,9 +252,11 @@ serve(async (req: Request) => {
           emailSent = true;
           console.log(`[send-sms-hook] ✅ OTP successfully sent to Gmail (${email})`);
         } else {
+          emailError = emailResult?.error || "Unknown email dispatch error";
           console.error(`[send-sms-hook] ⚠️ Gmail dispatch response:`, emailResult);
         }
       } catch (emailErr: any) {
+        emailError = emailErr.message;
         console.error(`[send-sms-hook] ❌ Failed to dispatch email:`, emailErr.message);
       }
     } else {
@@ -147,49 +265,112 @@ serve(async (req: Request) => {
 
     // 5. Dispatch OTP via Twilio SMS (if credentials configured)
     let smsSent = false;
-    if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && (TWILIO_FROM_NUMBER || TWILIO_MESSAGING_SERVICE_SID) && phone) {
-      try {
-        console.log(`[send-sms-hook] 📱 Dispatching SMS via Twilio to ${phone}...`);
-        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
-        const params = new URLSearchParams();
-        params.append("To", phone);
-        if (TWILIO_MESSAGING_SERVICE_SID) {
-          params.append("MessagingServiceSid", TWILIO_MESSAGING_SERVICE_SID);
-        } else if (TWILIO_FROM_NUMBER) {
-          params.append("From", TWILIO_FROM_NUMBER);
-        }
-        params.append("Body", `Your CEOVA verification code is: ${otp}. Valid for 10 minutes.`);
+    let smsError: string | null = null;
+    if (twilioAccountSid && twilioAuthToken && senderParam && phone) {
+      if (senderParam.startsWith("VA")) {
+        // ── Twilio Verify Service API ──
+        try {
+          console.log(`[send-sms-hook] 📱 Dispatching SMS via Twilio Verify (${senderParam}) to ${phone}...`);
+          const verifyUrl = `https://verify.twilio.com/v2/Services/${senderParam}/Verifications`;
+          const verifyParams = new URLSearchParams();
+          verifyParams.append("To", phone);
+          verifyParams.append("Channel", "sms");
+          verifyParams.append("CustomCode", String(otp));
 
-        const twilioRes = await fetch(twilioUrl, {
-          method: "POST",
-          headers: {
-            "Authorization": `Basic ${btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`)}`,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: params.toString(),
-        });
+          const vRes = await fetch(verifyUrl, {
+            method: "POST",
+            headers: {
+              "Authorization": `Basic ${btoa(`${twilioAccountSid}:${twilioAuthToken}`)}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: verifyParams.toString(),
+          });
 
-        if (twilioRes.ok) {
-          const twilioData = await twilioRes.json();
-          smsSent = true;
-          console.log(`[send-sms-hook] ✅ Twilio SMS sent successfully. SID: ${twilioData.sid}`);
-        } else {
-          const errText = await twilioRes.text();
-          console.error(`[send-sms-hook] ❌ Twilio API returned error:`, errText);
+          const vText = await vRes.text();
+          if (vRes.ok) {
+            smsSent = true;
+            console.log(`[send-sms-hook] ✅ Twilio Verify SMS sent successfully:`, vText);
+          } else {
+            smsError = vText;
+            console.error(`[send-sms-hook] ❌ Twilio Verify API error:`, vText);
+          }
+        } catch (vErr: any) {
+          smsError = vErr.message;
+          console.error(`[send-sms-hook] ❌ Twilio Verify dispatch exception:`, vErr.message);
         }
-      } catch (tErr: any) {
-        console.error(`[send-sms-hook] ❌ Twilio SMS dispatch exception:`, tErr.message);
+      } else {
+        // ── Twilio Standard Messages API ──
+        try {
+          console.log(`[send-sms-hook] 📱 Dispatching SMS via Twilio Messages API to ${phone}...`);
+          const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
+          const params = new URLSearchParams();
+          params.append("To", phone);
+
+          if (senderParam.startsWith("MG")) {
+            params.append("MessagingServiceSid", senderParam);
+          } else {
+            const formattedFrom = senderParam.startsWith("+") ? senderParam : `+${senderParam}`;
+            params.append("From", formattedFrom);
+          }
+          params.append("Body", `Your CEOVA verification code is: ${otp}. Valid for 10 minutes. Thank you for logging into Ceova.`);
+
+          const twilioRes = await fetch(twilioUrl, {
+            method: "POST",
+            headers: {
+              "Authorization": `Basic ${btoa(`${twilioAccountSid}:${twilioAuthToken}`)}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: params.toString(),
+          });
+
+          const twilioDataText = await twilioRes.text();
+          if (twilioRes.ok) {
+            smsSent = true;
+            console.log(`[send-sms-hook] ✅ Twilio SMS sent successfully:`, twilioDataText);
+          } else {
+            smsError = twilioDataText;
+            console.error(`[send-sms-hook] ❌ Twilio API error:`, twilioDataText);
+          }
+        } catch (tErr: any) {
+          smsError = tErr.message;
+          console.error(`[send-sms-hook] ❌ Twilio SMS dispatch exception:`, tErr.message);
+        }
       }
     } else {
-      console.log(`[send-sms-hook] ℹ️ Direct Twilio secrets not configured. SMS provider handled externally.`);
+      console.log(`[send-sms-hook] ℹ️ Twilio secrets incomplete: SID=${!!twilioAccountSid}, Token=${!!twilioAuthToken}, Sender=${!!senderParam}, Phone=${!!phone}`);
     }
 
-    // 6. Return 200 OK to Supabase Auth
+    // 6. Log attempt and OTP to email_logs for traceability & debugging
+    try {
+      await supabaseAdmin.from("email_logs").insert({
+        user_id: userId || null,
+        to_email: email || phone || "otp-request",
+        campaign_slug: "OTP_VERIFICATION",
+        status: emailSent ? "delivered" : (smsSent ? "sms_sent" : "failed"),
+        sent_at: new Date().toISOString(),
+        metadata: {
+          otp,
+          phone,
+          email,
+          emailSent,
+          smsSent,
+          smsError,
+          emailError,
+          twilioConfigured: !!(twilioAccountSid && twilioAuthToken && senderParam),
+        },
+      });
+    } catch (logErr: any) {
+      console.warn("[send-sms-hook] Could not insert to email_logs:", logErr.message);
+    }
+
+    // 7. Return 200 OK to Supabase Auth
     return new Response(
       JSON.stringify({
         success: true,
         email_sent: emailSent,
         sms_sent: smsSent,
+        sms_error: smsError,
+        email_error: emailError,
         phone: phone || null,
         email: email ? email.replace(/(.{2})(.*)(@.*)/, "$1***$3") : null,
       }),
@@ -201,7 +382,6 @@ serve(async (req: Request) => {
 
   } catch (err: any) {
     console.error(`[send-sms-hook ERROR]`, err.message);
-    // Returning 200 with error info so Supabase Auth hook doesn't crash the auth process if email fails
     return new Response(
       JSON.stringify({
         success: false,
