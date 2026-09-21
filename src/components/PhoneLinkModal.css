@@ -382,19 +382,6 @@
     to { transform: rotate(360deg); }
 }
 
-/* Badge variants */
-.phone-badge-success {
-    background: rgba(16, 185, 129, 0.12) !important;
-    border-color: rgba(16, 185, 129, 0.28) !important;
-    color: #34d399 !important;
-}
-
-.phone-badge-danger {
-    background: rgba(239, 68, 68, 0.12) !important;
-    border-color: rgba(239, 68, 68, 0.28) !important;
-    color: #f87171 !important;
-}
-
 /* Plan Limit Pill */
 .phone-limit-pill {
     font-size: 0.78rem;
@@ -427,15 +414,16 @@
 .phone-linked-status-pill {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    background: rgba(16, 185, 129, 0.12);
-    border: 1px solid rgba(16, 185, 129, 0.25);
-    color: #34d399;
-    font-size: 0.75rem;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e4e4e7;
+    font-size: 0.74rem;
     font-weight: 500;
-    padding: 3px 9px;
-    border-radius: 16px;
-    margin-bottom: 2px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    margin-bottom: 4px;
+    letter-spacing: 0.01em;
 }
 
 .phone-linked-text {
@@ -468,7 +456,7 @@
     word-break: break-all;
 }
 
-/* Disconnect Button */
+/* Disconnect Button — Subtle, Premium Monochrome Slate */
 .phone-disconnect-btn {
     width: 100%;
     display: flex;
@@ -481,28 +469,28 @@
     font-family: inherit;
     font-weight: 500;
     cursor: pointer;
-    background: rgba(239, 68, 68, 0.08);
-    border: 1px solid rgba(239, 68, 68, 0.22);
-    color: #fca5a5;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #a1a1aa;
     transition: all 0.15s ease;
     margin-bottom: 0.45rem;
     box-sizing: border-box;
 }
 
 .phone-disconnect-btn:hover:not(:disabled) {
-    background: rgba(239, 68, 68, 0.16);
-    border-color: rgba(239, 68, 68, 0.45);
-    color: #ef4444;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
 }
 
 .phone-disconnect-btn:disabled {
-    background: #1f1f23;
+    background: #18181b;
     color: #52525b;
     border-color: rgba(255, 255, 255, 0.04);
     cursor: not-allowed;
 }
 
-/* Confirm Disconnect Action Button */
+/* Confirm Disconnect Action Button — Monochrome / Clean White */
 .phone-disconnect-confirm-btn {
     width: 100%;
     display: flex;
@@ -522,14 +510,14 @@
 }
 
 .phone-disconnect-confirm-btn:not(:disabled) {
-    background: #ef4444;
-    border-color: #ef4444;
-    color: #ffffff;
+    background: #ffffff;
+    border-color: #ffffff;
+    color: #09090b;
 }
 
 .phone-disconnect-confirm-btn:not(:disabled):hover {
-    background: #dc2626;
-    border-color: #dc2626;
+    background: #e4e4e7;
+    border-color: #e4e4e7;
 }
 
 .phone-disconnect-confirm-btn:disabled {

@@ -422,7 +422,7 @@ export default function PhoneLinkModal({
                             transition={{ duration: 0.15 }}
                             className="phone-modal-content"
                         >
-                            <div className="phone-modal-icon-badge phone-badge-success">
+                            <div className="phone-modal-icon-badge">
                                 <Smartphone size={22} strokeWidth={1.8} />
                             </div>
 
@@ -433,7 +433,7 @@ export default function PhoneLinkModal({
 
                             <div className="phone-linked-card">
                                 <div className="phone-linked-status-pill">
-                                    <CheckCircle2 size={13} strokeWidth={2.5} />
+                                    <CheckCircle2 size={13} strokeWidth={2} />
                                     <span>Verified & Connected</span>
                                 </div>
                                 <div className="phone-linked-text">
@@ -445,11 +445,6 @@ export default function PhoneLinkModal({
                                         {resolvedEmail || userEmail || 'your account'}
                                     </span>
                                 </div>
-                            </div>
-
-                            <div className="phone-limit-pill">
-                                <span>🔒</span>
-                                <span>Limit: 1 email per phone in <strong>Spark</strong>, up to 5 emails in <strong>Flow</strong> plan</span>
                             </div>
 
                             {error && (
@@ -495,7 +490,7 @@ export default function PhoneLinkModal({
                             transition={{ duration: 0.15 }}
                             className="phone-modal-content"
                         >
-                            <div className="phone-modal-icon-badge phone-badge-danger">
+                            <div className="phone-modal-icon-badge">
                                 <ShieldCheck size={22} strokeWidth={1.8} />
                             </div>
 
@@ -582,7 +577,7 @@ export default function PhoneLinkModal({
                             animate={{ opacity: 1, scale: 1 }}
                             className="phone-modal-content"
                         >
-                            <div className="phone-modal-success-badge phone-badge-danger">
+                            <div className="phone-modal-success-badge">
                                 <CheckCircle2 size={26} strokeWidth={2} />
                             </div>
                             <h3 className="phone-modal-title">Phone Number Disconnected</h3>
