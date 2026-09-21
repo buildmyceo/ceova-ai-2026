@@ -1684,6 +1684,7 @@ export default function Home({ session }) {
                         localDirectoryHandle={localDirectoryHandle}
                         setLocalDirectoryHandle={setLocalDirectoryHandle}
                         onOpenLibrary={() => { setIsLibraryOpen(true); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}
+                        session={session}
                     />
 
                 </div>

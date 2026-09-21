@@ -3,8 +3,16 @@ import { createPortal } from 'react-dom';
 import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical, Sparkles, Search, Image as ImageIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../services/supabase';
-import { fetchGoogleEmails } from '../services/gmailSyncEngine';
-import { fetchGoogleCalendarEvents } from '../services/gcalendarSyncEngine';
+import { useAuth } from '../contexts/AuthProvider';
+import { cacheManager } from '../services/CacheManager';
+import { 
+    fetchUserLibraryItems,
+    isAiItem,
+    isGdriveItem,
+    isGmailItem,
+    isCalendarItem,
+    isCeovaItem
+} from '../services/libraryFetchEngine';
 import ExtensionsModal from './ExtensionsModal';
 import './LibraryPickerModal.css';
 
@@ -72,9 +80,10 @@ function PickerImageCard({ item, onClick }) {
 }
 
 function PickerRowCard({ item, onClick }) {
-    const isMail = item.type === 'email' || item.source === 'gmail';
-    const isCal = item.type === 'event' || item.source === 'gcalendar';
+    const isMail = isGmailItem(item);
+    const isCal = isCalendarItem(item);
     const isImg = item.kind === 'image' || item.mime_type?.startsWith('image/');
+    const isAi = isAiItem(item);
 
     let Icon = FileText;
     let label = 'File';
@@ -87,6 +96,9 @@ function PickerRowCard({ item, onClick }) {
     } else if (isImg) {
         Icon = ImageIcon;
         label = 'Image';
+    } else if (isAi) {
+        Icon = Sparkles;
+        label = 'AI';
     } else if (item.mime_type?.includes('pdf') || item.name?.endsWith('.pdf')) {
         label = 'PDF';
     } else if (item.mime_type?.includes('sheet') || item.name?.endsWith('.csv') || item.name?.endsWith('.xlsx')) {
@@ -116,7 +128,11 @@ function PickerRowCard({ item, onClick }) {
                     {item.size ? <span>{fmtSize(item.size)}</span> : null}
                     {item.from_sender && <span>From: {item.from_sender.split('<')[0].trim()}</span>}
                     {item.location && <span>📍 {item.location}</span>}
-                    {item.created_at && <span>{fmtDate(item.created_at)}</span>}
+                    {item.start_time ? (
+                        <span>📅 {fmtDate(item.start_time)}</span>
+                    ) : item.created_at ? (
+                        <span>{fmtDate(item.created_at)}</span>
+                    ) : null}
                 </div>
             </div>
             <span className="lib-picker-row-action">+ Attach</span>
@@ -126,8 +142,12 @@ function PickerRowCard({ item, onClick }) {
 
 export default function InputBox({ 
     input, setInput, handleSend, isLoading, handleStop, isHome,
-    localDirectoryHandle, setLocalDirectoryHandle, onOpenLibrary
+    localDirectoryHandle, setLocalDirectoryHandle, onOpenLibrary,
+    session: sessionProp
 }) {
+    const { session: authSession, user: authUser } = useAuth() || {};
+    const effectiveSession = sessionProp || authSession;
+
     const textareaRef = useRef(null);
     const fileInputRef = useRef(null);
     const [isEmojiOpen, setIsEmojiOpen] = useState(false);
@@ -149,20 +169,29 @@ export default function InputBox({
     const [librarySearch, setLibrarySearch] = useState('');
     const recognitionRef = useRef(null);
 
+    // Preload library items from cache on mount for instant zero-latency opening
+    useEffect(() => {
+        cacheManager.getLibraryItems().then(cached => {
+            if (cached && cached.length > 0) {
+                setLibraryItems(cached);
+            }
+        }).catch(() => {});
+    }, []);
+
     useEffect(() => {
         const checkGmailConnection = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
+            const uid = effectiveSession?.user?.id || authUser?.id;
+            if (uid) {
                 const { data } = await supabase
                     .from('user_google_tokens')
                     .select('*')
-                    .eq('user_id', user.id)
+                    .eq('user_id', uid)
                     .single();
                 if (data) setIsGmailConnected(true);
             }
         };
         checkGmailConnection();
-    }, []);
+    }, [effectiveSession?.user?.id, authUser?.id]);
 
     // Close on escape key
     useEffect(() => {
@@ -176,311 +205,72 @@ export default function InputBox({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isLibraryPickerOpen]);
 
-    // Fetch library items from Supabase for the picker
+    // Fetch library items using unified engine
     const openLibraryPicker = async () => {
         setIsLibraryPickerOpen(true);
         setLibrarySearch('');
-        setLibraryLoading(true);
+
+        // Step 1: Immediate cache retrieval for instant UI
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-            const items = [];
-
-            // 1. Drive files (files table: Google Drive + synced local files)
-            try {
-                const { data: driveFiles } = await supabase
-                    .from('files')
-                    .select('id, drive_id, name, mime_type, category, storage_source, web_view_link, web_download_link, thumbnail_url, size, created_at')
-                    .eq('user_id', user.id)
-                    .not('is_trashed', 'eq', true)
-                    .order('created_at', { ascending: false })
-                    .limit(300);
-
-                const pathsToSign = [];
-                (driveFiles || []).forEach(df => {
-                    if (df.web_view_link && !df.web_view_link.startsWith('http')) {
-                        const cleanLink = df.web_view_link.startsWith('/') ? df.web_view_link.substring(1) : df.web_view_link;
-                        pathsToSign.push(cleanLink);
-                    }
-                });
-                let signedUrlsMap = {};
-                if (pathsToSign.length > 0) {
-                    for (let i = 0; i < pathsToSign.length; i += 50) {
-                        const chunk = pathsToSign.slice(i, i + 50);
-                        const { data: signedData } = await supabase.storage.from('user_files').createSignedUrls(chunk, 3600);
-                        if (signedData) {
-                            signedData.forEach(item => {
-                                if (!item.error) signedUrlsMap[item.path] = item.signedUrl;
-                            });
-                        }
-                    }
-                }
-
-                (driveFiles || []).forEach(f => {
-                    const isImg = f.category === 'images' || f.mime_type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '');
-                    const driveId = f.drive_id || (f.id && !String(f.id).includes('-') ? f.id : null);
-                    
-                    const getFullUrl = (link) => {
-                        if (!link) return null;
-                        if (link.startsWith('http')) return link;
-                        const cleanLink = link.startsWith('/') ? link.substring(1) : link;
-                        if (signedUrlsMap[cleanLink]) return signedUrlsMap[cleanLink];
-                        return `${supabase.supabaseUrl}/storage/v1/object/public/user_files/${cleanLink}`;
-                    };
-
-                    const resolvedUrl = getFullUrl(f.web_view_link) || (driveId ? `https://lh3.googleusercontent.com/d/${driveId}=s400` : null);
-                    const isAi = f.storage_source === 'ai_generated' || f.category === 'ai_generated';
-                    const isDrive = f.storage_source === 'gdrive' || (driveId && !f.storage_source);
-                    const source = isAi ? 'ai' : (isDrive ? 'gdrive' : 'ceova');
-
-                    items.push({
-                        id: f.id,
-                        drive_id: driveId,
-                        name: f.name || 'Untitled File',
-                        mime_type: f.mime_type || (isImg ? 'image/jpeg' : 'application/octet-stream'),
-                        category: f.category || (isImg ? 'images' : 'documents'),
-                        url: resolvedUrl,
-                        web_view_link: resolvedUrl,
-                        thumbnail_url: f.thumbnail_url || (driveId ? `https://lh3.googleusercontent.com/d/${driveId}=s400` : resolvedUrl),
-                        source,
-                        kind: isImg ? 'image' : 'file',
-                        type: 'file',
-                        created_at: f.created_at,
-                        size: f.size
-                    });
-                });
-            } catch (errFiles) {
-                console.warn('[LibraryPicker] Files fetch warning:', errFiles);
+            const cached = await cacheManager.getLibraryItems();
+            if (cached && cached.length > 0) {
+                setLibraryItems(cached);
+                setLibraryLoading(false);
+            } else {
+                setLibraryLoading(true);
             }
+        } catch (e) {
+            setLibraryLoading(true);
+        }
 
-            // 2. User files table (Ceova Storage)
+        // Step 2: Resolve user ID with multiple fallbacks
+        let userId = effectiveSession?.user?.id || authUser?.id;
+        if (!userId) {
             try {
-                const { data: userFiles } = await supabase
-                    .from('user_files')
-                    .select('id, file_name, file_type, storage_path, size_bytes, created_at')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false })
-                    .limit(150);
-
-                (userFiles || []).forEach(uf => {
-                    const isImg = uf.file_type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(uf.file_name || '');
-                    let fileUrl = null;
-                    if (uf.storage_path) {
-                        const { data: pubData } = supabase.storage.from('user_files').getPublicUrl(uf.storage_path);
-                        fileUrl = pubData?.publicUrl || null;
-                    }
-                    items.push({
-                        id: `uf-${uf.id}`,
-                        name: uf.file_name || 'Uploaded File',
-                        mime_type: uf.file_type || (isImg ? 'image/jpeg' : 'application/octet-stream'),
-                        category: isImg ? 'images' : 'documents',
-                        url: fileUrl,
-                        web_view_link: fileUrl,
-                        thumbnail_url: fileUrl,
-                        source: 'ceova',
-                        kind: isImg ? 'image' : 'file',
-                        type: 'file',
-                        created_at: uf.created_at,
-                        size: uf.size_bytes
-                    });
-                });
-            } catch (errUserFiles) {
-                console.warn('[LibraryPicker] User files fetch warning:', errUserFiles);
-            }
-
-            // 3. AI Generated Files table
+                const { data: sessData } = await supabase.auth.getSession();
+                userId = sessData?.session?.user?.id;
+            } catch (e) {}
+        }
+        if (!userId) {
             try {
-                const { data: aiFiles } = await supabase
-                    .from('ai_generated_files')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false })
-                    .limit(100);
-
-                (aiFiles || []).forEach(af => {
-                    const name = af.file_name || af.name || 'AI File';
-                    const isImg = af.mime_type?.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(name);
-                    items.push({
-                        id: `aig-${af.id}`,
-                        name,
-                        mime_type: af.mime_type || (isImg ? 'image/png' : 'text/plain'),
-                        category: af.category || 'ai_generated',
-                        url: af.file_url || af.url,
-                        thumbnail_url: af.file_url || af.url,
-                        source: 'ai',
-                        kind: isImg ? 'image' : 'file',
-                        type: 'file',
-                        created_at: af.created_at,
-                        size: af.size
-                    });
-                });
-            } catch (errAi) {
-                console.warn('[LibraryPicker] AI files fetch warning:', errAi);
-            }
-
-            // 4. Chat attachments and AI markdown images
+                const { data: uData } = await supabase.auth.getUser();
+                userId = uData?.user?.id;
+            } catch (e) {}
+        }
+        if (!userId) {
             try {
-                const { data: chats } = await supabase
-                    .from('chats')
-                    .select('id, title')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false })
-                    .limit(20);
+                const localAuth = JSON.parse(localStorage.getItem('ceova-auth-token') || '{}');
+                userId = localAuth?.user?.id;
+            } catch (e) {}
+        }
 
-                if (chats && chats.length > 0) {
-                    const chatIds = chats.map(c => c.id);
-                    const { data: messages } = await supabase
-                        .from('messages')
-                        .select('id, role, content, attachments, created_at, chat_id')
-                        .in('chat_id', chatIds)
-                        .order('created_at', { ascending: false })
-                        .limit(200);
+        if (!userId) {
+            setLibraryLoading(false);
+            return;
+        }
 
-                    (messages || []).forEach(msg => {
-                        const isAI = msg.role === 'assistant' || msg.role === 'ai';
-                        const attachments = Array.isArray(msg.attachments) ? msg.attachments : [];
-                        attachments.forEach(att => {
-                            const isImg = att.type?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(att.name || att.url || '');
-                            items.push({
-                                id: `att-${msg.id}-${att.name || Math.random()}`,
-                                name: att.name || 'Attachment',
-                                url: att.url || att.preview,
-                                thumbnail_url: att.url || att.preview,
-                                mime_type: att.type || (isImg ? 'image/jpeg' : 'application/octet-stream'),
-                                size: att.size,
-                                created_at: msg.created_at,
-                                source: isAI ? 'ai' : 'ceova',
-                                kind: isImg ? 'image' : 'file',
-                                type: 'file'
-                            });
-                        });
-
-                        if (isAI && msg.content) {
-                            const imgRegex = /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
-                            let m;
-                            while ((m = imgRegex.exec(msg.content)) !== null) {
-                                items.push({
-                                    id: `img-${msg.id}-${m.index}`,
-                                    name: m[1] || 'AI Generated Image',
-                                    url: m[2],
-                                    thumbnail_url: m[2],
-                                    mime_type: 'image/png',
-                                    created_at: msg.created_at,
-                                    source: 'ai',
-                                    kind: 'image',
-                                    type: 'file'
-                                });
-                            }
-                        }
-                    });
-                }
-            } catch (errChat) {
-                console.warn('[LibraryPicker] Chat attachments fetch warning:', errChat);
+        // Step 3: Fetch latest library items and sync cache
+        try {
+            const fresh = await fetchUserLibraryItems(userId);
+            if (fresh && fresh.length > 0) {
+                setLibraryItems(fresh);
             }
-
-            // 5. Gmail emails
-            try {
-                let emails = [];
-                const { data: dbEmails } = await supabase
-                    .from('gmail_emails')
-                    .select('id, gmail_id, name, snippet, from_sender, web_view_link, created_at')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false })
-                    .limit(100);
-
-                if (dbEmails && dbEmails.length > 0) {
-                    emails = dbEmails;
-                } else {
-                    try {
-                        const live = await fetchGoogleEmails(user.id);
-                        if (live?.success && live?.emails) emails = live.emails;
-                    } catch (eLive) {}
-                }
-
-                (emails || []).forEach(e => items.push({
-                    id: `gmail-${e.id || e.gmail_id}`,
-                    name: e.name || 'Email',
-                    mime_type: 'message/rfc822',
-                    url: e.web_view_link,
-                    web_view_link: e.web_view_link,
-                    snippet: e.snippet,
-                    from_sender: e.from_sender,
-                    source: 'gmail',
-                    type: 'email',
-                    created_at: e.created_at
-                }));
-            } catch (errMail) {
-                console.warn('[LibraryPicker] Gmail fetch warning:', errMail);
-            }
-
-            // 6. Calendar events
-            try {
-                let events = [];
-                const { data: dbEvents } = await supabase
-                    .from('calendar_events')
-                    .select('id, gcal_id, name, start_time, end_time, location, html_link, created_at')
-                    .eq('user_id', user.id)
-                    .order('start_time', { ascending: true })
-                    .limit(100);
-
-                if (dbEvents && dbEvents.length > 0) {
-                    events = dbEvents;
-                } else {
-                    try {
-                        const live = await fetchGoogleCalendarEvents(user.id);
-                        if (live?.success && live?.events) events = live.events;
-                    } catch (eCalLive) {}
-                }
-
-                (events || []).forEach(ev => items.push({
-                    id: `cal-${ev.id || ev.gcal_id}`,
-                    name: ev.name || 'Event',
-                    mime_type: 'text/calendar',
-                    url: ev.html_link || null,
-                    web_view_link: ev.html_link,
-                    snippet: ev.start_time ? new Date(ev.start_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '',
-                    location: ev.location,
-                    source: 'gcalendar',
-                    type: 'event',
-                    created_at: ev.created_at
-                }));
-            } catch (errCal) {
-                console.warn('[LibraryPicker] Calendar fetch warning:', errCal);
-            }
-
-            // Deduplicate items
-            const seen = new Set();
-            const deduped = items.filter(it => {
-                const key = it.drive_id || (it.name ? `${it.name}-${it.size || ''}` : null) || it.url || it.id;
-                if (!key || seen.has(key)) return false;
-                seen.add(key);
-                return true;
-            });
-
-            setLibraryItems(deduped);
-        } catch(e) {
-            console.error('Library picker load error:', e);
+        } catch (err) {
+            console.error('[LibraryPicker] Load error:', err);
         } finally {
             setLibraryLoading(false);
         }
     };
 
-    // Calculate tab counts
+    // Calculate tab counts matching Library.jsx exactly
     const libraryCounts = useMemo(() => {
         const counts = { ceova: 0, gdrive: 0, gmail: 0, gcalendar: 0, ai: 0, total: libraryItems.length };
         libraryItems.forEach(it => {
-            const isAi = it.source === 'ai' || it.source === 'ai_generated' || it.category === 'ai_generated';
-            if (isAi) {
-                counts.ai++;
-            } else if (it.source === 'gdrive') {
-                counts.gdrive++;
-            } else if (it.source === 'gmail') {
-                counts.gmail++;
-            } else if (it.source === 'gcalendar') {
-                counts.gcalendar++;
-            } else {
-                counts.ceova++;
-            }
+            if (isAiItem(it)) counts.ai++;
+            else if (isGdriveItem(it)) counts.gdrive++;
+            else if (isGmailItem(it)) counts.gmail++;
+            else if (isCalendarItem(it)) counts.gcalendar++;
+            else counts.ceova++;
         });
         return counts;
     }, [libraryItems]);
@@ -493,15 +283,14 @@ export default function InputBox({
         { id: 'ai', label: 'AI Generated', count: libraryCounts.ai },
     ], [libraryCounts]);
 
-    // Filter items based on active tab and search
+    // Filter items based on active tab and search matching Library.jsx
     const filteredLibraryItems = useMemo(() => {
         return libraryItems.filter(it => {
-            const isAi = it.source === 'ai' || it.source === 'ai_generated' || it.category === 'ai_generated';
-            if (libraryTab === 'ceova' && (isAi || it.source === 'gdrive' || it.source === 'gmail' || it.source === 'gcalendar')) return false;
-            if (libraryTab === 'gdrive' && it.source !== 'gdrive') return false;
-            if (libraryTab === 'gmail' && it.source !== 'gmail') return false;
-            if (libraryTab === 'gcalendar' && it.source !== 'gcalendar') return false;
-            if (libraryTab === 'ai' && !isAi) return false;
+            if (libraryTab === 'ceova' && !isCeovaItem(it)) return false;
+            if (libraryTab === 'gdrive' && !isGdriveItem(it)) return false;
+            if (libraryTab === 'gmail' && !isGmailItem(it)) return false;
+            if (libraryTab === 'gcalendar' && !isCalendarItem(it)) return false;
+            if (libraryTab === 'ai' && !isAiItem(it)) return false;
 
             if (librarySearch.trim()) {
                 const q = librarySearch.toLowerCase();
@@ -517,11 +306,13 @@ export default function InputBox({
 
     const attachLibraryItem = (item) => {
         const isImg = item.kind === 'image' || item.mime_type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(item.name || '');
+        const driveId = item.drive_id || (item.id && !String(item.id).includes('-') ? item.id : null);
+        const resolvedUrl = item.url || item.web_view_link || item.thumbnail_url || (driveId ? `https://lh3.googleusercontent.com/d/${driveId}=s400` : '');
         const pseudoFile = {
             name: item.name || 'Library File',
             type: item.mime_type || (isImg ? 'image/jpeg' : 'application/octet-stream'),
-            url: item.url || item.web_view_link || item.thumbnail_url || '',
-            thumbnail_url: item.thumbnail_url || item.url || '',
+            url: resolvedUrl,
+            thumbnail_url: item.thumbnail_url || resolvedUrl,
             source: item.source,
             snippet: item.snippet,
             from_sender: item.from_sender,
