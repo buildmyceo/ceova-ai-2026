@@ -164,7 +164,7 @@ export function isQuestionOrInquiry(message: string): boolean {
 
   // Interrogative sentences that are NOT imperative requests
   if (trimmed.endsWith('?')) {
-    const isActionRequest = /^(?:can\s+you|could\s+you|please)\s+(?:generate|create|make|draw|paint|sketch|build|deploy)\s+(?:a|an|me|the)\b/i.test(trimmed);
+    const isActionRequest = /^(?:can\s+you|could\s+you|please|would\s+you)\s+(?:generate|genrate|create|make|draw|paint|sketch|render|build|deploy)\b/i.test(trimmed);
     if (!isActionRequest) return true;
   }
 
@@ -225,17 +225,30 @@ export function routeIntent(
   // ── Image tool matching ───────────────────────────────────────────────────
   const matchedCapabilities: Capability[] = [];
 
+  // Detect imperative image generation requests (both with or without attached image)
+  const isExplicitGenAction = !isQuestion && (
+    /^\s*\/?generate_image\b/i.test(lowerMessage) ||
+    /^\s*(?:please\s+)?(?:generate|create|make|draw|paint|sketch|render|genrate)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar)\b/i.test(lowerMessage) ||
+    /^\s*(?:genrate|genrate image|genrate picture|genrate a|genrate an)\b/i.test(lowerMessage) ||
+    /\b(?:generate|genrate|create|draw|render|make)\s+(?:an?\s+)?(?:image|picture|photo|illustration|artwork|graphic|wallpaper|avatar|logo)\b/i.test(lowerMessage) ||
+    /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(lowerMessage)
+  );
+
+  if (isExplicitGenAction) {
+    const imageGenCap = CAPABILITIES.find(c => c.id === "image_gen");
+    if (imageGenCap && !matchedCapabilities.includes(imageGenCap)) {
+      matchedCapabilities.push(imageGenCap);
+    }
+  }
+
   if (hasImage) {
     const isExplicitToolAction = !isQuestion && /remove\s+bg|remove\s+background|transparent|cutout|isolate|erase|remove\s+person|crop/i.test(lowerMessage);
-    const isExplicitGenAction = !isQuestion && /^\s*(?:\/?generate_image\b|(?:please\s+)?(?:generate|create|make|draw|paint|sketch|render)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner)\b)/i.test(lowerMessage);
 
     if (isExplicitToolAction) {
       const imageProcessCap = CAPABILITIES.find(c => c.id === "image_process");
-      if (imageProcessCap) matchedCapabilities.push(imageProcessCap);
-    }
-    if (isExplicitGenAction) {
-      const imageGenCap = CAPABILITIES.find(c => c.id === "image_gen");
-      if (imageGenCap) matchedCapabilities.push(imageGenCap);
+      if (imageProcessCap && !matchedCapabilities.includes(imageProcessCap)) {
+        matchedCapabilities.push(imageProcessCap);
+      }
     }
   }
 

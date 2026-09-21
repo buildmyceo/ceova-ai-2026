@@ -46,8 +46,11 @@ export class GenerateImageTool implements Tool {
     // 1. Resolve and validate prompt
     let prompt = context.args?.prompt;
     if (!prompt && context.message) {
-      // Strip slash commands if user wrote "/generate_image <prompt>"
-      prompt = context.message.replace(/^\/?generate_image\s*/i, '').trim();
+      // Strip slash commands or imperative prefixes if user wrote "/generate_image <prompt>" or "generate image of <prompt>"
+      prompt = context.message
+        .replace(/^\/?(?:generate_image|genrate_image)\s*/i, '')
+        .replace(/^(?:please\s+)?(?:generate|genrate|create|make|draw|paint|sketch|render)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar)?(?:\s+of|\s+for)?\s*/i, '')
+        .trim();
     }
 
     if (!prompt || prompt.length === 0) {

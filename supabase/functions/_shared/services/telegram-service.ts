@@ -1088,15 +1088,29 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
     }
   }
 
-  const hasTools = intent.toolSchemas.length > 0;
   const isQuestion = isQuestionOrInquiry(effectiveMessage);
 
   // ── Detect imperative image generation command (never for inquiries/questions) ───
   const isImageGenCommand = !isQuestion && (
     /^\s*\/?generate_image\b/i.test(effectiveMessage) ||
-    /^\s*(?:please\s+)?(?:generate|create|make|draw|paint|sketch|render)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner)\b/i.test(effectiveMessage) ||
-    /^\s*(?:genrate|genrate image|genrate picture|genrate a|genrate an)\s+/i.test(effectiveMessage)
+    /^\s*(?:please\s+)?(?:generate|create|make|draw|paint|sketch|render|genrate)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar)\b/i.test(effectiveMessage) ||
+    /^\s*(?:genrate|genrate image|genrate picture|genrate a|genrate an)\b/i.test(effectiveMessage) ||
+    /\b(?:generate|genrate|create|draw|render|make)\s+(?:an?\s+)?(?:image|picture|photo|illustration|artwork|graphic|wallpaper|avatar|logo)\b/i.test(effectiveMessage) ||
+    /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(effectiveMessage)
   );
+
+  if (isImageGenCommand) {
+    if (toolsUsed >= toolsLimit) {
+      await reply(`⚠️ You have reached your daily tool call limit (${toolsUsed}/${toolsLimit}). Please upgrade your plan or wait until midnight UTC to generate more images.`);
+      return;
+    }
+    const imgTool = toolRegistry.getTool("generate_image");
+    if (imgTool && !intent.toolSchemas.some((s: any) => s.id === "generate_image")) {
+      intent.toolSchemas.push(imgTool.metadata);
+    }
+  }
+
+  const hasTools = intent.toolSchemas.length > 0;
 
   // ── 10. Assemble System Prompt ──────────────────────────────────────────────
   const isAskingCapabilities = /(?:what\s+can\s+you\s+do|what\s+are\s+you|who\s+are\s+you|tell\s+me\s+about\s+yourself|capabilities|features|help)/i.test(effectiveMessage);
@@ -1290,16 +1304,18 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
     const historyTokens = truncatedHistory.reduce((sum: number, m: any) => sum + TokenOptimizerService.estimateTokens(m.content), 0);
     const totalTokens = inputTokens + outputTokens + historyTokens;
 
+    const isTool = (toolExecuted && !isConnector) || toolCallMatch?.tool === "generate_image";
+
     await supabase.rpc("increment_daily_metrics", {
       p_user_id: userId,
       p_ai_tokens: totalTokens,
-      p_tool_calls: toolExecuted && !isConnector ? 1 : 0,
+      p_tool_calls: isTool ? 1 : 0,
       p_connector_calls: isConnector ? 1 : 0,
     });
 
     quotaCache.increment(userId, {
       ai: totalTokens,
-      tools: toolExecuted && !isConnector ? 1 : 0,
+      tools: isTool ? 1 : 0,
       connectors: isConnector ? 1 : 0,
     });
 

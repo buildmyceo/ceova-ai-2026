@@ -581,18 +581,37 @@ STRICT RULES:
                         }
                     }
 
-                    // ── Build slim, intent-driven system prompt ───────────────────────────────
-                    // Tool schemas are injected ONLY when the intent router selected them.
-                    // For casual chat, zero tool tokens are sent to OpenAI.
-                    const hasTools = intent.toolSchemas.length > 0;
                     const isQuestion = isQuestionOrInquiry(message || '');
 
                     // ── Detect imperative image generation command (never for inquiries/questions) ───
                     const isImageGenCommand = !isQuestion && (
                       /^\s*\/?generate_image\b/i.test(message || '') ||
-                      /^\s*(?:please\s+)?(?:generate|create|make|draw|paint|sketch|render)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner)\b/i.test(message || '') ||
-                      /^\s*(?:genrate|genrate image|genrate picture|genrate a|genrate an)\s+/i.test(message || '')
+                      /^\s*(?:please\s+)?(?:generate|create|make|draw|paint|sketch|render|genrate)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar)\b/i.test(message || '') ||
+                      /^\s*(?:genrate|genrate image|genrate picture|genrate a|genrate an)\b/i.test(message || '') ||
+                      /\b(?:generate|genrate|create|draw|render|make)\s+(?:an?\s+)?(?:image|picture|photo|illustration|artwork|graphic|wallpaper|avatar|logo)\b/i.test(message || '') ||
+                      /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(message || '')
                     );
+
+                    // Ensure generate_image is always available when user requests image generation
+                    if (isImageGenCommand) {
+                        if (toolsUsed >= toolsLimit) {
+                            sendEvent({ 
+                                type: 'text', 
+                                content: `You have reached your daily tool call limit (${toolsUsed}/${toolsLimit}). Please upgrade your plan or wait until midnight UTC to generate more images.` 
+                            });
+                            controller.close();
+                            return;
+                        }
+                        const imgTool = toolRegistry.getTool('generate_image');
+                        if (imgTool && !intent.toolSchemas.some((s: any) => s.id === 'generate_image')) {
+                            intent.toolSchemas.push(imgTool.metadata);
+                        }
+                    }
+
+                    // ── Build slim, intent-driven system prompt ───────────────────────────────
+                    // Tool schemas are injected ONLY when the intent router selected them.
+                    // For casual chat, zero tool tokens are sent to OpenAI.
+                    const hasTools = intent.toolSchemas.length > 0;
 
                     const writeFilesExample = `{"tool_call":{"tool":"write_local_files","args":{"files":[{"filename":"index.html","content":"<!DOCTYPE html>\\\\n<html lang=\\\\"en\\\\"><head><meta charset=\\\\"UTF-8\\\\"><title>My Site</title><link rel=\\\\"stylesheet\\\\" href=\\\\"styles.css\\\\"></head><body>...</body></html>"},{"filename":"styles.css","content":"* { box-sizing: border-box; } body { margin: 0; }"},{"filename":"script.js","content":"document.addEventListener(\\\\"DOMContentLoaded\\\\", () => { console.log(\\\\"ready\\\\"); });"}]}}}`;
 
@@ -996,19 +1015,26 @@ ${analyticsText}
                         }
                     }
 
+                    let toolWasExecuted = false;
+                    let imageGenerated = false;
+
                     if (toolCallMatch) {
                         const toolId = toolCallMatch.tool;
                         
                         if (toolId === 'write_local_files') {
+                            toolWasExecuted = true;
                             sendEvent({ type: 'text', content: `Preparing to write files...` });
                             sendEvent({ type: 'tool_call', tool: 'write_local_files', args: toolCallMatch.args });
                         } else if (toolId === 'run_terminal_command') {
+                            toolWasExecuted = true;
                             sendEvent({ type: 'text', content: `Preparing to run command...` });
                             sendEvent({ type: 'tool_call', tool: 'run_terminal_command', args: toolCallMatch.args });
                         } else if (toolId === 'read_local_files') {
+                            toolWasExecuted = true;
                             sendEvent({ type: 'text', content: `Preparing to read files...` });
                             sendEvent({ type: 'tool_call', tool: 'read_local_files', args: toolCallMatch.args });
                         } else if (toolId === 'list_local_files') {
+                            toolWasExecuted = true;
                             sendEvent({ type: 'text', content: `Preparing to list files...` });
                             sendEvent({ type: 'tool_call', tool: 'list_local_files', args: toolCallMatch.args });
                         } else {
@@ -1046,7 +1072,9 @@ ${analyticsText}
                             });
 
                             if (toolResult.success) {
-                                if (toolId === 'generate_image' && toolResult.data?.url) {
+                                toolWasExecuted = true;
+                                if (toolId === 'generate_image') {
+                                    imageGenerated = true;
                                     const promptDesc = toolResult.data?.revised_prompt || toolResult.data?.prompt || 'Generated Image';
                                     sendEvent({ type: 'text', content: `Here is your generated image:\n\n![${promptDesc}](${toolResult.data.url})` });
                                 } else if (toolResult.data?.url) {
@@ -1085,7 +1113,7 @@ ${analyticsText}
                         const totalTokens = inputTokens + outputTokens + historyTokens;
 
                         const isConnector = toolCallMatch && ['gmail_connector', 'calendar_connector', 'drive_connector'].includes(toolCallMatch.tool);
-                        const isTool = toolCallMatch && !isConnector;
+                        const isTool = (toolCallMatch && !isConnector) || imageGenerated || toolWasExecuted;
                         
                         await supabaseAdmin.rpc('increment_daily_metrics', {
                             p_user_id: user.id,
