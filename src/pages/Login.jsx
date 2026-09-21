@@ -372,7 +372,7 @@ export default function Login({ onClose }) {
                         ) : (
                             <div className="auth-otp-container">
                                 <div style={{ fontSize: '0.85rem', color: '#a0a0a0', marginBottom: '4px' }}>
-                                    Enter 6-digit code sent to <strong>{fullPhone}</strong>
+                                    Enter 6-digit code sent to <strong>{fullPhone}</strong> and linked <strong>Gmail</strong>
                                 </div>
 
                                 <div className="auth-otp-inputs">

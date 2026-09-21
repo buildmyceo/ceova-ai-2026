@@ -130,6 +130,28 @@ export const EMAIL_TEMPLATES: Record<string, (vars: Record<string, string>) => E
     text: `Welcome to CEOVA, {{name}}!\n\nYou've joined CEOVA — your AI workspace.\n\nAccount: {{email}}\nPlan: {{plan}}\n\nGet started: https://ceova.online/chat`,
   }),
 
+  // ── OTP VERIFICATION CODE (PHONE & GMAIL LOGIN) ─────────────
+  OTP_VERIFICATION: (v) => ({
+    subject: `Your CEOVA Verification Code: {{otp}}`,
+    html: wrapEmail("Verification Code", `
+      <h1>Your Verification Code</h1>
+      <p class="highlight">Use the 6-digit code below to complete your login or phone number verification on CEOVA.</p>
+      <div style="text-align:center; margin:32px 0;">
+        <div style="display:inline-block; background:rgba(124,58,237,0.12); border:2px dashed #a78bfa; border-radius:16px; padding:18px 36px;">
+          <span style="font-size:36px; font-weight:800; letter-spacing:10px; color:#ffffff; font-family:monospace;">{{otp}}</span>
+        </div>
+      </div>
+      <div class="info-box">
+        <p>📱 <span>Associated Phone:</span> <strong>{{phone}}</strong></p>
+        <p>⏱️ <span>Validity:</span> <strong>10 Minutes</strong></p>
+        <p>🔒 <span>Security:</span> <strong>Never share this code with anyone</strong></p>
+      </div>
+      <hr class="divider" />
+      <p style="font-size:13px; color:#666;">This single-use code is valid for 10 minutes. If you did not request this verification code, please disregard this message or update your account security.</p>
+    `),
+    text: `Your CEOVA verification code is: {{otp}}\n\nAssociated phone: {{phone}}\nValid for 10 minutes.\n\nNever share this code with anyone.`,
+  }),
+
   // ── 2. EMAIL VERIFICATION ───────────────────────────────────
   EMAIL_VERIFICATION: (v) => ({
     subject: `Verify your CEOVA email address`,

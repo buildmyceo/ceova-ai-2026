@@ -259,7 +259,7 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
 
                             <h3 className="phone-modal-title">Enter Verification Code</h3>
                             <p className="phone-modal-subtitle">
-                                We sent a 6-digit code to <strong>{fullPhone}</strong>.
+                                We sent a 6-digit code to <strong>{fullPhone}</strong> and your <strong>Gmail</strong>.
                                 <button 
                                     className="phone-change-link" 
                                     onClick={() => { setStep('input'); setError(''); }}

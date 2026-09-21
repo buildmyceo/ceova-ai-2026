@@ -14,9 +14,10 @@ const corsHeaders = {
 };
 
 // ── Gmail OAuth Config (from Supabase secrets) ──
-const GMAIL_CLIENT_ID     = Deno.env.get("GMAIL_GMAIL_CLIENT_ID") || Deno.env.get("GMAIL_CLIENT_ID");
-const GMAIL_CLIENT_SECRET = Deno.env.get("GMAIL_CLIENT_SECRET");
+const GMAIL_CLIENT_ID     = Deno.env.get("GMAIL_GMAIL_CLIENT_ID") || Deno.env.get("GMAIL_CLIENT_ID") || Deno.env.get("GOOGLE_CLIENT_ID");
+const GMAIL_CLIENT_SECRET = Deno.env.get("GMAIL_CLIENT_SECRET") || Deno.env.get("GOOGLE_CLIENT_SECRET");
 const GMAIL_REFRESH_TOKEN = Deno.env.get("GMAIL_REFRESH_TOKEN");
+const GMAIL_ACCESS_TOKEN  = Deno.env.get("GMAIL_ACCESS_TOKEN");
 const EMAIL_SENDER        = Deno.env.get("EMAIL_SENDER_GMAIL") || Deno.env.get("EMAIL_SENDER") || "ceova.ai@gmail.com";
 const REPLY_TO            = "contact@ceova.online";
 const FROM_NAME           = "CEOVA";
@@ -32,25 +33,59 @@ const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // ── Obtain Gmail Access Token ──
 async function getGmailAccessToken(): Promise<string> {
-  if (!GMAIL_CLIENT_ID || !GMAIL_CLIENT_SECRET || !GMAIL_REFRESH_TOKEN) {
-    throw new Error("Missing Gmail OAuth credentials (GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN)");
+  const refreshToken = Deno.env.get("GMAIL_REFRESH_TOKEN");
+  if (!refreshToken) {
+    throw new Error("Missing GMAIL_REFRESH_TOKEN in secrets");
   }
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: GMAIL_CLIENT_ID,
-      client_secret: GMAIL_CLIENT_SECRET,
-      refresh_token: GMAIL_REFRESH_TOKEN,
-      grant_type: "refresh_token",
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Gmail token refresh failed: ${err}`);
+
+  // Credential pairs to attempt:
+  const credentialPairs = [
+    {
+      id: Deno.env.get("GMAIL_CLIENT_ID") || Deno.env.get("GMAIL_GMAIL_CLIENT_ID"),
+      secret: Deno.env.get("GMAIL_CLIENT_SECRET"),
+      label: "GMAIL_CLIENT",
+    },
+    {
+      id: Deno.env.get("GOOGLE_CLIENT_ID"),
+      secret: Deno.env.get("GOOGLE_CLIENT_SECRET"),
+      label: "GOOGLE_CLIENT",
+    },
+  ];
+
+  for (const pair of credentialPairs) {
+    if (pair.id && pair.secret) {
+      try {
+        const res = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: pair.id,
+            client_secret: pair.secret,
+            refresh_token: refreshToken,
+            grant_type: "refresh_token",
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          console.log(`[send-system-email] ✅ Successfully refreshed Gmail access token using ${pair.label}`);
+          return data.access_token;
+        } else {
+          const err = await res.text();
+          console.warn(`[send-system-email] Refresh with ${pair.label} failed: ${err}`);
+        }
+      } catch (e: any) {
+        console.warn(`[send-system-email] Exception during refresh with ${pair.label}: ${e.message}`);
+      }
+    }
   }
-  const data = await res.json();
-  return data.access_token;
+
+  // Fallback to static GMAIL_ACCESS_TOKEN from secrets if refresh token failed or expired
+  if (GMAIL_ACCESS_TOKEN) {
+    console.log("[send-system-email] Using GMAIL_ACCESS_TOKEN from secrets as fallback");
+    return GMAIL_ACCESS_TOKEN;
+  }
+
+  throw new Error("Gmail token refresh failed for all client ID/secret pairs");
 }
 
 // ── Encode subject for RFC2047 MIME ──
@@ -153,6 +188,7 @@ serve(async (req: Request) => {
       // Meta
       userId,
       logEmail = true,
+      forceRealRecipient = false,
     } = await req.json();
 
     if (!to) throw new Error("Missing required field: 'to'");
@@ -177,8 +213,8 @@ serve(async (req: Request) => {
       throw new Error("Provide either 'emailType' + 'variables', or 'subject' + 'html'/'text'");
     }
 
-    // ── Deduplication: skip if same email+type sent in last 5 minutes ──
-    if (emailType && userId && logEmail) {
+    // ── Deduplication: skip if same email+type sent in last 5 minutes (except transactional OTPs) ──
+    if (emailType && emailType !== "OTP_VERIFICATION" && userId && logEmail) {
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       const { data: recentLog } = await supabase
         .from("email_logs")
@@ -198,14 +234,15 @@ serve(async (req: Request) => {
     }
 
     // ── Send ──
-    // TEST MODE: redirect all emails to the test address
-    const actualTo = TEST_MODE ? TEST_RECIPIENT : to;
-    const actualToName = TEST_MODE ? undefined : toName;
-    const actualSubject = TEST_MODE
+    // Transactional OTPs must always go to the actual recipient even if test mode is enabled
+    const isOtp = emailType === "OTP_VERIFICATION" || forceRealRecipient;
+    const actualTo = (TEST_MODE && !isOtp) ? TEST_RECIPIENT : to;
+    const actualToName = (TEST_MODE && !isOtp) ? undefined : toName;
+    const actualSubject = (TEST_MODE && !isOtp)
       ? `[TEST → ${to}] ${subject}`
       : subject;
 
-    if (TEST_MODE) {
+    if (TEST_MODE && !isOtp) {
       console.log(`[send-system-email] 🧪 TEST MODE — redirecting ${emailType || "raw"} from ${to} → ${TEST_RECIPIENT}`);
     } else {
       console.log(`[send-system-email] Sending ${emailType || "raw"} to ${to}`);
