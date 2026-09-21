@@ -2,6 +2,7 @@
 // send-sms-hook/index.ts — Supabase Send SMS Auth Hook
 // Dual-Channel Delivery: Dispatches identical 6-digit OTP to
 // both user's Phone (SMS via Twilio) and Gmail (via Gmail OAuth2)
+// Enforces plan limits: Spark max 1 email, Flow max 5 emails
 // =============================================================
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -27,10 +28,21 @@ serve(async (req: Request) => {
     console.log("[send-sms-hook] Received hook invocation:", JSON.stringify({
       hasUser: !!payload?.user,
       hasSms: !!payload?.sms,
-      userId: payload?.user?.id,
-      phone: payload?.user?.phone || payload?.phone,
+      userId: payload?.user?.id || payload?.userId,
+      phone: payload?.user?.phone || payload?.user?.phone_change || payload?.phone,
       isDiagnostic: !!payload?.diagnostic,
     }));
+
+    // Record incoming request to sms_hook_logs immediately for debugging
+    try {
+      await supabaseAdmin.from("sms_hook_logs").insert({
+        payload,
+        headers: Object.fromEntries(req.headers),
+        created_at: new Date().toISOString(),
+      });
+    } catch (e: any) {
+      console.warn("[send-sms-hook] Could not write to sms_hook_logs:", e?.message);
+    }
 
     // Twilio Config
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
@@ -47,7 +59,6 @@ serve(async (req: Request) => {
       // Test Twilio dispatch
       let twilioTestResult: any = null;
       if (twilioAccountSid && twilioAuthToken) {
-        // Test 1: If senderParam starts with VA, test Twilio Verify API!
         if (senderParam?.startsWith("VA")) {
           try {
             const verifyUrl = `https://verify.twilio.com/v2/Services/${senderParam}/Verifications`;
@@ -70,7 +81,6 @@ serve(async (req: Request) => {
             twilioTestResult = { mode: "Twilio_Verify_API", ok: false, error: e.message };
           }
         } else {
-          // Standard Messages API
           try {
             const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
             const params = new URLSearchParams();
@@ -99,61 +109,50 @@ serve(async (req: Request) => {
         }
       }
 
-      // Test Gmail token refresh with available secrets
+      // Test Gmail token refresh
       const refreshToken = Deno.env.get("GMAIL_REFRESH_TOKEN");
-      const gmailTestResults: any[] = [];
-      const testPairs = [
-        { id: Deno.env.get("GMAIL_CLIENT_ID"), secret: Deno.env.get("GMAIL_CLIENT_SECRET"), label: "GMAIL_CLIENT" },
-        { id: Deno.env.get("GOOGLE_CLIENT_ID"), secret: Deno.env.get("GOOGLE_CLIENT_SECRET"), label: "GOOGLE_CLIENT" },
-      ];
-
-      for (const p of testPairs) {
-        if (p.id && p.secret && refreshToken) {
-          try {
-            const res = await fetch("https://oauth2.googleapis.com/token", {
-              method: "POST",
-              headers: { "Content-Type": "application/x-www-form-urlencoded" },
-              body: new URLSearchParams({
-                client_id: p.id.trim(),
-                client_secret: p.secret.trim(),
-                refresh_token: refreshToken.trim(),
-                grant_type: "refresh_token",
-              }),
-            });
-            const txt = await res.text();
-            gmailTestResults.push({ label: p.label, clientIdPrefix: p.id.substring(0, 10), ok: res.ok, status: res.status, response: txt });
-          } catch (e: any) {
-            gmailTestResults.push({ label: p.label, ok: false, error: e.message });
-          }
+      const gmailClientId = Deno.env.get("GMAIL_CLIENT_ID") || Deno.env.get("GMAIL_GMAIL_CLIENT_ID");
+      const gmailClientSecret = Deno.env.get("GMAIL_CLIENT_SECRET");
+      let gmailTestResult: any = null;
+      if (gmailClientId && gmailClientSecret && refreshToken) {
+        try {
+          const res = await fetch("https://oauth2.googleapis.com/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              client_id: gmailClientId.trim(),
+              client_secret: gmailClientSecret.trim(),
+              refresh_token: refreshToken.trim(),
+              grant_type: "refresh_token",
+            }),
+          });
+          const txt = await res.text();
+          gmailTestResult = { ok: res.ok, status: res.status, response: txt };
+        } catch (e: any) {
+          gmailTestResult = { ok: false, error: e.message };
         }
       }
-
-      // Check user_google_tokens in DB
-      const { data: dbTokens, error: tokenErr } = await supabaseAdmin
-        .from("user_google_tokens")
-        .select("user_id, expiry_date, updated_at")
-        .order("updated_at", { ascending: false })
-        .limit(3);
 
       return new Response(
         JSON.stringify({
           diagnostic: true,
           twilioTestResult,
-          gmailTestResults,
-          refreshTokenInfo: {
-            exists: !!refreshToken,
-            length: refreshToken?.length,
-            prefix: refreshToken?.substring(0, 5),
-            suffix: refreshToken?.substring(refreshToken.length - 4),
-          },
-          googleTokens: { count: dbTokens?.length || 0, error: tokenErr?.message, tokens: dbTokens },
+          gmailTestResult,
+          secretsConfigured: {
+            twilioAccountSid: !!twilioAccountSid,
+            twilioAuthToken: !!twilioAuthToken,
+            senderParam: !!senderParam,
+            gmailClientId: !!gmailClientId,
+            gmailClientSecret: !!gmailClientSecret,
+            gmailRefreshToken: !!refreshToken,
+          }
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
     }
 
     // 1. Extract OTP
-    const otp = payload?.sms?.otp || payload?.otp;
+    const otp = payload?.sms?.otp || payload?.otp || payload?.token;
     if (!otp) {
       console.warn("[send-sms-hook] No OTP found in payload. Payload:", payload);
       return new Response(JSON.stringify({ error: "Missing OTP in payload" }), {
@@ -162,12 +161,18 @@ serve(async (req: Request) => {
       });
     }
 
-    // 2. Extract Phone & User info
+    // 2. Extract Phone & Normalize
     const user = payload?.user || {};
-    const phone = user?.phone || payload?.phone || "";
-    const userId = user?.id || payload?.userId || "";
+    let rawPhone = user?.phone || user?.phone_change || payload?.phone || payload?.sms?.phone || "";
+    rawPhone = String(rawPhone || "").trim();
 
-    // 3. Resolve User's Gmail / Email
+    let cleanPhone = "";
+    if (rawPhone) {
+      cleanPhone = rawPhone.startsWith("+") ? rawPhone : `+${rawPhone}`;
+    }
+
+    // 3. Extract User ID and Email
+    const userId = user?.id || payload?.userId || "";
     let email = user?.email || payload?.email || "";
 
     // Priority A: Check user.identities
@@ -192,12 +197,17 @@ serve(async (req: Request) => {
       }
     }
 
-    // Priority C: Search auth.users by phone number
-    if (!email && phone) {
+    // Priority C: Search auth.users by phone or phone_change
+    if (!email && (cleanPhone || rawPhone)) {
       try {
         const { data: listData, error: lErr } = await supabaseAdmin.auth.admin.listUsers();
         if (!lErr && listData?.users) {
-          const matched = listData.users.find((u: any) => u.phone === phone && u.email);
+          const targetDigits = (cleanPhone || rawPhone).replace(/\D/g, "");
+          const matched = listData.users.find((u: any) => {
+            const p1 = (u.phone || "").replace(/\D/g, "");
+            const p2 = (u.phone_change || "").replace(/\D/g, "");
+            return (p1 === targetDigits || p2 === targetDigits) && u.email;
+          });
           if (matched?.email) {
             email = matched.email;
           }
@@ -207,7 +217,7 @@ serve(async (req: Request) => {
       }
     }
 
-    // Priority D: Query public.users table
+    // Priority D: Query public.users or public.user_phone_links table
     if (!email && userId) {
       try {
         const { data: dbUser } = await supabaseAdmin
@@ -219,9 +229,50 @@ serve(async (req: Request) => {
       } catch (_) { /* noop */ }
     }
 
-    console.log(`[send-sms-hook] Resolved user info — Phone: ${phone || "none"}, Email: ${email || "none"}, OTP: ${otp}`);
+    if (!email && cleanPhone) {
+      try {
+        const { data: linkRow } = await supabaseAdmin
+          .from("user_phone_links")
+          .select("email")
+          .eq("phone", cleanPhone)
+          .order("verified_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (linkRow?.email) email = linkRow.email;
+      } catch (_) { /* noop */ }
+    }
 
-    // 4. Dispatch identical OTP to Gmail
+    console.log(`[send-sms-hook] Resolved user info — Phone: ${cleanPhone || "none"}, Email: ${email || "none"}, OTP: ${otp}`);
+
+    // 4. Enforce Plan Limits: 1 phone can link with max 5 mails in Flow, 1 in Spark
+    if (cleanPhone) {
+      try {
+        const { data: limitCheck, error: lErr } = await supabaseAdmin.rpc("check_phone_link_limit", {
+          target_phone: cleanPhone,
+          check_user_id: userId || null,
+        });
+
+        if (!lErr && limitCheck && limitCheck.allowed === false) {
+          console.warn(`[send-sms-hook] ⛔ Blocked by plan quota: ${limitCheck.reason}`);
+          return new Response(
+            JSON.stringify({
+              error: limitCheck.reason,
+              code: "PHONE_LIMIT_EXCEEDED",
+              plan: limitCheck.plan,
+              max_allowed: limitCheck.max_allowed,
+            }),
+            {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              status: 403,
+            }
+          );
+        }
+      } catch (e: any) {
+        console.warn("[send-sms-hook] Plan check warning:", e.message);
+      }
+    }
+
+    // 5. Dispatch identical OTP to Gmail
     let emailSent = false;
     let emailError: string | null = null;
     if (email) {
@@ -237,11 +288,11 @@ serve(async (req: Request) => {
             emailType: "OTP_VERIFICATION",
             to: email,
             userId: userId || undefined,
-            logEmail: false,
+            logEmail: true,
             forceRealRecipient: true,
             variables: {
               otp: String(otp),
-              phone: phone || "Your phone number",
+              phone: cleanPhone || "Your phone number",
               email,
             },
           }),
@@ -263,17 +314,17 @@ serve(async (req: Request) => {
       console.warn(`[send-sms-hook] ⚠️ No email address found for user. Skipping Gmail dispatch.`);
     }
 
-    // 5. Dispatch OTP via Twilio SMS (if credentials configured)
+    // 6. Dispatch OTP via Twilio SMS (if credentials configured)
     let smsSent = false;
     let smsError: string | null = null;
-    if (twilioAccountSid && twilioAuthToken && senderParam && phone) {
+    if (twilioAccountSid && twilioAuthToken && senderParam && cleanPhone) {
       if (senderParam.startsWith("VA")) {
         // ── Twilio Verify Service API ──
         try {
-          console.log(`[send-sms-hook] 📱 Dispatching SMS via Twilio Verify (${senderParam}) to ${phone}...`);
+          console.log(`[send-sms-hook] 📱 Dispatching SMS via Twilio Verify (${senderParam}) to ${cleanPhone}...`);
           const verifyUrl = `https://verify.twilio.com/v2/Services/${senderParam}/Verifications`;
           const verifyParams = new URLSearchParams();
-          verifyParams.append("To", phone);
+          verifyParams.append("To", cleanPhone);
           verifyParams.append("Channel", "sms");
           verifyParams.append("CustomCode", String(otp));
 
@@ -301,10 +352,10 @@ serve(async (req: Request) => {
       } else {
         // ── Twilio Standard Messages API ──
         try {
-          console.log(`[send-sms-hook] 📱 Dispatching SMS via Twilio Messages API to ${phone}...`);
+          console.log(`[send-sms-hook] 📱 Dispatching SMS via Twilio Messages API to ${cleanPhone}...`);
           const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
           const params = new URLSearchParams();
-          params.append("To", phone);
+          params.append("To", cleanPhone);
 
           if (senderParam.startsWith("MG")) {
             params.append("MessagingServiceSid", senderParam);
@@ -337,20 +388,20 @@ serve(async (req: Request) => {
         }
       }
     } else {
-      console.log(`[send-sms-hook] ℹ️ Twilio secrets incomplete: SID=${!!twilioAccountSid}, Token=${!!twilioAuthToken}, Sender=${!!senderParam}, Phone=${!!phone}`);
+      console.log(`[send-sms-hook] ℹ️ Twilio secrets incomplete or phone missing: SID=${!!twilioAccountSid}, Token=${!!twilioAuthToken}, Sender=${!!senderParam}, Phone=${!!cleanPhone}`);
     }
 
-    // 6. Log attempt and OTP to email_logs for traceability & debugging
+    // 7. Log attempt and OTP to email_logs for traceability
     try {
       await supabaseAdmin.from("email_logs").insert({
         user_id: userId || null,
-        to_email: email || phone || "otp-request",
+        to_email: email || cleanPhone || "otp-request",
         campaign_slug: "OTP_VERIFICATION",
-        status: emailSent ? "delivered" : (smsSent ? "sms_sent" : "failed"),
+        status: (emailSent || smsSent) ? "sent" : "failed",
         sent_at: new Date().toISOString(),
         metadata: {
           otp,
-          phone,
+          phone: cleanPhone,
           email,
           emailSent,
           smsSent,
@@ -363,7 +414,7 @@ serve(async (req: Request) => {
       console.warn("[send-sms-hook] Could not insert to email_logs:", logErr.message);
     }
 
-    // 7. Return 200 OK to Supabase Auth
+    // 8. Return 200 OK to Supabase Auth
     return new Response(
       JSON.stringify({
         success: true,
@@ -371,7 +422,7 @@ serve(async (req: Request) => {
         sms_sent: smsSent,
         sms_error: smsError,
         email_error: emailError,
-        phone: phone || null,
+        phone: cleanPhone || null,
         email: email ? email.replace(/(.{2})(.*)(@.*)/, "$1***$3") : null,
       }),
       {
@@ -389,7 +440,7 @@ serve(async (req: Request) => {
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
+        status: 200, // Return 200 so Supabase Auth doesn't fail unconditionally
       }
     );
   }

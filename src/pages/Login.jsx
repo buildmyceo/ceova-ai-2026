@@ -133,6 +133,15 @@ export default function Login({ onClose }) {
             }
 
             setAuthError("");
+            // Sync with user_phone_links
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                await supabase.rpc('record_phone_link', {
+                    link_user_id: user.id,
+                    link_phone: fullPhone,
+                    link_email: user.email
+                }).catch(() => {});
+            }
             // AuthProvider will detect the new session and redirect
         } catch (err) {
             setAuthError(err?.message || "Verification failed. Please try again.");

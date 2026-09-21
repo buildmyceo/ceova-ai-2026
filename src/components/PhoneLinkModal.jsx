@@ -62,6 +62,19 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
         setLoading(true);
 
         try {
+            // Check subscription plan phone limit (Spark: max 1 email, Flow: max 5 emails)
+            const { data: { user } } = await supabase.auth.getUser();
+            const { data: limitCheck, error: limitErr } = await supabase.rpc('check_phone_link_limit', {
+                target_phone: fullPhone,
+                check_user_id: user?.id || null
+            });
+
+            if (limitCheck && limitCheck.allowed === false) {
+                setError(limitCheck.reason || 'This phone number cannot be linked under your current plan.');
+                setLoading(false);
+                return;
+            }
+
             const { error: updateError } = await supabase.auth.updateUser({
                 phone: fullPhone
             });
@@ -136,6 +149,20 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
                 throw verifyError;
             }
 
+            // Record link in public.user_phone_links table
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    await supabase.rpc('record_phone_link', {
+                        link_user_id: user.id,
+                        link_phone: fullPhone,
+                        link_email: user.email
+                    });
+                }
+            } catch (rErr) {
+                console.warn('[PhoneLinkModal] Could not record phone link:', rErr);
+            }
+
             await supabase.auth.refreshSession();
 
             setStep('success');
@@ -203,6 +230,11 @@ export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhon
                             <p className="phone-modal-subtitle">
                                 Connect your phone number to access your Ceova AI account securely with SMS OTP from any device.
                             </p>
+
+                            <div style={{ fontSize: '0.78rem', color: '#9ca3af', marginBottom: '14px', background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                <span>🔒</span>
+                                <span>Limit: 1 email per phone in <strong>Spark</strong>, up to 5 emails in <strong>Flow</strong> plan</span>
+                            </div>
 
                             {error && (
                                 <div className="phone-modal-error">
