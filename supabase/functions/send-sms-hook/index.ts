@@ -469,7 +469,25 @@ serve(async (req: Request) => {
 
       const phoneToDisconnect = cleanPhone || codeRow.phone;
 
-      // 1. Call database RPC to cleanly remove from user_phone_links and auth.users
+      // 1. Cleanly remove from user_phone_links table
+      try {
+        if (targetUserId) {
+          await supabaseAdmin
+            .from("user_phone_links")
+            .delete()
+            .eq("user_id", targetUserId);
+        }
+        if (phoneToDisconnect) {
+          await supabaseAdmin
+            .from("user_phone_links")
+            .delete()
+            .eq("phone", phoneToDisconnect);
+        }
+      } catch (delErr: any) {
+        console.warn("[send-sms-hook] delete user_phone_links warning:", delErr?.message);
+      }
+
+      // 2. Call database RPC if present
       try {
         await supabaseAdmin.rpc("unlink_user_phone", {
           target_user_id: targetUserId,
@@ -479,19 +497,18 @@ serve(async (req: Request) => {
         console.warn("[send-sms-hook] unlink_user_phone RPC warning:", rpcErr.message);
       }
 
-      // 2. Also call Supabase Auth Admin API to update user
+      // 3. Clear phone in user_metadata only (DO NOT modify auth.users phone column directly,
+      // as changing auth.users phone invalidates the user's active session and refresh tokens)
       try {
         await supabaseAdmin.auth.admin.updateUserById(targetUserId, {
-          phone: null,
-          phone_confirm: false,
+          user_metadata: {
+            phone: null,
+            phone_linked: false,
+            phone_number: null,
+          },
         });
       } catch (adminErr: any) {
-        console.warn("[send-sms-hook] admin.updateUserById null warning:", adminErr.message);
-        try {
-          await supabaseAdmin.auth.admin.updateUserById(targetUserId, {
-            phone: "",
-          });
-        } catch (_) {}
+        console.warn("[send-sms-hook] admin.updateUserById metadata warning:", adminErr.message);
       }
 
       return new Response(JSON.stringify({

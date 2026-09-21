@@ -200,7 +200,9 @@ export default function PhoneLinkModal({
                 throw new Error(res?.error || fnErr?.message || 'Invalid or expired OTP code.');
             }
 
-            await supabase.auth.refreshSession();
+            try {
+                await supabase.auth.refreshSession();
+            } catch (_) {}
             setLinkedPhone(fullPhone);
 
             setStep('success');
@@ -343,8 +345,6 @@ export default function PhoneLinkModal({
             if (fnErr || (res && res.success === false)) {
                 throw new Error(res?.error || fnErr?.message || 'Invalid or expired verification code.');
             }
-
-            await supabase.auth.refreshSession();
 
             setStep('disconnect_success');
             setLinkedPhone('');

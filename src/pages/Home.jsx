@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { supabase, SUPABASE_KEY, SUPABASE_URL } from '../services/supabase';
 import Sidebar from '../components/Sidebar';
 import Chat from '../components/Chat';
@@ -39,6 +40,7 @@ export function sortMessagesChronologically(msgs) {
 }
 
 export default function Home({ session }) {
+    const location = useLocation();
     const [chats, setChats] = useState({});
     const [chatMetadata, setChatMetadata] = useState({}); // Stores { is_pinned, is_archived, title }
     const [currentChatId, setCurrentChatId] = useState(() => {
@@ -95,7 +97,7 @@ export default function Home({ session }) {
     
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-    const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+    const [isLibraryOpen, setIsLibraryOpen] = useState(() => Boolean(location?.state?.openLibrary));
     const [shareCopied, setShareCopied] = useState(false);
     const [shareStatus, setShareStatus] = useState("");
     const abortControllerRef = useRef(null);
@@ -110,18 +112,12 @@ export default function Home({ session }) {
     const [greetingIndex, setGreetingIndex] = useState(() => Math.floor(Math.random() * 10));
     const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
 
-    // Prompt user to link phone after Google login if not yet linked
+    // If navigation state requests library to open, open it
     useEffect(() => {
-        if (!session?.user) return;
-        const hasPhone = !!session.user.phone;
-        const dismissed = sessionStorage.getItem('ceova_phone_prompt_dismissed');
-        if (!hasPhone && !dismissed) {
-            const timer = setTimeout(() => {
-                setIsPhoneModalOpen(true);
-            }, 1500);
-            return () => clearTimeout(timer);
+        if (location?.state?.openLibrary) {
+            setIsLibraryOpen(true);
         }
-    }, [session]);
+    }, [location?.state?.openLibrary]);
 
     useEffect(() => {
         localStorage.setItem('ceova_sidebar_state', isSidebarOpen ? 'open' : 'closed');

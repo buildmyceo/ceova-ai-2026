@@ -58,6 +58,7 @@ export default function App() {
                     <Route path="/privacy" element={<Navigate to="/legal/privacy-policy" replace />} />
                     <Route path="/terms" element={<Navigate to="/legal/terms-conditions" replace />} />
                     <Route path="/dashboard" element={<ProtectedRoute><Home session={session} /></ProtectedRoute>} />
+                    <Route path="/library" element={<Navigate to="/dashboard" replace state={{ openLibrary: true }} />} />
 
                     <Route path="/subscription" element={<ProtectedRoute><Subscription session={session} /></ProtectedRoute>} />
                     <Route path="/auth/callback" element={<AuthCallback />} />
