@@ -611,7 +611,7 @@ export default function Home({ session }) {
         const historyForAI = currentMessages.length > 0 
             ? currentMessages.filter(m => !m.isTitleFallback).map(m => ({
                 role: m.sender === 'user' ? 'user' : 'assistant',
-                content: m.text,
+                content: m.text || "",
                 attachments: m.attachments || []
             })) 
             : [];

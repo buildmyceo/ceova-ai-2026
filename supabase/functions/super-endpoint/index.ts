@@ -261,39 +261,41 @@ STRICT RULES:
         // ── Zod Validation ────────────────────────────────────────────────────────
         const { z } = await import("https://deno.land/x/zod@v3.22.4/mod.ts");
         const requestSchema = z.object({
-            message: z.string().max(50000).optional().default(""),
-            project_id: z.string().optional(),
+            message: z.any().transform(val => typeof val === 'string' ? val : (val ? String(val) : "")).optional().default(""),
+            project_id: z.string().nullable().optional(),
             history: z.array(z.object({
-                role: z.enum(['user', 'assistant', 'system']),
-                content: z.string(),
-                attachments: z.array(z.any()).optional()
-            })).max(50).optional().default([]),
+                role: z.string().optional().default('user'),
+                content: z.any().transform(val => typeof val === 'string' ? val : (val ? String(val) : "")).optional().default(""),
+                attachments: z.array(z.any()).optional().default([])
+            }).passthrough()).max(100).optional().default([]),
             attachments: z.array(z.object({
-                type: z.string().optional().default('application/octet-stream'),
-                url: z.string().optional(),
-                data: z.string().optional(),
-                content: z.string().optional(),
-                name: z.string().optional(),
-                size: z.number().optional(),
-                path: z.string().optional(),
-                source: z.string().optional(),
-                snippet: z.string().optional(),
-                from_sender: z.string().optional()
-            }).passthrough()).max(10).optional().default([]),
+                type: z.string().optional().nullable().default('application/octet-stream'),
+                url: z.string().optional().nullable(),
+                data: z.string().optional().nullable(),
+                content: z.string().optional().nullable(),
+                name: z.string().optional().nullable(),
+                size: z.any().optional().nullable(),
+                path: z.string().optional().nullable(),
+                source: z.string().optional().nullable(),
+                snippet: z.string().optional().nullable(),
+                from_sender: z.string().optional().nullable()
+            }).passthrough()).max(30).optional().default([]),
+            is_temporary: z.boolean().optional(),
             has_local_folder: z.boolean().optional().default(true),
             is_thinking: z.boolean().optional().default(false),
             user_context: z.object({
-                date: z.string(),
-                time: z.string(),
-                timezone: z.string(),
-                dayOfWeek: z.string()
-            }).optional()
-        });
+                date: z.string().optional().nullable(),
+                time: z.string().optional().nullable(),
+                timezone: z.string().optional().nullable(),
+                dayOfWeek: z.string().optional().nullable()
+            }).passthrough().optional().nullable()
+        }).passthrough();
 
         const parseResult = requestSchema.safeParse(reqBody);
         if (!parseResult.success) {
+            console.error("[super-endpoint] Validation error details:", JSON.stringify(parseResult.error.errors));
             return new Response(JSON.stringify({ 
-                error: "Validation failed", 
+                error: "Validation failed: " + parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', '), 
                 details: parseResult.error.errors 
             }), {
                 status: 400,
