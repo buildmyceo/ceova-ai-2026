@@ -1,0 +1,273 @@
+/* PhoneLinkModal.css - Premium Glassmorphic design */
+
+.phone-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+}
+
+.phone-modal-card {
+    position: relative;
+    width: 100%;
+    max-width: 440px;
+    background: rgba(18, 18, 22, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 2.2rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-family: inherit;
+}
+
+.phone-modal-close {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #a0a0a0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.phone-modal-close:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.phone-modal-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.phone-modal-icon-badge {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(29, 155, 240, 0.15), rgba(16, 163, 127, 0.15));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #10a37f;
+    margin-bottom: 1.2rem;
+}
+
+.phone-modal-title {
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+    color: #ffffff;
+    letter-spacing: -0.02em;
+}
+
+.phone-modal-subtitle {
+    font-size: 0.88rem;
+    color: #9ca3af;
+    line-height: 1.5;
+    margin: 0 0 1.5rem 0;
+    max-width: 360px;
+}
+
+.phone-change-link {
+    background: none;
+    border: none;
+    color: #3b82f6;
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-left: 6px;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.phone-modal-error {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+    font-size: 0.82rem;
+    padding: 10px 14px;
+    border-radius: 10px;
+    margin-bottom: 1.2rem;
+    text-align: left;
+}
+
+.phone-input-row {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1.2rem;
+}
+
+.phone-country-select {
+    width: 130px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 12px 10px;
+    color: #fff;
+    font-size: 0.88rem;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.phone-country-select option {
+    background: #18181c;
+    color: #fff;
+}
+
+.phone-country-select:focus {
+    border-color: #3b82f6;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.phone-number-input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 12px 14px;
+    color: #fff;
+    font-size: 0.95rem;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.phone-number-input:focus {
+    border-color: #3b82f6;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.phone-modal-submit-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #ffffff;
+    color: #000000;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 20px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: 0.75rem;
+}
+
+.phone-modal-submit-btn:hover:not(:disabled) {
+    background: #e5e7eb;
+    transform: translateY(-1px);
+}
+
+.phone-modal-submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.phone-modal-skip-btn {
+    background: transparent;
+    border: none;
+    color: #71717a;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 6px 12px;
+    transition: color 0.2s ease;
+}
+
+.phone-modal-skip-btn:hover {
+    color: #a1a1aa;
+}
+
+.phone-otp-inputs {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 1.2rem;
+    width: 100%;
+}
+
+.phone-otp-box {
+    width: 44px;
+    height: 52px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    text-align: center;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #fff;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.phone-otp-box:focus {
+    border-color: #3b82f6;
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.phone-resend-row {
+    margin-bottom: 1.2rem;
+}
+
+.phone-resend-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: #3b82f6;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.phone-resend-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.phone-resend-timer {
+    font-size: 0.82rem;
+    color: #71717a;
+}
+
+.phone-modal-success-icon {
+    margin-bottom: 1rem;
+    animation: scaleCheck 0.4s ease-out;
+}
+
+@keyframes scaleCheck {
+    0% { transform: scale(0.6); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.spin-animate {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}

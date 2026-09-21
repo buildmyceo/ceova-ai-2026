@@ -1,0 +1,350 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, Smartphone, ArrowRight, CheckCircle2, RotateCcw, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
+import { supabase } from '../services/supabase';
+import { COUNTRY_CODES } from '../constants/countryCodes';
+import './PhoneLinkModal.css';
+
+export default function PhoneLinkModal({ isOpen, onClose, onSuccess, initialPhone = '' }) {
+    const [countryCode, setCountryCode] = useState('+91');
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [otp, setOtp] = useState(['', '', '', '', '', '']);
+    const [step, setStep] = useState('input'); // 'input', 'otp', 'success'
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [resendTimer, setResendTimer] = useState(60);
+    const [canResend, setCanResend] = useState(false);
+    const otpRefs = useRef([]);
+
+    useEffect(() => {
+        if (initialPhone) {
+            // Check if initialPhone has country code
+            const matchedCode = COUNTRY_CODES.find(c => initialPhone.startsWith(c.code));
+            if (matchedCode) {
+                setCountryCode(matchedCode.code);
+                setPhoneNumber(initialPhone.slice(matchedCode.code.length));
+            } else {
+                setPhoneNumber(initialPhone);
+            }
+        }
+    }, [initialPhone]);
+
+    useEffect(() => {
+        let interval = null;
+        if (step === 'otp' && resendTimer > 0) {
+            interval = setInterval(() => {
+                setResendTimer(prev => {
+                    if (prev <= 1) {
+                        setCanResend(true);
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [step, resendTimer]);
+
+    if (!isOpen) return null;
+
+    const fullPhone = `${countryCode}${phoneNumber.replace(/\D/g, '')}`;
+
+    const handleSendOtp = async () => {
+        const cleanNumber = phoneNumber.replace(/\D/g, '');
+        if (cleanNumber.length < 7) {
+            setError('Please enter a valid phone number.');
+            return;
+        }
+
+        setError('');
+        setLoading(true);
+
+        try {
+            // When already logged in, updateUser({ phone }) initiates phone verification with OTP
+            const { error: updateError } = await supabase.auth.updateUser({
+                phone: fullPhone
+            });
+
+            if (updateError) {
+                throw updateError;
+            }
+
+            setStep('otp');
+            setResendTimer(60);
+            setCanResend(false);
+            setOtp(['', '', '', '', '', '']);
+            setTimeout(() => {
+                otpRefs.current[0]?.focus();
+            }, 100);
+        } catch (err) {
+            console.error('[PhoneLinkModal] Error sending OTP:', err);
+            setError(err.message || 'Failed to send OTP. Please check the number and try again.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleOtpChange = (index, value) => {
+        const digit = value.replace(/\D/g, '').slice(-1);
+        const newOtp = [...otp];
+        newOtp[index] = digit;
+        setOtp(newOtp);
+
+        if (digit && index < 5) {
+            otpRefs.current[index + 1]?.focus();
+        }
+    };
+
+    const handleOtpKeyDown = (index, e) => {
+        if (e.key === 'Backspace' && !otp[index] && index > 0) {
+            otpRefs.current[index - 1]?.focus();
+        }
+    };
+
+    const handleVerifyOtp = async () => {
+        const token = otp.join('');
+        if (token.length !== 6) {
+            setError('Please enter the full 6-digit OTP code.');
+            return;
+        }
+
+        setError('');
+        setLoading(true);
+
+        try {
+            // Verify OTP for phone linking on current authenticated user
+            const { error: verifyError } = await supabase.auth.verifyOtp({
+                phone: fullPhone,
+                token,
+                type: 'phone_change'
+            });
+
+            if (verifyError) {
+                throw verifyError;
+            }
+
+            // Refresh user session to ensure session.user.phone is updated
+            await supabase.auth.refreshSession();
+
+            setStep('success');
+            setTimeout(() => {
+                onSuccess?.(fullPhone);
+                onClose();
+            }, 2000);
+        } catch (err) {
+            console.error('[PhoneLinkModal] Verify OTP error:', err);
+            setError(err.message || 'Invalid or expired OTP code. Please try again.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResend = async () => {
+        if (!canResend) return;
+        setError('');
+        setLoading(true);
+        try {
+            const { error: resendErr } = await supabase.auth.updateUser({
+                phone: fullPhone
+            });
+            if (resendErr) throw resendErr;
+            setResendTimer(60);
+            setCanResend(false);
+        } catch (err) {
+            setError(err.message || 'Failed to resend OTP.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="phone-modal-overlay" onClick={onClose}>
+            <motion.div 
+                className="phone-modal-card"
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                onClick={(e) => e.stopPropagation()}
+            >
+                <button className="phone-modal-close" onClick={onClose}>
+                    <X size={18} />
+                </button>
+
+                <AnimatePresence mode="wait">
+                    {step === 'input' && (
+                        <motion.div 
+                            key="input"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 10 }}
+                            className="phone-modal-content"
+                        >
+                            <div className="phone-modal-icon-badge">
+                                <Smartphone size={28} />
+                            </div>
+
+                            <h3 className="phone-modal-title">Link Your Phone Number</h3>
+                            <p className="phone-modal-subtitle">
+                                Connect your phone number to access your Ceova AI account seamlessly with SMS OTP from any device.
+                            </p>
+
+                            {error && (
+                                <div className="phone-modal-error">
+                                    <AlertCircle size={16} />
+                                    <span>{error}</span>
+                                </div>
+                            )}
+
+                            <div className="phone-input-row">
+                                <select 
+                                    className="phone-country-select"
+                                    value={countryCode}
+                                    onChange={(e) => setCountryCode(e.target.value)}
+                                >
+                                    {COUNTRY_CODES.map((c) => (
+                                        <option key={`${c.code}-${c.country}`} value={c.code}>
+                                            {c.flag} {c.code} ({c.country})
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <input 
+                                    type="tel"
+                                    className="phone-number-input"
+                                    placeholder="Phone number"
+                                    value={phoneNumber}
+                                    onChange={(e) => setPhoneNumber(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSendOtp()}
+                                    autoFocus
+                                />
+                            </div>
+
+                            <button 
+                                className="phone-modal-submit-btn"
+                                onClick={handleSendOtp}
+                                disabled={loading || !phoneNumber.trim()}
+                            >
+                                {loading ? (
+                                    <>
+                                        <Loader2 size={18} className="spin-animate" />
+                                        <span>Sending OTP...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>Send Verification Code</span>
+                                        <ArrowRight size={18} />
+                                    </>
+                                )}
+                            </button>
+
+                            <button className="phone-modal-skip-btn" onClick={onClose}>
+                                Maybe later
+                            </button>
+                        </motion.div>
+                    )}
+
+                    {step === 'otp' && (
+                        <motion.div 
+                            key="otp"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 10 }}
+                            className="phone-modal-content"
+                        >
+                            <div className="phone-modal-icon-badge">
+                                <ShieldCheck size={28} />
+                            </div>
+
+                            <h3 className="phone-modal-title">Enter Verification Code</h3>
+                            <p className="phone-modal-subtitle">
+                                We sent a 6-digit code to <strong>{fullPhone}</strong>.
+                                <button 
+                                    className="phone-change-link" 
+                                    onClick={() => { setStep('input'); setError(''); }}
+                                >
+                                    Change
+                                </button>
+                            </p>
+
+                            {error && (
+                                <div className="phone-modal-error">
+                                    <AlertCircle size={16} />
+                                    <span>{error}</span>
+                                </div>
+                            )}
+
+                            <div className="phone-otp-inputs">
+                                {otp.map((digit, idx) => (
+                                    <input 
+                                        key={idx}
+                                        ref={(el) => (otpRefs.current[idx] = el)}
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={1}
+                                        className="phone-otp-box"
+                                        value={digit}
+                                        onChange={(e) => handleOtpChange(idx, e.target.value)}
+                                        onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                                    />
+                                ))}
+                            </div>
+
+                            <div className="phone-resend-row">
+                                {canResend ? (
+                                    <button 
+                                        className="phone-resend-btn active"
+                                        onClick={handleResend}
+                                        disabled={loading}
+                                    >
+                                        <RotateCcw size={14} /> Resend Code
+                                    </button>
+                                ) : (
+                                    <span className="phone-resend-timer">
+                                        Resend code in {resendTimer}s
+                                    </span>
+                                )}
+                            </div>
+
+                            <button 
+                                className="phone-modal-submit-btn"
+                                onClick={handleVerifyOtp}
+                                disabled={loading || otp.join('').length !== 6}
+                            >
+                                {loading ? (
+                                    <>
+                                        <Loader2 size={18} className="spin-animate" />
+                                        <span>Verifying...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>Verify & Link Account</span>
+                                        <ArrowRight size={18} />
+                                    </>
+                                )}
+                            </button>
+                        </motion.div>
+                    )}
+
+                    {step === 'success' && (
+                        <motion.div 
+                            key="success"
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="phone-modal-content phone-modal-success"
+                        >
+                            <div className="phone-modal-success-icon">
+                                <CheckCircle2 size={48} color="#10a37f" />
+                            </div>
+                            <h3 className="phone-modal-title">Phone Number Verified!</h3>
+                            <p className="phone-modal-subtitle">
+                                Your phone number (<strong>{fullPhone}</strong>) has been linked to your account. You can now use it to log in anytime.
+                            </p>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </motion.div>
+        </div>
+    );
+}

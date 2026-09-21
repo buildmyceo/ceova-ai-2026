@@ -240,6 +240,131 @@
     color: #ffffff;
 }
 
+/* Phone Auth Tabs & Inputs */
+.auth-tabs {
+    display: flex;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 3px;
+    border-radius: 9999px;
+    margin-bottom: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.auth-tab-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 9999px;
+    border: none;
+    background: transparent;
+    color: #888;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.auth-tab-btn.active {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-weight: 600;
+}
+
+.auth-phone-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.auth-country-select {
+    width: 110px;
+    padding: 12px 10px;
+    border-radius: 9999px;
+    border: 1px solid #333333;
+    background-color: #0a0a0a;
+    color: #ffffff;
+    font-size: 0.88rem;
+    outline: none;
+    cursor: pointer;
+}
+
+.auth-country-select option {
+    background-color: #141417;
+    color: #ffffff;
+}
+
+.auth-country-select:focus {
+    border-color: #1d9bf0;
+}
+
+.auth-otp-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    gap: 12px;
+}
+
+.auth-otp-inputs {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.auth-otp-box {
+    width: 44px;
+    height: 52px;
+    background-color: #0a0a0a;
+    border: 1px solid #333333;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 1.25rem;
+    font-weight: 600;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.auth-otp-box:focus {
+    border-color: #1d9bf0;
+    box-shadow: 0 0 0 2px rgba(29, 155, 240, 0.2);
+}
+
+.auth-resend-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    font-size: 0.82rem;
+    color: #71767b;
+    padding: 0 4px;
+}
+
+.auth-change-phone-btn {
+    background: none;
+    border: none;
+    color: #1d9bf0;
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+
+.auth-resend-btn {
+    background: none;
+    border: none;
+    color: #1d9bf0;
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+
+.auth-resend-btn:disabled {
+    color: #555;
+    cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
     .auth-full-panel {
         max-width: 100%;

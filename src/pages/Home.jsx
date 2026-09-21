@@ -13,6 +13,7 @@ import Login from './Login';
 import { buildSystemPrompt } from '../lib/systemPromptBuilder';
 import { generateChatTitle, renameLegacyChats } from '../services/titleGenerator';
 import { getGreetingName, getGreetingHeadline, getTimePeriod, getGreetingSubtitle } from '../constants/greetings';
+import PhoneLinkModal from '../components/PhoneLinkModal';
 
 const CURRENT_CHAT_KEY = "chat_id";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -107,6 +108,20 @@ export default function Home({ session }) {
     const [isRetryingPayment, setIsRetryingPayment] = useState(false);
     const [userMemories, setUserMemories] = useState([]);
     const [greetingIndex, setGreetingIndex] = useState(() => Math.floor(Math.random() * 10));
+    const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
+
+    // Prompt user to link phone after Google login if not yet linked
+    useEffect(() => {
+        if (!session?.user) return;
+        const hasPhone = !!session.user.phone;
+        const dismissed = sessionStorage.getItem('ceova_phone_prompt_dismissed');
+        if (!hasPhone && !dismissed) {
+            const timer = setTimeout(() => {
+                setIsPhoneModalOpen(true);
+            }, 1500);
+            return () => clearTimeout(timer);
+        }
+    }, [session]);
 
     useEffect(() => {
         localStorage.setItem('ceova_sidebar_state', isSidebarOpen ? 'open' : 'closed');
@@ -1676,9 +1691,28 @@ export default function Home({ session }) {
                         session={session}
                         userEmail={session?.user?.email}
                         userId={session?.user?.id}
+                        onOpenPhoneModal={() => setIsPhoneModalOpen(true)}
                         onLogout={() => supabase.auth.signOut()}
                         onBulkDelete={handleBulkDelete}
                         onBulkArchive={handleBulkArchive}
+                    />
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {isPhoneModalOpen && (
+                    <PhoneLinkModal 
+                        isOpen={isPhoneModalOpen}
+                        onClose={() => {
+                            setIsPhoneModalOpen(false);
+                            sessionStorage.setItem('ceova_phone_prompt_dismissed', 'true');
+                        }}
+                        initialPhone={session?.user?.phone || ''}
+                        onSuccess={(verifiedPhone) => {
+                            showToast(`Phone number linked successfully! (${verifiedPhone})`, 'success');
+                            setIsPhoneModalOpen(false);
+                            sessionStorage.setItem('ceova_phone_prompt_dismissed', 'true');
+                        }}
                     />
                 )}
             </AnimatePresence>

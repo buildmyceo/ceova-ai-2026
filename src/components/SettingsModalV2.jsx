@@ -7,7 +7,8 @@ import {
     CircleDashed, Mail, CreditCard, ArrowUpCircle, 
     Settings2, Bell, LayoutGrid, Database, Archive, Shield,
     ArrowLeft, RotateCcw, Trash2, Download, UserMinus, Plus, Edit2, Save, Zap,
-    Power, Check, Calendar, HardDrive, Scissors, Scan, Eye, Key, Palette, Film, Minimize2, RefreshCw, Receipt, Megaphone, BookOpen, Terminal, FolderOpen, Code
+    Power, Check, Calendar, HardDrive, Scissors, Scan, Eye, Key, Palette, Film, Minimize2, RefreshCw, Receipt, Megaphone, BookOpen, Terminal, FolderOpen, Code,
+    Smartphone
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import UsageSection from './UsageSection';
@@ -15,7 +16,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import GoogleConnectModal from './GoogleConnectModal';
 import TelegramConnectModal from './TelegramConnectModal';
 
-export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange }) {
+export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, session, onOpenPhoneModal, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange }) {
     const { themePref, setThemePref } = useTheme();
     const [view, setView] = useState('main'); // 'main', 'archived', 'terms', 'privacy', 'data-controls', 'memories', 'personalization'
     const [personalization, setPersonalization] = useState({
@@ -456,6 +457,23 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                         <div className="settings-row no-hover">
                                             <div className="row-left"><Mail size={18} /> <span>Email</span></div>
                                             <span className="version-info">{userEmail || "not logged in"}</span>
+                                        </div>
+                                        <div className="settings-row clickable" onClick={() => onOpenPhoneModal?.()}>
+                                            <div className="row-left">
+                                                <Smartphone size={18} /> 
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                    <span>Phone Login</span>
+                                                    <span style={{ fontSize: '10px', opacity: 0.6 }}>
+                                                        {session?.user?.phone ? "Verified for SMS login" : "Not linked — click to add"}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span className="version-info" style={{ color: session?.user?.phone ? '#10a37f' : 'inherit' }}>
+                                                    {session?.user?.phone || "Link Phone"}
+                                                </span>
+                                                <ChevronRight size={14} className="chevron" />
+                                            </div>
                                         </div>
                                         <div className="settings-row clickable" onClick={() => { navigate('/subscription'); handleClose(); }}>
                                             <div className="row-left"><CreditCard size={18} /> <span>Subscription & Billing</span></div>

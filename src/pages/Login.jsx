@@ -1,17 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthProvider';
 import '../App.css';
 import './Login.css';
 import APP_CONFIG from '../config/appConfig';
+import { COUNTRY_CODES } from '../constants/countryCodes';
 
 export default function Login({ onClose }) {
     const { session, loading } = useAuth();
+    const [loginMethod, setLoginMethod] = useState('phone'); // 'phone' or 'email'
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [countryCode, setCountryCode] = useState('+91');
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [phoneStep, setPhoneStep] = useState('phone'); // 'phone' or 'otp'
+    const [phoneOtp, setPhoneOtp] = useState(['', '', '', '', '', '']);
+    const [phoneLoading, setPhoneLoading] = useState(false);
+    const [resendTimer, setResendTimer] = useState(60);
+    const [canResend, setCanResend] = useState(false);
     const [authError, setAuthError] = useState('');
     const [themeMod, setThemeMod] = useState('dark');
+    const otpRefs = useRef([]);
+
+    // Timer for OTP resend countdown
+    useEffect(() => {
+        let interval = null;
+        if (phoneStep === 'otp' && resendTimer > 0) {
+            interval = setInterval(() => {
+                setResendTimer(prev => {
+                    if (prev <= 1) {
+                        setCanResend(true);
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [phoneStep, resendTimer]);
 
     // Theme detection
     useEffect(() => {
@@ -21,6 +50,116 @@ export default function Login({ onClose }) {
         mediaQuery.addEventListener('change', handleChange);
         return () => mediaQuery.removeEventListener('change', handleChange);
     }, []);
+
+    const fullPhone = `${countryCode}${phoneNumber.replace(/\D/g, '')}`;
+
+    const handleSendPhoneOtp = async () => {
+        const cleanNumber = phoneNumber.replace(/\D/g, '');
+        if (cleanNumber.length < 7) {
+            setAuthError("Please enter a valid phone number.");
+            return;
+        }
+
+        setAuthError("Sending OTP code...");
+        setPhoneLoading(true);
+
+        try {
+            // Require user to have registered with Google first (shouldCreateUser: false)
+            const { error } = await supabase.auth.signInWithOtp({
+                phone: fullPhone,
+                options: { shouldCreateUser: false }
+            });
+
+            if (error) {
+                // If phone is not linked to any existing user account
+                if (error.status === 422 || error.code === 'otp_disabled' || String(error.message).toLowerCase().includes('signups not allowed')) {
+                    setAuthError("No account found with this phone number. Please sign in with Google first to link your phone number.");
+                } else {
+                    setAuthError(error.message || "Failed to send OTP.");
+                }
+                return;
+            }
+
+            setAuthError("");
+            setPhoneStep('otp');
+            setResendTimer(60);
+            setCanResend(false);
+            setPhoneOtp(['', '', '', '', '', '']);
+            setTimeout(() => otpRefs.current[0]?.focus(), 100);
+        } catch (err) {
+            setAuthError(err?.message || "Failed to send OTP.");
+        } finally {
+            setPhoneLoading(false);
+        }
+    };
+
+    const handlePhoneOtpChange = (index, value) => {
+        const digit = value.replace(/\D/g, '').slice(-1);
+        const newOtp = [...phoneOtp];
+        newOtp[index] = digit;
+        setPhoneOtp(newOtp);
+
+        if (digit && index < 5) {
+            otpRefs.current[index + 1]?.focus();
+        }
+    };
+
+    const handlePhoneOtpKeyDown = (index, e) => {
+        if (e.key === 'Backspace' && !phoneOtp[index] && index > 0) {
+            otpRefs.current[index - 1]?.focus();
+        }
+    };
+
+    const handleVerifyPhoneOtp = async () => {
+        const token = phoneOtp.join('');
+        if (token.length !== 6) {
+            setAuthError("Please enter the full 6-digit OTP code.");
+            return;
+        }
+
+        setAuthError("Verifying OTP...");
+        setPhoneLoading(true);
+
+        try {
+            const { error } = await supabase.auth.verifyOtp({
+                phone: fullPhone,
+                token,
+                type: 'sms'
+            });
+
+            if (error) {
+                setAuthError(error.message || "Invalid or expired verification code.");
+                return;
+            }
+
+            setAuthError("");
+            // AuthProvider will detect the new session and redirect
+        } catch (err) {
+            setAuthError(err?.message || "Verification failed. Please try again.");
+        } finally {
+            setPhoneLoading(false);
+        }
+    };
+
+    const handleResendPhoneOtp = async () => {
+        if (!canResend) return;
+        setAuthError("Resending OTP...");
+        setPhoneLoading(true);
+        try {
+            const { error } = await supabase.auth.signInWithOtp({
+                phone: fullPhone,
+                options: { shouldCreateUser: false }
+            });
+            if (error) throw error;
+            setAuthError("");
+            setResendTimer(60);
+            setCanResend(false);
+        } catch (err) {
+            setAuthError(err?.message || "Failed to resend OTP.");
+        } finally {
+            setPhoneLoading(false);
+        }
+    };
 
     const handleEmailLogin = async () => {
         if (!email || !password) return setAuthError("Fill in both fields.");
@@ -177,28 +316,135 @@ export default function Login({ onClose }) {
                     </button>
                     
                     <div className="auth-divider">
-                        <span>or</span>
+                        <span>or continue with</span>
                     </div>
 
-                    <form onSubmit={(e) => e.preventDefault()} className="auth-email-form">
-                        <input 
-                            className="auth-input-pill"
-                            type="email" 
-                            placeholder="Email address" 
-                            required 
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                        />
-                        <input 
-                            className="auth-input-pill"
-                            type="password" 
-                            placeholder="Password" 
-                            required 
-                            value={password}
-                            onChange={e => setPassword(e.target.value)}
-                        />
-                        <button className="auth-submit-btn" onClick={handleEmailLogin}>Sign in with email</button>
-                    </form>
+                    <div className="auth-tabs">
+                        <button 
+                            type="button"
+                            className={`auth-tab-btn ${loginMethod === 'phone' ? 'active' : ''}`}
+                            onClick={() => { setLoginMethod('phone'); setAuthError(''); }}
+                        >
+                            Phone (OTP)
+                        </button>
+                        <button 
+                            type="button"
+                            className={`auth-tab-btn ${loginMethod === 'email' ? 'active' : ''}`}
+                            onClick={() => { setLoginMethod('email'); setAuthError(''); }}
+                        >
+                            Email
+                        </button>
+                    </div>
+
+                    {loginMethod === 'phone' ? (
+                        phoneStep === 'phone' ? (
+                            <form onSubmit={(e) => { e.preventDefault(); handleSendPhoneOtp(); }} className="auth-email-form">
+                                <div className="auth-phone-row">
+                                    <select 
+                                        className="auth-country-select"
+                                        value={countryCode}
+                                        onChange={(e) => setCountryCode(e.target.value)}
+                                    >
+                                        {COUNTRY_CODES.map((c) => (
+                                            <option key={`${c.code}-${c.country}`} value={c.code}>
+                                                {c.flag} {c.code}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <input 
+                                        className="auth-input-pill"
+                                        type="tel" 
+                                        placeholder="Phone number" 
+                                        required 
+                                        value={phoneNumber}
+                                        onChange={e => setPhoneNumber(e.target.value)}
+                                        autoFocus
+                                    />
+                                </div>
+                                <button 
+                                    className="auth-submit-btn" 
+                                    type="submit"
+                                    disabled={phoneLoading || !phoneNumber.trim()}
+                                >
+                                    {phoneLoading ? "Sending OTP..." : "Send OTP"}
+                                </button>
+                            </form>
+                        ) : (
+                            <div className="auth-otp-container">
+                                <div style={{ fontSize: '0.85rem', color: '#a0a0a0', marginBottom: '4px' }}>
+                                    Enter 6-digit code sent to <strong>{fullPhone}</strong>
+                                </div>
+
+                                <div className="auth-otp-inputs">
+                                    {phoneOtp.map((digit, idx) => (
+                                        <input 
+                                            key={idx}
+                                            ref={(el) => (otpRefs.current[idx] = el)}
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={1}
+                                            className="auth-otp-box"
+                                            value={digit}
+                                            onChange={(e) => handlePhoneOtpChange(idx, e.target.value)}
+                                            onKeyDown={(e) => handlePhoneOtpKeyDown(idx, e)}
+                                        />
+                                    ))}
+                                </div>
+
+                                <div className="auth-resend-row">
+                                    <button 
+                                        type="button" 
+                                        className="auth-change-phone-btn"
+                                        onClick={() => { setPhoneStep('phone'); setAuthError(''); }}
+                                    >
+                                        Change number
+                                    </button>
+
+                                    {canResend ? (
+                                        <button 
+                                            type="button" 
+                                            className="auth-resend-btn"
+                                            onClick={handleResendPhoneOtp}
+                                            disabled={phoneLoading}
+                                        >
+                                            Resend OTP
+                                        </button>
+                                    ) : (
+                                        <span>Resend in {resendTimer}s</span>
+                                    )}
+                                </div>
+
+                                <button 
+                                    className="auth-submit-btn" 
+                                    type="button"
+                                    onClick={handleVerifyPhoneOtp}
+                                    disabled={phoneLoading || phoneOtp.join('').length !== 6}
+                                >
+                                    {phoneLoading ? "Verifying..." : "Verify & Sign In"}
+                                </button>
+                            </div>
+                        )
+                    ) : (
+                        <form onSubmit={(e) => { e.preventDefault(); handleEmailLogin(); }} className="auth-email-form">
+                            <input 
+                                className="auth-input-pill"
+                                type="email" 
+                                placeholder="Email address" 
+                                required 
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
+                            />
+                            <input 
+                                className="auth-input-pill"
+                                type="password" 
+                                placeholder="Password" 
+                                required 
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                            />
+                            <button className="auth-submit-btn" type="submit">Sign in with email</button>
+                        </form>
+                    )}
 
                     <div className="auth-switch-text">
                         Don't have an account? <Link to="/signup" className="auth-link">Sign up</Link>
