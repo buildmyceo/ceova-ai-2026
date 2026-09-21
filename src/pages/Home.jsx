@@ -360,9 +360,11 @@ export default function Home({ session }) {
         // --- OPTIMISTIC UI RENDER ---
         const localAttachments = files.map(file => ({
             name: file.name,
-            url: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
-            type: file.type,
-            size: file.size
+            url: (file instanceof Blob || file instanceof File)
+                ? (file.type?.startsWith('image/') ? URL.createObjectURL(file) : '')
+                : (file.url || file.thumbnail_url || ''),
+            type: file.type || 'application/octet-stream',
+            size: file.size || 0
         }));
 
         const tempId = crypto.randomUUID();
@@ -409,11 +411,23 @@ export default function Home({ session }) {
             }
 
             for (let file of files) {
+                if (file.isLibraryItem || (file.url && !((file instanceof Blob) || (file instanceof File)))) {
+                    currentAttachments.push({
+                        name: file.name,
+                        url: file.url || file.web_view_link || '',
+                        type: file.type || 'application/octet-stream',
+                        size: file.size || 0,
+                        source: file.source,
+                        snippet: file.snippet,
+                        from_sender: file.from_sender
+                    });
+                    continue;
+                }
                 if (isTemporary) {
                     uploadErrors.push(`Cannot upload ${file.name} in a temporary session.`);
                     continue;
                 }
-                const fileExt = file.name.split('.').pop();
+                const fileExt = (file.name || 'file').split('.').pop();
                 const fileName = `${crypto.randomUUID()}.${fileExt}`;
                 const filePath = `${session.user.id}/${idToUse}/${fileName}`;
                 
