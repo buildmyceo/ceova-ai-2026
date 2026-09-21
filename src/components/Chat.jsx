@@ -520,16 +520,16 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
                   {file.type && file.type.startsWith('image/') ? (
                     <div className="chat-img-thumb" style={{ position: 'relative' }}>
                       <img
-                        src={file.url}
+                        src={file.url || file.data}
                         alt={file.name || 'attachment'}
                         style={{ cursor: 'zoom-in' }}
-                        onClick={() => setPreviewUrl(file.url)}
+                        onClick={() => setPreviewUrl(file.url || file.data)}
                       />
                       <button
                         className="chat-img-download-btn"
                         title="Download"
                         style={{ opacity: 1 }}
-                        onClick={(e) => { e.stopPropagation(); forceDownloadImage(file.url, file.name || 'ceova-attachment.png'); }}
+                        onClick={(e) => { e.stopPropagation(); forceDownloadImage(file.url || file.data, file.name || 'ceova-attachment.png'); }}
                       >
                         <Download size={13} />
                       </button>

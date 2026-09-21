@@ -33,8 +33,9 @@ export class BackgroundRemoverTool implements Tool {
       let imageBuffer: ArrayBuffer;
       let contentType = targetImage.type;
       
-      if (targetImage.content && targetImage.content.startsWith('data:')) {
-        const base64Data = targetImage.content.split(',')[1];
+      const rawDataUrl = targetImage.data || targetImage.content;
+      if (rawDataUrl && rawDataUrl.startsWith('data:')) {
+        const base64Data = rawDataUrl.split(',')[1];
         const binaryStr = atob(base64Data);
         const len = binaryStr.length;
         const bytes = new Uint8Array(len);
@@ -42,6 +43,8 @@ export class BackgroundRemoverTool implements Tool {
           bytes[i] = binaryStr.charCodeAt(i);
         }
         imageBuffer = bytes.buffer;
+        const extractedMime = rawDataUrl.match(/data:([^;]+);/);
+        if (extractedMime && extractedMime[1]) contentType = extractedMime[1];
       } else if (targetImage.url) {
         const imgRes = await fetch(targetImage.url);
         if (!imgRes.ok) throw new Error("Could not fetch the uploaded image.");
@@ -93,14 +96,27 @@ export class BackgroundRemoverTool implements Tool {
       
       const supabase = createClient(supabaseUrl, supabaseServiceKey);
       
-      const fileId = `${context.userId}/${Date.now()}-bg-removed.png`;
+      const fileId = `${context.userId || 'common'}/${Date.now()}-bg-removed.png`;
+      let chosenBucket = 'processed_images';
       
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('processed_images') // Requires a 'processed_images' bucket to exist
+      let { error: uploadError } = await supabase.storage
+        .from(chosenBucket)
         .upload(fileId, resultBuffer, {
           contentType: 'image/png',
           upsert: false
         });
+
+      if (uploadError) {
+        // Fallback to attachments bucket
+        chosenBucket = 'attachments';
+        const fallbackRes = await supabase.storage
+          .from(chosenBucket)
+          .upload(fileId, resultBuffer, {
+            contentType: 'image/png',
+            upsert: false
+          });
+        uploadError = fallbackRes.error;
+      }
 
       if (uploadError) {
         console.error("Storage upload error:", uploadError);
@@ -108,7 +124,7 @@ export class BackgroundRemoverTool implements Tool {
       }
 
       const { data: { publicUrl } } = supabase.storage
-        .from('processed_images')
+        .from(chosenBucket)
         .getPublicUrl(fileId);
 
       updateStatus('Finished');

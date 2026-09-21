@@ -31,8 +31,11 @@ export class ImageAnalysisTool implements Tool {
       let base64Data: string;
       let mimeType = targetImage.type;
       
-      if (targetImage.content && targetImage.content.startsWith('data:')) {
-        base64Data = targetImage.content.split(',')[1];
+      const rawDataUrl = targetImage.data || targetImage.content;
+      if (rawDataUrl && rawDataUrl.startsWith('data:')) {
+        base64Data = rawDataUrl.split(',')[1];
+        const extractedMime = rawDataUrl.match(/data:([^;]+);/);
+        if (extractedMime && extractedMime[1]) mimeType = extractedMime[1];
       } else if (targetImage.url) {
         const imgRes = await fetch(targetImage.url);
         if (!imgRes.ok) throw new Error("Could not fetch the uploaded image.");

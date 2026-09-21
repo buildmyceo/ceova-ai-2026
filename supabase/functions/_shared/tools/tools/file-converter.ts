@@ -44,9 +44,10 @@ export class FileConverterTool implements Tool {
     // We only need the raw file URL and type to send to the client. If they are base64, we upload them.
     for (const file of attachments) {
         let fileUrl = file.url;
-        if (!fileUrl && file.content && file.content.startsWith('data:')) {
+        const rawDataUrl = file.data || file.content;
+        if (!fileUrl && rawDataUrl && rawDataUrl.startsWith('data:')) {
             updateStatus(`Uploading ${file.name || 'file'} to temporary storage...`);
-            const base64Data = file.content.split(',')[1];
+            const base64Data = rawDataUrl.split(',')[1];
             const binaryStr = atob(base64Data);
             const len = binaryStr.length;
             const bytes = new Uint8Array(len);
@@ -59,15 +60,24 @@ export class FileConverterTool implements Tool {
             const supabase = createClient(supabaseUrl, supabaseKey);
             
             const tempPath = `temp/${Date.now()}-${file.name || 'file'}`;
-            const { error: uploadError } = await supabase.storage
-                .from('processed_images')
+            let chosenBucket = 'processed_images';
+            let { error: uploadError } = await supabase.storage
+                .from(chosenBucket)
                 .upload(tempPath, bytes.buffer, { contentType: file.type });
                 
+            if (uploadError) {
+                chosenBucket = 'attachments';
+                const fallbackRes = await supabase.storage
+                    .from(chosenBucket)
+                    .upload(tempPath, bytes.buffer, { contentType: file.type });
+                uploadError = fallbackRes.error;
+            }
+
             if (uploadError) {
                  return { success: false, error: { code: 'UPLOAD_FAILED', message: `Failed to upload ${file.name}: ` + uploadError.message } };
             }
             
-            const { data: urlData } = await supabase.storage.from('processed_images').getPublicUrl(tempPath);
+            const { data: urlData } = await supabase.storage.from(chosenBucket).getPublicUrl(tempPath);
             fileUrl = urlData.publicUrl;
         }
         

@@ -411,6 +411,8 @@ export default function Home({ session }) {
                     currentAttachments.push({
                         name: file.name,
                         url: file.url || file.web_view_link || '',
+                        data: file.data || null,
+                        content: file.content || null,
                         type: file.type || 'application/octet-stream',
                         size: file.size || 0,
                         source: file.source,
@@ -428,6 +430,39 @@ export default function Home({ session }) {
                 const filePath = `${session.user.id}/${idToUse}/${fileName}`;
                 
                 try {
+                    // 1. Read Base64 Data URL for images under 8MB (instant multimodal vision)
+                    let dataUrl = null;
+                    if (file.type && file.type.startsWith('image/') && file.size < 8 * 1024 * 1024) {
+                        try {
+                            dataUrl = await new Promise((resolve) => {
+                                const reader = new FileReader();
+                                reader.onload = () => resolve(reader.result);
+                                reader.onerror = () => resolve(null);
+                                reader.readAsDataURL(file);
+                            });
+                        } catch (e) {
+                            console.warn("Failed to read image dataUrl", e);
+                        }
+                    }
+
+                    // 2. Read text content for text/code/csv/json/log files under 500KB
+                    let textContent = null;
+                    const isTextLike = file.type && (
+                        file.type.startsWith('text/') ||
+                        file.type.includes('json') ||
+                        file.type.includes('csv') ||
+                        file.type.includes('javascript') ||
+                        file.type.includes('typescript') ||
+                        (file.name && file.name.match(/\.(txt|md|csv|json|js|jsx|ts|tsx|py|html|css|sql|sh|log|env|yml|yaml|xml)$/i))
+                    );
+                    if (isTextLike && file.size < 500 * 1024 && typeof file.text === 'function') {
+                        try {
+                            textContent = await file.text();
+                        } catch (e) {
+                            console.warn("Failed to read text content", e);
+                        }
+                    }
+
                     const { error: uploadError } = await supabase.storage
                         .from('attachments')
                         .upload(filePath, file);
@@ -437,6 +472,19 @@ export default function Home({ session }) {
                     const { data: { publicUrl } } = supabase.storage
                         .from('attachments')
                         .getPublicUrl(filePath);
+
+                    // 3. Create signed URL (24 hours) as effective authenticated URL
+                    let effectiveUrl = publicUrl;
+                    try {
+                        const { data: signedData } = await supabase.storage
+                            .from('attachments')
+                            .createSignedUrl(filePath, 86400);
+                        if (signedData?.signedUrl) {
+                            effectiveUrl = signedData.signedUrl;
+                        }
+                    } catch (e) {
+                        // ignore and use publicUrl
+                    }
 
                     const fileCategory = file.type.startsWith('image/') ? 'images' 
                                        : file.type.startsWith('video/') ? 'videos' 
@@ -451,8 +499,8 @@ export default function Home({ session }) {
                         mime_type: file.type,
                         category: fileCategory,
                         size: file.size,
-                        web_download_link: publicUrl,
-                        web_view_link: publicUrl,
+                        web_download_link: effectiveUrl,
+                        web_view_link: effectiveUrl,
                     });
                     
                     if (dbError) {
@@ -461,7 +509,10 @@ export default function Home({ session }) {
 
                     currentAttachments.push({
                         name: file.name,
-                        url: publicUrl,
+                        url: effectiveUrl,
+                        public_url: publicUrl,
+                        data: dataUrl,
+                        content: textContent,
                         type: file.type,
                         size: file.size,
                         path: filePath

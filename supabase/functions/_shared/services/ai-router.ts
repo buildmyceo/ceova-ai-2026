@@ -19,7 +19,10 @@ export interface AIResponse {
 import { AI_MODEL } from "../ai/ai-provider.ts";
 
 export class AIRouter {
-    private getModelsForTask(_taskType: TaskType): string[] {
+    private getModelsForTask(taskType: TaskType): string[] {
+        if (taskType === 'vision' || taskType === 'ocr') {
+            return ['gpt-4o', 'gpt-4o-mini', AI_MODEL];
+        }
         return [AI_MODEL, 'gpt-4o', 'gpt-4o-mini'];
     }
 
@@ -186,7 +189,7 @@ export class AIRouter {
             requestBody.temperature = temperature;
         }
 
-        return await fetch("https://api.openai.com/v1/chat/completions", {
+        let response = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${apiKey}`,
@@ -195,6 +198,27 @@ export class AIRouter {
             body: JSON.stringify(requestBody),
             signal: AbortSignal.timeout(60000)
         });
+
+        if (!response.ok && (response.status === 404 || response.status === 400)) {
+            const fallbackModel = models[1] || 'gpt-4o';
+            if (fallbackModel !== model) {
+                Logger.WARN(`[AIRouter] Streaming fallback from ${model} to ${fallbackModel}...`);
+                requestBody.model = fallbackModel;
+                delete requestBody.reasoning_effort;
+                requestBody.temperature = temperature;
+                response = await fetch("https://api.openai.com/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${apiKey}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(requestBody),
+                    signal: AbortSignal.timeout(60000)
+                });
+            }
+        }
+
+        return response;
     }
 
     async logUsage(userId: string, taskType: TaskType, totalTokens: number, success: boolean = true) {
