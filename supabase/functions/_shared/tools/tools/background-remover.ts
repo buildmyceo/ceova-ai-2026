@@ -5,7 +5,7 @@ export class BackgroundRemoverTool implements Tool {
   metadata: ToolMetadata = {
     id: 'background_remover',
     name: 'Background Remover',
-    description: 'Removes the background from an uploaded image and returns a transparent PNG.',
+    description: 'Removes the entire background from an uploaded image and leaves only the foreground subjects with a transparent background. DO NOT call this tool to remove a person, erase an object, or edit items within the image — this tool only deletes the background.',
     category: 'AI Utilities',
     icon: 'scissors',
     requiresImage: true,

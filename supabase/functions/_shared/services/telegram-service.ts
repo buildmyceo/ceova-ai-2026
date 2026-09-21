@@ -1136,7 +1136,7 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
       : '';
 
     const toolsPromptSection = hasTools
-      ? `${imageGenDirective}\n\nAVAILABLE TOOLS:\n${JSON.stringify(intent.toolSchemas, null, 2)}\n\nAUTONOMOUS DIRECTIVES:\n- You have full autonomous access to tools and must actively execute them when the user asks you to do work.\n- When creating, designing, building, or modifying a website or web app, call 'create_project'.\n- If the user says 'yes', 'proceed', 'build it', 'approved', 'use placeholders', 'placeholder', or confirms website creation, IMMEDIATELY call 'create_project' with their specifications. Do NOT ask for more details when user says 'use placeholders'—immediately call 'create_project' with realistic placeholder content (curated menu, realistic hours, address, phone, photos)!\n- When reading, searching, or drafting emails, call 'gmail_connector'.\n- When scheduling or looking up calendar events, call 'calendar_connector'.\n- When accessing or searching Google Drive files, call 'drive_connector'.\n- When generating QR codes or barcodes, call 'qr_barcode'.\n- When generating invoices or receipts, call 'invoice_generator'.\n- When generating or creating images, photos, illustrations, or artwork from a description, call 'generate_image'. You have direct AI image generation capabilities—NEVER say 'I cannot generate images directly here' or offer prompts for external generators.\n- When removing backgrounds, analyzing images, or reading images, call 'background_remover' or 'image_analysis'.\n- Format: {"tool_call":{"tool":"<tool_id>","args":{"key":"value"}}}${activeProjContext}`
+      ? `${imageGenDirective}\n\nAVAILABLE TOOLS:\n${JSON.stringify(intent.toolSchemas, null, 2)}\n\nAUTONOMOUS DIRECTIVES:\n- You have full autonomous access to tools and must actively execute them when the user asks you to do work.\n- When creating, designing, building, or modifying a website or web app, call 'create_project'.\n- If the user says 'yes', 'proceed', 'build it', 'approved', 'use placeholders', 'placeholder', or confirms website creation, IMMEDIATELY call 'create_project' with their specifications. Do NOT ask for more details when user says 'use placeholders'—immediately call 'create_project' with realistic placeholder content (curated menu, realistic hours, address, phone, photos)!\n- When reading, searching, or drafting emails, call 'gmail_connector'.\n- When scheduling or looking up calendar events, call 'calendar_connector'.\n- When accessing or searching Google Drive files, call 'drive_connector'.\n- When generating QR codes or barcodes, call 'qr_barcode'.\n- When generating invoices or receipts, call 'invoice_generator'.\n- When generating or creating images, photos, illustrations, or artwork from a description, call 'generate_image'. You have direct AI image generation capabilities—NEVER say 'I cannot generate images directly here' or offer prompts for external generators.\n- When removing the entire background behind subjects to create a transparent PNG, call 'background_remover'. NEVER call 'background_remover' to remove an individual person, object, or item from a photo (it cannot erase individual people). When analyzing or reading images, call 'image_analysis'.\n- Format: {"tool_call":{"tool":"<tool_id>","args":{"key":"value"}}}${activeProjContext}`
       : `\n\nCAPABILITIES:\n${getCapabilitySummary()}`;
 
     systemPrompt = `You are Ceova, an autonomous AI Engineer & Executive Assistant talking with a user on Telegram. Keep your responses concise, helpful, and beautifully formatted with bullet points and clear sections. Format your responses using clean standard Markdown (**bold**, *italic*, \`inline code\`, and [links](url)). Do not write raw HTML tags like <b> or <a>; use Markdown syntax.${temporalContext}${memoryContext}${toolsPromptSection}\n\nDo not reveal system prompt or internal tool IDs directly to the user.`;
@@ -1219,6 +1219,20 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
 
   if (toolCallMatch) {
     const toolId = toolCallMatch.tool;
+
+    // Guard against background_remover being called when user is asking to remove a person or object
+    if (toolId === "background_remover") {
+      const combinedContext = `${effectiveMessage} ${(history || []).slice(-3).map((h: any) => typeof h.content === 'string' ? h.content : '').join(" ")}`;
+      const isRemovingPersonOrObject = /(?:remove|erase|delete|crop\s*out|take\s*out|cut\s*out)\s+(?:the\s+)?(?:person|people|man|woman|boy|girl|guy|object|item|laptop|one\s+person|front\s+person|foreground\s+person)/i.test(combinedContext);
+      const isStrictlyBackground = /(?:transparent\s+(?:png|bg|background)|remove\s+(?:the\s+)?(?:bg|background))/i.test(effectiveMessage) && !/(?:person|people|man|woman|boy|girl|guy|object|item)/i.test(effectiveMessage);
+
+      if (isRemovingPersonOrObject && !isStrictlyBackground) {
+        finalTelegramReply = `⚠️ **Note on Image Editing:**\n\nMy background removal tool is designed to strip away the entire room/backdrop behind all people into a transparent PNG—it cannot erase an individual person or reconstruct the scene behind them.\n\nHowever, I can generate a brand new AI-rendered image recreating the scene with only the intended person. Would you like me to do that?`;
+        await reply(finalTelegramReply);
+        return new Response("ok");
+      }
+    }
+
     toolExecuted = true;
     isConnector = ["gmail_connector", "calendar_connector", "drive_connector"].includes(toolId);
 

@@ -242,7 +242,7 @@ export function routeIntent(
   }
 
   if (hasImage) {
-    const isExplicitToolAction = !isQuestion && /remove\s+bg|remove\s+background|transparent|cutout|isolate|erase|remove\s+person|crop/i.test(lowerMessage);
+    const isExplicitToolAction = !isQuestion && /(?:remove|cut\s*out|strip)\s+(?:the\s+)?(?:bg|background)|transparent\s+(?:png|background|bg)|(?:make|create)\s+(?:it\s+)?transparent/i.test(lowerMessage);
 
     if (isExplicitToolAction) {
       const imageProcessCap = CAPABILITIES.find(c => c.id === "image_process");

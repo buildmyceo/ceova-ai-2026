@@ -106,8 +106,8 @@ export const CAPABILITIES: Capability[] = [
     id: "image_process",
     description: "Analyze images, remove backgrounds, describe image contents, and perform OCR. Use this when the user has ATTACHED an existing image and wants it processed.",
     keywords: [
-      "background", "remove background", "analyze image", "describe image", "what is this",
-      "ocr", "read image", "detect", "vision", "remove bg", "transparent", "cutout",
+      "remove background", "remove bg", "transparent background", "transparent png", "cutout background",
+      "analyze image", "describe image", "what is this", "ocr", "read image", "detect", "vision",
       "what's in this", "identify", "extract text"
     ],
     toolIds: ["image_analysis", "background_remover"],
