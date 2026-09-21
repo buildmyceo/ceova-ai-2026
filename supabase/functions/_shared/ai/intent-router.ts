@@ -222,15 +222,21 @@ export function routeIntent(
     return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
   };
 
-  // ── Image always needs image tools ───────────────────────────────────────────
+  // ── Image tool matching ───────────────────────────────────────────────────
   const matchedCapabilities: Capability[] = [];
 
   if (hasImage) {
-    const imageProcessCap = CAPABILITIES.find(c => c.id === "image_process");
-    if (imageProcessCap) matchedCapabilities.push(imageProcessCap);
-    // Also check if user wants to generate a NEW image (e.g. "generate a similar image")
-    const imageGenCap = CAPABILITIES.find(c => c.id === "image_gen");
-    if (imageGenCap) matchedCapabilities.push(imageGenCap);
+    const isExplicitToolAction = !isQuestion && /remove\s+bg|remove\s+background|transparent|cutout|isolate|erase|remove\s+person|crop/i.test(lowerMessage);
+    const isExplicitGenAction = !isQuestion && /^\s*(?:\/?generate_image\b|(?:please\s+)?(?:generate|create|make|draw|paint|sketch|render)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner)\b)/i.test(lowerMessage);
+
+    if (isExplicitToolAction) {
+      const imageProcessCap = CAPABILITIES.find(c => c.id === "image_process");
+      if (imageProcessCap) matchedCapabilities.push(imageProcessCap);
+    }
+    if (isExplicitGenAction) {
+      const imageGenCap = CAPABILITIES.find(c => c.id === "image_gen");
+      if (imageGenCap) matchedCapabilities.push(imageGenCap);
+    }
   }
 
   // ── Document always needs document tools ───────────────────────────────────
@@ -287,7 +293,7 @@ export function routeIntent(
       toolSchemas: [],
       memoryCategories: [],
       isComplexTask: false,
-      isCasualChat: true,
+      isCasualChat: !hasImage && !hasDocument,
       taskScope,
     };
   }

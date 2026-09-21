@@ -8,7 +8,8 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 export type TaskType = 
     | 'chat' | 'conversation' | 'memory' | 'gmail' | 'calendar' 
     | 'drive' | 'telegram' | 'library' | 'ocr' | 'pdf' | 'vision'
-    | 'coding' | 'ide' | 'debugging' | 'architecture';
+    | 'coding' | 'ide' | 'debugging' | 'architecture'
+    | 'analytics' | 'vision_analytics' | 'ocr_analytics';
 
 export interface AIResponse {
     content: string;
@@ -20,9 +21,11 @@ import { AI_MODEL } from "../ai/ai-provider.ts";
 
 export class AIRouter {
     private getModelsForTask(taskType: TaskType): string[] {
-        if (taskType === 'vision' || taskType === 'ocr') {
-            return ['gpt-4o', 'gpt-4o-mini', AI_MODEL];
+        // gpt-4o is for analytics only (visual analytics, OCR extraction, forensic data inspection)
+        if (taskType === 'analytics' || taskType === 'vision_analytics' || taskType === 'ocr_analytics') {
+            return ['gpt-4o', 'gpt-4o-mini'];
         }
+        // AI_MODEL (gpt-5.6-luna) is the conversational brain for all user-facing words, chat, vision, ocr, coding
         return [AI_MODEL, 'gpt-4o', 'gpt-4o-mini'];
     }
 
