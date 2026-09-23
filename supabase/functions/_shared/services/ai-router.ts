@@ -21,12 +21,11 @@ import { AI_MODEL } from "../ai/ai-provider.ts";
 
 export class AIRouter {
     private getModelsForTask(taskType: TaskType): string[] {
-        // gpt-4o is for analytics only (visual analytics, OCR extraction, forensic data inspection)
         if (taskType === 'analytics' || taskType === 'vision_analytics' || taskType === 'ocr_analytics') {
             return ['gpt-4o', 'gpt-4o-mini'];
         }
-        // AI_MODEL (gpt-5.6-luna) is the conversational brain for all user-facing words, chat, vision, ocr, coding
-        return [AI_MODEL, 'gpt-4o', 'gpt-4o-mini'];
+        const primaryModel = (AI_MODEL as string) === 'gpt-5.6-luna' ? 'gpt-4o' : (AI_MODEL as string);
+        return [primaryModel, 'gpt-4o', 'gpt-4o-mini'];
     }
 
     async generateContent(
@@ -182,12 +181,11 @@ export class AIRouter {
         const requestBody: any = {
             model: model,
             messages: messages,
-            max_completion_tokens: maxTokens,
-            stream: true,
-            stream_options: { include_usage: true }
+            max_tokens: maxTokens,
+            stream: true
         };
 
-        const restrictsTemperature = model.startsWith('o1-') || model.startsWith('o3-') || model.includes('luna');
+        const restrictsTemperature = model.startsWith('o1-') || model.startsWith('o3-');
         if (!restrictsTemperature) {
             requestBody.temperature = temperature;
         }

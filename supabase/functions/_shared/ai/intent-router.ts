@@ -228,10 +228,10 @@ export function routeIntent(
   // Detect imperative image generation requests (both with or without attached image)
   const isExplicitGenAction = !isQuestion && (
     /^\s*\/?generate_image\b/i.test(lowerMessage) ||
-    /^\s*(?:please\s+)?(?:generate|create|make|draw|paint|sketch|render|genrate)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar)\b/i.test(lowerMessage) ||
+    /\b(?:generate|genrate|create|make|draw|paint|sketch|render|design)\s+(?:a |an |me |the |this )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar|poster|flyer|creative|ad|advertisement|visual|mockup|post)\b/i.test(lowerMessage) ||
     /^\s*(?:genrate|genrate image|genrate picture|genrate a|genrate an)\b/i.test(lowerMessage) ||
-    /\b(?:generate|genrate|create|draw|render|make)\s+(?:an?\s+)?(?:image|picture|photo|illustration|artwork|graphic|wallpaper|avatar|logo)\b/i.test(lowerMessage) ||
-    /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(lowerMessage)
+    /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image|image\s+generation)\b/i.test(lowerMessage) ||
+    /\b(?:make|create|generate|design|draw)\s+(?:a |an |me |the )?(?:poster|flyer|banner|creative|ad|visual)\b/i.test(lowerMessage)
   );
 
   const isImageGenConfirmation = isShortConfirmation && history && Array.isArray(history) && history.some(m => 
@@ -249,7 +249,12 @@ export function routeIntent(
     /\b(?:recreate|generate|edit|modify)\s+(?:the\s+)?(?:image|scene|photo|picture)\s+(?:without|with|removing|erasing)\b/i.test(lowerMessage)
   );
 
-  if (isExplicitGenAction || isImageGenConfirmation || isImageRemovalOrEdit) {
+  const isImageTransformOrPoster = (hasImage || hasImageInHistory) && !isQuestion && (
+    /\b(?:poster|flyer|banner|creative|ad|advertisement|graphic|visual|post)\b/i.test(lowerMessage) &&
+    /\b(?:make|create|generate|design|turn|convert|produce|draw)\b/i.test(lowerMessage)
+  );
+
+  if (isExplicitGenAction || isImageGenConfirmation || isImageRemovalOrEdit || isImageTransformOrPoster) {
     const imageGenCap = CAPABILITIES.find(c => c.id === "image_gen");
     if (imageGenCap && !matchedCapabilities.includes(imageGenCap)) {
       matchedCapabilities.push(imageGenCap);

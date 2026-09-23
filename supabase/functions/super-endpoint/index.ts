@@ -627,13 +627,19 @@ STRICT RULES:
                         (/^(?:ok|okay|yes|yep|yeah|sure|proceed|do it|go ahead|generate it)\b/i.test((message || '').trim()) && history && Array.isArray(history) && history.some((m: any) => typeof m.content === 'string' && /(?:removing|remove|reconstructed|reconstruct|laptop|person|image|photo)/i.test(m.content) && m.role === 'assistant'))
                     );
 
+                    const isImageTransformOrPoster = imagePresent && !isQuestion && (
+                        /\b(?:poster|flyer|banner|creative|ad|advertisement|graphic|visual|post)\b/i.test(message || '') &&
+                        /\b(?:make|create|generate|design|turn|convert|produce|draw)\b/i.test(message || '')
+                    );
+
                     const isImageGenCommand = !isQuestion && !isStrictlyBackgroundRemoval && (
                       /^\s*\/?generate_image\b/i.test(message || '') ||
-                      /^\s*(?:please\s+)?(?:generate|create|make|draw|paint|sketch|render|genrate)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar)\b/i.test(message || '') ||
+                      /\b(?:generate|genrate|create|make|draw|paint|sketch|render|design)\s+(?:a |an |me |the |this )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar|poster|flyer|creative|ad|advertisement|visual|mockup|post)\b/i.test(message || '') ||
                       /^\s*(?:genrate|genrate image|genrate picture|genrate a|genrate an)\b/i.test(message || '') ||
-                      /\b(?:generate|genrate|create|draw|render|make)\s+(?:an?\s+)?(?:image|picture|photo|illustration|artwork|graphic|wallpaper|avatar|logo)\b/i.test(message || '') ||
-                      /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(message || '') ||
-                      isImageEditOrRemoval
+                      /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image|image\s+generation)\b/i.test(message || '') ||
+                      /\b(?:make|create|generate|design|draw)\s+(?:a |an |me |the )?(?:poster|flyer|banner|creative|ad|visual)\b/i.test(message || '') ||
+                      isImageEditOrRemoval ||
+                      isImageTransformOrPoster
                     );
 
                     // Ensure generate_image is always available when user requests image generation
@@ -776,17 +782,21 @@ STRICT RULES:
 - You are GPT-5.6 Luna, Ceova's conversational brain and voice.
 - ALWAYS extract and highlight fine text, CCTV/video timestamps (including milliseconds), camera IDs/watermarks (e.g. CEOVA CCTV), people, apparel, and environmental details when asked to analyze, inspect, or describe.
 - MULTI-TURN PERSISTENCE: Images from previous turns remain active in context. NEVER ask the user to re-upload or send the image again!
-- IMAGE MODIFICATION / REMOVING PEOPLE & OBJECTS (AUTONOMOUS SEAMLESS SYSTEM BEHAVIOR):
+- IMAGE MODIFICATION, OBJECT REMOVAL & POSTER/FLYER CREATION (AUTONOMOUS SEAMLESS SYSTEM BEHAVIOR):
   • 'background_remover' is ONLY for cutting out the foreground subject to transparent PNG (stripping the backdrop).
   • When the user asks to remove a person, people, or object from an image (e.g. "remove that red bottel", "remove both person", "remove the laptop", "erase person", "remove mackbook"):
     1. ACT IMMEDIATELY LIKE CHATGPT: DO NOT give excuses, disclaimers, or refuse by saying you cannot inpaint pixels.
     2. DO NOT ask the user for confirmation or tell them to reply "generate it" or "proceed".
     3. IMMEDIATELY invoke the 'generate_image' tool with the user's exact removal request as the prompt argument (e.g. {"prompt": "remove that red bottle"} or {"prompt": "remove both person"}).
     4. The system executes native surgical inpainting via OpenAI's 'chatgpt-image-latest' model, keeping 100% of people, faces, identities, room details, and lighting identical to the original photo while surgically erasing the requested item.
-    5. Output the tool call format immediately so the user receives their modified image directly in one single turn.`
+    5. Output the tool call format immediately so the user receives their modified image directly in one single turn.
+  • When the user uploads a logo, sketch, or photo and asks to make/create/design a poster, flyer, banner, ad, or graphic (e.g. "here is my company logo make poster...", "design a flyer with this"):
+    1. ACT IMMEDIATELY: DO NOT give excuses or say you cannot generate visual media.
+    2. IMMEDIATELY invoke the 'generate_image' tool with a vivid, comprehensive design prompt describing the poster/graphic, weaving in the user's company name, launch dates, business offerings, and aesthetic.
+    3. Output the tool call format immediately so the user receives their generated poster directly in one single turn.`
                             : '';
 
-                        const isImageAction = hasImage && /(?:remove|erase|delete|crop|cut|generate|create|make|edit|modify|draw|change|transparent)/i.test(message);
+                        const isImageAction = hasImage && /(?:remove|erase|delete|crop|cut|generate|create|make|edit|modify|draw|change|transparent|poster|flyer|banner|ad|graphic)/i.test(message);
 
                         const baseDirective = is_thinking 
                             ? 'Provide a highly detailed, step-by-step analysis with points and deep reasoning. Ignore any previous instruction to be short or simple.'
@@ -1097,7 +1107,8 @@ ${analyticsText}
                                 friendlyStatus = isUpdatingProject ? 'Updating your website…' : 'Building your website…';
                             } else if (toolId === 'generate_image') {
                                 const isInpaintOp = /\b(?:remove|erase|delete|take\s*out|cut\s*out|crop\s*out|without)\b/i.test(message || '') && activeAttachments.some((a: any) => a.type?.startsWith('image/'));
-                                friendlyStatus = isInpaintOp ? 'Removing object…' : 'Generating image…';
+                                const isPosterOp = /\b(?:poster|flyer|banner|creative|ad)\b/i.test(message || '');
+                                friendlyStatus = isInpaintOp ? 'Removing object…' : (isPosterOp ? 'Creating poster…' : 'Generating image…');
                             } else if (toolId === 'image_analysis' || toolId === 'background_remover') {
                                 friendlyStatus = 'Processing image…';
                             } else if (toolId === 'pdf_toolkit') {

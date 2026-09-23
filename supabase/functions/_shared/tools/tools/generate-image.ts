@@ -446,17 +446,20 @@ export class GenerateImageTool implements Tool {
         }
       }
 
-      // If an image was provided for editing but editing failed, STOP.
+      // If an image was provided for inpainting/object removal but editing failed, STOP.
       // NEVER fall back to DALL-E 3 text-to-image from scratch when the user asked to edit an existing photo!
       if (!b64Data && !generatedUrl && hasImageForEdit) {
-        console.error(`[GenerateImageTool] Image edit failed across all models: ${lastErrorMsg}`);
-        return {
-          success: false,
-          error: {
-            code: 'EDIT_FAILED',
-            message: `Could not edit the photo: ${lastErrorMsg || 'The edit model failed to process the request'}. Please try again.`
-          }
-        };
+        if (isInpainting) {
+          console.error(`[GenerateImageTool] Inpainting failed across all models: ${lastErrorMsg}`);
+          return {
+            success: false,
+            error: {
+              code: 'EDIT_FAILED',
+              message: `Could not edit the photo: ${lastErrorMsg || 'The edit model failed to process the request'}. Please try again.`
+            }
+          };
+        }
+        console.warn(`[GenerateImageTool] Multimodal edit failed, continuing to generation: ${lastErrorMsg}`);
       }
 
       // ══════════════════════════════════════════════════════════════════════════
