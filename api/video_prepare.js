@@ -42,36 +42,76 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'Missing url parameter' });
     }
 
-    const lowerUrl = url.toLowerCase();
-
-    // 3. URL Validation (must be direct video link)
-    // Note: YouTube/Instagram/TikTok are handled client-side via cobalt.tools.
-    // This endpoint only processes direct .mp4 / .webm / .mov URLs.
-    if (!lowerUrl.includes('.mp4') && !lowerUrl.includes('.webm') && !lowerUrl.includes('.mov')) {
-      return res.status(400).json({ success: false, error: 'Unsupported URL format. Must be a direct link to .mp4, .webm, or .mov' });
+    // SECURITY FIX: Comprehensive SSRF defense
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      return res.status(400).json({ success: false, error: '🛡️ Invalid URL format. Nice try! 😏' });
+    }
+    
+    // Only allow http and https protocols
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return res.status(400).json({ success: false, error: '🛡️ Only HTTP/HTTPS URLs are allowed. No file://, ftp://, or other protocols! 🚫' });
+    }
+    
+    const hostname = parsedUrl.hostname.toLowerCase();
+    
+    // Block all private, loopback, link-local, and cloud metadata IPs
+    const blockedPatterns = [
+      /^localhost$/i,
+      /^127\.\d+\.\d+\.\d+$/,           // 127.0.0.0/8 loopback
+      /^10\.\d+\.\d+\.\d+$/,             // 10.0.0.0/8 private
+      /^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/, // 172.16.0.0/12 private
+      /^192\.168\.\d+\.\d+$/,            // 192.168.0.0/16 private
+      /^169\.254\.\d+\.\d+$/,            // 169.254.0.0/16 link-local / cloud metadata
+      /^0\.0\.0\.0$/,                     // Wildcard
+      /^\[?::1\]?$/,                      // IPv6 loopback
+      /^\[?fe80:/i,                       // IPv6 link-local
+      /^\[?fc00:/i,                       // IPv6 unique local
+      /^\[?fd/i,                          // IPv6 unique local
+      /^metadata\.google\.internal$/i,    // GCP metadata
+    ];
+    
+    if (blockedPatterns.some(p => p.test(hostname))) {
+      return res.status(400).json({ success: false, error: '🛡️ SSRF blocked! Private/internal IPs are not allowed. This incident has been logged. 🚨' });
     }
 
-    // Basic localhost/private IP prevention
-    if (lowerUrl.includes('localhost') || lowerUrl.includes('127.0.0.1') || lowerUrl.startsWith('file://') || lowerUrl.match(/^https?:\/\/(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/)) {
-      return res.status(400).json({ success: false, error: 'Private or local IPs are not allowed' });
-    }
-
-    // 5. Download the file
-    const response = await fetch(url);
+    // 5. Download the file with streaming & hard byte limit (prevent OOM)
+    const MAX_SIZE = 200 * 1024 * 1024; // 200MB
+    const response = await fetch(url, { redirect: 'follow' });
     if (!response.ok) {
       return res.status(400).json({ success: false, error: `Failed to fetch video: ${response.statusText}` });
     }
 
-    // Check size limit (200MB)
+    // Check content-length header first
     const contentLength = response.headers.get('content-length');
-    if (contentLength && parseInt(contentLength) > 200 * 1024 * 1024) {
+    if (contentLength && parseInt(contentLength) > MAX_SIZE) {
       return res.status(400).json({ success: false, error: 'File size exceeds 200MB limit' });
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    // Stream download with hard byte limit to prevent memory exhaustion
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return res.status(400).json({ success: false, error: 'Could not read response stream' });
+    }
+    
+    const chunks = [];
+    let totalSize = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalSize += value.length;
+      if (totalSize > MAX_SIZE) {
+        reader.cancel();
+        return res.status(400).json({ success: false, error: '🛡️ File exceeds 200MB limit during download. Stopped! 🛑' });
+      }
+      chunks.push(value);
+    }
+    const buffer = Buffer.concat(chunks);
 
     // 6. Upload to Supabase temp_videos bucket
+    const lowerUrl = url.toLowerCase();
     const ext = lowerUrl.includes('.webm') ? 'webm' : lowerUrl.includes('.mov') ? 'mov' : 'mp4';
     const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
     const filePath = `${user.id}/${filename}`;

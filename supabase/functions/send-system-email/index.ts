@@ -170,6 +170,26 @@ async function sendViaGmail(params: {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  // SECURITY FIX: Require authentication — service_role key (internal) or valid user JWT
+  const authHeader = req.headers.get('Authorization') || '';
+  const bearerToken = authHeader.replace('Bearer ', '').trim();
+  const isServiceRole = bearerToken === SUPABASE_SERVICE_KEY;
+  
+  if (!isServiceRole) {
+    // Check if it's a valid user JWT
+    const userClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY') || '', {
+      global: { headers: { Authorization: authHeader } }
+    });
+    const { data: authData, error: authError } = await userClient.auth.getUser();
+    if (authError || !authData?.user) {
+      return new Response(JSON.stringify({ 
+        error: '🛡️ Access denied! System emails require authorization. 🚫📧 Nice try though! 😏' 
+      }), { 
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+  }
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   try {

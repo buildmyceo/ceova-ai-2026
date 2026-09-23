@@ -829,6 +829,29 @@ export default function Home({ session }) {
                                          activeToolStatus = "Executing terminal command...";
                                          const cmdStr = parsed.args?.command || parsed.args?.cmd || "";
                                          
+                                         // SECURITY FIX: Block dangerous shell commands to prevent destructive operations
+                                         const dangerousPatterns = [
+                                             /\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|--recursive|--force)\b/i,  // rm -rf
+                                             /\brm\s+(-[a-zA-Z]*f[a-zA-Z]*r)\b/i,                       // rm -fr
+                                             /\bformat\b/i,                                                // format drive
+                                             /\bmkfs\b/i,                                                  // make filesystem
+                                             /\bdd\s+if=/i,                                                // disk destroyer
+                                             /\b:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;/,                          // fork bomb
+                                             /\bshutdown\b/i,                                              // shutdown system
+                                             /\breboot\b/i,                                                // reboot
+                                             /\bsudo\s+rm\b/i,                                             // sudo rm
+                                             /\bchmod\s+777\s+\//,                                         // chmod 777 /
+                                             /\bcurl\b.*\|\s*(ba)?sh/i,                                    // pipe to shell
+                                             /\bwget\b.*\|\s*(ba)?sh/i,                                    // pipe to shell
+                                             />\s*\/dev\/[sh]da/i,                                         // overwrite disk
+                                         ];
+                                         
+                                         const isDangerous = dangerousPatterns.some(p => p.test(cmdStr));
+                                         if (isDangerous) {
+                                             aiRawText += `\n\n🛡️ **Command Blocked!** This command was flagged as potentially dangerous and was NOT executed.\n\n\`\`\`bash\n$ ${cmdStr}\n\`\`\`\n\n🤖 *"I'm an AI, not a chaos agent! I won't rm -rf your life away!"* 😎`;
+                                             activeToolStatus = null;
+                                         } else {
+                                         
                                          aiRawText += `\n\n\`\`\`bash\n$ ${cmdStr}\n\`\`\`\n\n⚡ Executed in terminal!`;
                                          
                                          let currentFolderHandle = localDirectoryHandleRef.current;
@@ -865,6 +888,7 @@ export default function Home({ session }) {
                                          } finally {
                                              activeToolStatus = null;
                                          }
+                                         } // end else (not dangerous)
                                      } else if (parsed.type === 'tool_call' && parsed.tool === 'read_local_files') {
                                          activeToolStatus = "Reading local files...";
                                          let currentFolderHandle = localDirectoryHandleRef.current;

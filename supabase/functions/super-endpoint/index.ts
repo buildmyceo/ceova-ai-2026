@@ -97,14 +97,9 @@ serve(async (req) => {
                 const { data: authData } = await supabaseAdmin.auth.getUser(token);
                 if (authData?.user?.id) authedUserId = authData.user.id;
             }
+            // SECURITY FIX: Removed body?.user_id fallback — only JWT-authenticated users can connect Telegram.
             if (!authedUserId) {
-                try {
-                    const body = await req.clone().json();
-                    if (body?.user_id) authedUserId = body.user_id;
-                } catch (_) {}
-            }
-            if (!authedUserId) {
-                return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+                return new Response(JSON.stringify({ error: '🛡️ Nice try! Authentication required. Log in first, hacker-san! 😎' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
             const info = await generateTelegramConnectLink(authedUserId);
             return new Response(JSON.stringify(info), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -118,20 +113,24 @@ serve(async (req) => {
                 const { data: authData } = await supabaseAdmin.auth.getUser(token);
                 if (authData?.user?.id) authedUserId = authData.user.id;
             }
+            // SECURITY FIX: Removed body?.user_id fallback — only JWT-authenticated users can disconnect Telegram.
             if (!authedUserId) {
-                try {
-                    const body = await req.clone().json();
-                    if (body?.user_id) authedUserId = body.user_id;
-                } catch (_) {}
-            }
-            if (!authedUserId) {
-                return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+                return new Response(JSON.stringify({ error: '🛡️ Nice try! Authentication required. Log in first, hacker-san! 😎' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
             await supabaseAdmin.from('user_telegram').delete().eq('user_id', authedUserId);
             return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
         if (url.pathname.endsWith('/telegram-webhook') || url.pathname.endsWith('/telegram')) {
             if (req.method === 'POST') {
+                // SECURITY FIX: Verify Telegram webhook secret token
+                const telegramSecret = Deno.env.get('TELEGRAM_WEBHOOK_SECRET');
+                if (telegramSecret) {
+                    const incomingSecret = req.headers.get('X-Telegram-Bot-Api-Secret-Token') || '';
+                    if (incomingSecret !== telegramSecret) {
+                        console.warn('[telegram-webhook] Invalid secret token — rejecting fake webhook');
+                        return new Response(JSON.stringify({ error: '🤖 Beep boop! Invalid webhook secret. This incident will be reported! 🚨' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+                    }
+                }
                 const body = await req.json();
                 return await processTelegramUpdate(body);
             }
@@ -142,6 +141,27 @@ serve(async (req) => {
     // ── Fast Route: Title Generation using gpt-4o-mini ──────────────────────────
     if (url.pathname.endsWith('/generate-title') || url.pathname.includes('/generate-title')) {
         try {
+            // SECURITY FIX: Require authentication to prevent unauthorized OpenAI API usage (bill-drain attack)
+            const titleAuthHeader = req.headers.get('Authorization') || '';
+            const titleToken = titleAuthHeader.replace('Bearer ', '').trim();
+            if (!titleToken) {
+                return new Response(JSON.stringify({ error: '🛡️ Authentication required. No free AI rides! 🎢' }), {
+                    status: 401,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+            const titleSupabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+            const titleSupabaseKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+            const titleSupabase = createClient(titleSupabaseUrl, titleSupabaseKey, {
+                global: { headers: { Authorization: titleAuthHeader } }
+            });
+            const { data: titleAuthData, error: titleAuthError } = await titleSupabase.auth.getUser();
+            if (titleAuthError || !titleAuthData?.user) {
+                return new Response(JSON.stringify({ error: '🛡️ Invalid token. Hackers get no titles! 📛' }), {
+                    status: 401,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
             const reqBody = await req.json();
             const rawMessages = reqBody.messages || [];
             const timeOfDay = reqBody.time_of_day || (() => {

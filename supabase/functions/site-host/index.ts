@@ -116,6 +116,19 @@ serve(async (req: Request) => {
       assetPath = url.pathname.replace(/^\/+/, '');
     }
 
+    // SECURITY FIX: Path traversal protection — sanitize asset paths
+    // Strip directory traversal patterns (..), leading slashes, null bytes, and restrict to safe characters
+    assetPath = assetPath
+      .replace(/\.\./g, '')           // Remove all .. sequences
+      .replace(/^\/+/, '')            // Strip leading slashes
+      .replace(/\0/g, '')             // Remove null bytes
+      .replace(/[^a-zA-Z0-9_\-\/\.\s]/g, '') // Only allow safe characters
+      .replace(/\/+/g, '/');          // Collapse multiple slashes
+    
+    if (!assetPath || assetPath === '/') {
+      assetPath = 'index.html';
+    }
+
     const storagePath = `${deployment.bundle_path}/${assetPath}`;
 
     // 4. Fetch Asset from Supabase Storage

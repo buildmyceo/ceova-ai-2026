@@ -16,6 +16,16 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // SECURITY FIX: Lock down test endpoint — only service_role key can trigger test emails
+  const authHeader = req.headers.get('Authorization') || '';
+  const token = authHeader.replace('Bearer ', '').trim();
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  if (!token || token !== serviceKey) {
+    return new Response(JSON.stringify({ error: '🛡️ Test endpoint locked! Service role key required. 🔒🧪' }), { 
+      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
+  }
+
   try {
     if (!GMAIL_CLIENT_ID || !GMAIL_CLIENT_SECRET || !GMAIL_REFRESH_TOKEN || !EMAIL_SENDER) {
       throw new Error(`Missing secrets. ID: ${!!GMAIL_CLIENT_ID}, Secret: ${!!GMAIL_CLIENT_SECRET}, Token: ${!!GMAIL_REFRESH_TOKEN}, Sender: ${!!EMAIL_SENDER}`);

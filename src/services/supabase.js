@@ -8,7 +8,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        storage: window.localStorage,
+        // SECURITY FIX: Guard localStorage to prevent crashes in SSR/test/service-worker environments
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined,
         storageKey: 'ceova-auth-token' // Custom key to avoid collisions
     }
 });

@@ -101,9 +101,8 @@ serve(async (req) => {
   const eventType = event.event;
   const eventId = event.id || `${eventType}_${Date.now()}`;
   const payload = event.payload;
-  const adminClient = getAdminClient();
-
-  console.log(`[WEBHOOK] Received: ${eventType} id=${eventId}`);
+  // SECURITY FIX: Removed duplicate `const adminClient = getAdminClient()` that crashed every webhook call.
+  // adminClient is already initialized on line 77.
 
   // ── Idempotency check ─────────────────────────────────────────────────────
   const alreadyProcessed = await markEventProcessed(adminClient, eventId);

@@ -1,4 +1,13 @@
 export default async function handler(req, res) {
+  // SECURITY FIX: Require CRON_SECRET to prevent unauthorized execution
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const authHeader = req.headers.authorization || '';
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return res.status(401).json({ error: '🛡️ Unauthorized cron access! This endpoint requires CRON_SECRET. 🕐🚫' });
+    }
+  }
+  
   try {
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

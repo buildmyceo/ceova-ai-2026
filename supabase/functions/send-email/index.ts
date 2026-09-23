@@ -10,16 +10,45 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    // SECURITY FIX: Authenticate caller — prevent unauthorized email sending
+    const authHeader = req.headers.get('Authorization') || '';
+    const token = authHeader.replace('Bearer ', '').trim();
+    if (!token) {
+      return new Response(JSON.stringify({ error: '🛡️ Authentication required. No anonymous email sending! 📧🚫' }), { 
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+    
     const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+    const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    
+    // Verify the user is who they claim to be
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData?.user) {
+      return new Response(JSON.stringify({ error: '🛡️ Invalid credentials. Hackers get no emails! 📛' }), { 
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
 
     const { to, subject, body, userId } = await req.json();
     if (!to || !subject || !body || !userId) throw new Error("Missing required fields (to, subject, body, userId)");
+    
+    // SECURITY: Ensure the authenticated user can only send as themselves
+    if (authData.user.id !== userId) {
+      return new Response(JSON.stringify({ error: '🛡️ Nice try! You can only send emails as yourself. 🕵️' }), { 
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
 
-    // 1. Get OAuth Token
-    const { data: tokenData } = await supabase
+    // 1. Get OAuth Token (using admin client for reliable access)
+    const { data: tokenData } = await supabaseAdmin
       .from("user_google_tokens")
       .select("*")
       .eq("user_id", userId)
@@ -44,7 +73,7 @@ serve(async (req: Request) => {
         });
         const refreshData = await refreshResp.json();
         token = refreshData.access_token;
-        await supabase.from("user_google_tokens").update({
+        await supabaseAdmin.from("user_google_tokens").update({
             access_token: token,
             expiry_date: Date.now() + (refreshData.expires_in * 1000)
         }).eq("user_id", userId);
