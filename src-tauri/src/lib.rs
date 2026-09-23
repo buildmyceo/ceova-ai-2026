@@ -1,58 +1,8 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, WindowEvent,
+    tray::TrayIconBuilder,
+    Manager, WindowEvent,
 };
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
-
-static QUICKBAR_PINNED: AtomicBool = AtomicBool::new(false);
-
-#[tauri::command]
-fn open_main_window_with_prompt(app: tauri::AppHandle, prompt: Option<String>) {
-    if let Some(quickbar) = app.get_webview_window("quickbar") {
-        let _ = quickbar.hide();
-    }
-    if let Some(main) = app.get_webview_window("main") {
-        let _ = main.unminimize();
-        let _ = main.show();
-        let _ = main.set_focus();
-        if let Some(p) = prompt {
-            if !p.trim().is_empty() {
-                let _ = main.emit("quick-prompt-submit", serde_json::json!({ "prompt": p }));
-            }
-        }
-    }
-}
-
-#[tauri::command]
-fn hide_quickbar(app: tauri::AppHandle) {
-    if let Some(quickbar) = app.get_webview_window("quickbar") {
-        let _ = quickbar.hide();
-    }
-}
-
-#[tauri::command]
-fn set_quickbar_pinned(pinned: bool) {
-    QUICKBAR_PINNED.store(pinned, Ordering::Relaxed);
-}
-
-#[tauri::command]
-fn is_quickbar_pinned() -> bool {
-    QUICKBAR_PINNED.load(Ordering::Relaxed)
-}
-
-fn toggle_quickbar_window(app: &tauri::AppHandle) {
-    if let Some(quickbar) = app.get_webview_window("quickbar") {
-        if quickbar.is_visible().unwrap_or(false) {
-            let _ = quickbar.hide();
-        } else {
-            let _ = quickbar.center();
-            let _ = quickbar.show();
-            let _ = quickbar.set_focus();
-        }
-    }
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -67,30 +17,11 @@ pub fn run() {
             Some(vec![]),
         ))
         .plugin(tauri_plugin_process::init())
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        let opt_space: Shortcut = "Option+Space".parse().unwrap();
-                        let cmd_shift_space: Shortcut = "Command+Shift+Space".parse().unwrap();
-                        if shortcut == &opt_space || shortcut == &cmd_shift_space {
-                            toggle_quickbar_window(app);
-                        }
-                    }
-                })
-                .build(),
-        )
         .setup(|app| {
-            // Register global shortcut
-            let handle = app.handle();
-            let _ = handle.global_shortcut().register("Option+Space".parse::<Shortcut>().unwrap());
-            let _ = handle.global_shortcut().register("Command+Shift+Space".parse::<Shortcut>().unwrap());
-
-            // Build Tray Menu
-            let toggle_quickbar_item = MenuItem::with_id(app, "toggle_quickbar", "Quick Bar (⌥ Space)", true, None::<&str>)?;
+            // Build Tray Menu with Open and Quit options
             let open_main_item = MenuItem::with_id(app, "open_main", "Open CEOVA", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit CEOVA", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&toggle_quickbar_item, &open_main_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&open_main_item, &quit_item])?;
 
             // Load Tray Icon
             let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))
@@ -100,12 +31,9 @@ pub fn run() {
                 .icon(icon)
                 .icon_as_template(true)
                 .menu(&menu)
-                .show_menu_on_left_click(false)
+                .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
-                        "toggle_quickbar" => {
-                            toggle_quickbar_window(app);
-                        }
                         "open_main" => {
                             if let Some(main) = app.get_webview_window("main") {
                                 let _ = main.unminimize();
@@ -119,40 +47,20 @@ pub fn run() {
                         _ => {}
                     }
                 })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        toggle_quickbar_window(tray.app_handle());
-                    }
-                })
                 .build(app)?;
 
             Ok(())
         })
         .on_window_event(|window, event| {
             match event {
+                // Keep app running in background when main window is closed
                 WindowEvent::CloseRequested { api, .. } => {
                     api.prevent_close();
                     let _ = window.hide();
                 }
-                WindowEvent::Focused(false) => {
-                    if window.label() == "quickbar" && !QUICKBAR_PINNED.load(Ordering::Relaxed) {
-                        let _ = window.hide();
-                    }
-                }
                 _ => {}
             }
         })
-        .invoke_handler(tauri::generate_handler![
-            open_main_window_with_prompt,
-            hide_quickbar,
-            set_quickbar_pinned,
-            is_quickbar_pinned
-        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

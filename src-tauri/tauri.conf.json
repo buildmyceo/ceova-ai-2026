@@ -20,22 +20,6 @@
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true
-      },
-      {
-        "title": "CEOVA Companion",
-        "label": "quickbar",
-        "url": "/#quickbar",
-        "width": 480,
-        "height": 560,
-        "minWidth": 400,
-        "minHeight": 450,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "visible": false,
-        "skipTaskbar": true,
-        "resizable": true,
-        "shadow": true
       }
     ],
     "security": {

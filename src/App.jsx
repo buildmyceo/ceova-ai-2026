@@ -17,10 +17,9 @@ const LegalCenter = lazy(() => import('./pages/LegalCenter'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const Subscription = lazy(() => import('./pages/Subscription'));
 const Download = lazy(() => import('./pages/Download'));
-const QuickBar = lazy(() => import('./pages/QuickBar'));
 
 const RESERVED_APP_PATHS = new Set([
-    'dashboard', 'legal', 'privacy', 'terms', 'subscription', 'library', 'quickbar',
+    'dashboard', 'legal', 'privacy', 'terms', 'subscription', 'library',
     'auth', 'login', 'signup', 'download', 'api', 'p', 'sites', 'assets', 'favicon.ico'
 ]);
 
@@ -42,19 +41,6 @@ export default function App() {
             subscription.unsubscribe();
         };
     }, []);
-
-    const isQuickBar = typeof window !== 'undefined' && (
-        window.location.hash.includes('quickbar') || 
-        window.location.pathname === '/quickbar'
-    );
-
-    if (isQuickBar) {
-        return (
-            <Suspense fallback={null}>
-                <QuickBar />
-            </Suspense>
-        );
-    }
 
     if (loading) {
         return (
