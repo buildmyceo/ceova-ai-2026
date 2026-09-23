@@ -8,6 +8,8 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
 
   // Return a sleek, modern inactive / in-app preview notice
   return res.status(410).send(`<!DOCTYPE html>

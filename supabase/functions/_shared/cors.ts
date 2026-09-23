@@ -30,6 +30,9 @@ export function getCorsHeaders(req: Request): Record<string, string> {
         'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
         'Access-Control-Max-Age': '86400',
         'Vary': 'Origin',
+        'X-Frame-Options': 'DENY',
+        'Content-Security-Policy': "frame-ancestors 'none'",
+        'X-Content-Type-Options': 'nosniff',
     };
 }
 
