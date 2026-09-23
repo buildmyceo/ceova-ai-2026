@@ -18,11 +18,13 @@
   "dependencies": {
     "@capacitor/android": "^8.5.2",
     "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
     "@capacitor/core": "^8.5.2",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/keyboard": "^8.0.5",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
+    "@capgo/capacitor-social-login": "^8.5.9",
     "@google/generative-ai": "^0.21.0",
     "@monaco-editor/react": "^4.7.0",
     "@pdfsmaller/pdf-encrypt-lite": "^1.0.2",

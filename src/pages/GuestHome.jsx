@@ -25,6 +25,7 @@ import {
     Lock
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
+import { initiateGoogleSignIn } from '../services/mobileAuth';
 import APP_CONFIG from '../config/appConfig';
 import './GuestHome.css';
 
@@ -108,37 +109,24 @@ export default function GuestHome() {
         }
     };
 
-    // Google Sign-In with web/Tauri compatibility
+    // Google Sign-In with web/mobile/Tauri compatibility
     const handleGoogleLogin = async () => {
         setAuthError('Connecting to Google...');
         setIsAuthLoading(true);
         try {
-            const isTauri = typeof window !== 'undefined' && (
-                window.__TAURI__ !== undefined ||
-                window.__TAURI_INTERNALS__ !== undefined
-            );
-
-            if (isTauri && !import.meta.env.DEV) {
-                const { data, error } = await supabase.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: 'ceova://auth/callback',
-                        skipBrowserRedirect: true,
-                    }
-                });
-
-                if (error) throw error;
-                const { open } = await import('@tauri-apps/plugin-shell');
-                await open(data.url);
-                setAuthError('✓ Browser opened. Complete sign-in there.');
-            } else {
-                const { error } = await supabase.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: APP_CONFIG.getRedirectUrl('/auth/callback')
-                    }
-                });
-                if (error) throw error;
+            const res = await initiateGoogleSignIn();
+            if (res?.type === 'signed_in') {
+                setAuthError('');
+                setAuthModalMode(null);
+                navigate('/dashboard', { replace: true });
+                return;
+            }
+            if (res?.type === 'cancelled') {
+                setAuthError('');
+                return;
+            }
+            if (res?.type === 'browser_opened') {
+                setAuthError('✓ Complete Google sign-in. Returning to CEOVA automatically...');
             }
         } catch (e) {
             setAuthError(e.message || 'Failed to connect to Google');

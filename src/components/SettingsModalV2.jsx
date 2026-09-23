@@ -7,7 +7,8 @@ import {
     CircleDashed, Mail, CreditCard, ArrowUpCircle, 
     Settings2, Bell, LayoutGrid, Database, Archive, Shield,
     ArrowLeft, RotateCcw, Trash2, Download, UserMinus, Plus, Edit2, Save, Zap,
-    Power, Check, Calendar, HardDrive, Scissors, Scan, Eye, Key, Palette, Film, Minimize2, RefreshCw, Receipt, Megaphone, BookOpen, Terminal, FolderOpen, Code
+    Power, Check, Calendar, HardDrive, Scissors, Scan, Eye, Key, Palette, Film, Minimize2, RefreshCw, Receipt, Megaphone, BookOpen, Terminal, FolderOpen, Code,
+    Smartphone
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import UsageSection from './UsageSection';
@@ -15,7 +16,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import GoogleConnectModal from './GoogleConnectModal';
 import TelegramConnectModal from './TelegramConnectModal';
 
-export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange }) {
+export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, session, onOpenPhoneModal, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange }) {
     const { themePref, setThemePref } = useTheme();
     const [view, setView] = useState('main'); // 'main', 'archived', 'terms', 'privacy', 'data-controls', 'memories', 'personalization'
     const [personalization, setPersonalization] = useState({
@@ -325,6 +326,16 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
         } catch (e) { console.error("Export Error:", e); }
     };
 
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && isOpen) {
+                handleClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen]);
+
     const handleClose = () => {
         setView('main');
         onClose();
@@ -336,10 +347,13 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
             case 'terms': return 'Terms of Use';
             case 'privacy': return 'Privacy Policy';
             case 'data-controls': return 'Data Controls';
-            case 'memories': return 'Ceova Memory';
+            case 'memories': return 'Memory';
             case 'personalization': return 'Personalization';
             case 'notifications': return 'Notifications';
             case 'advanced': return 'Advanced Settings';
+            case 'connectors': return 'Connectors';
+            case 'tools': return 'Tools';
+            case 'usage': return 'Usage & Billing';
             case 'about': return 'About';
             default: return 'Settings';
         }
@@ -358,30 +372,81 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                         style={!isMobile ? { top: "50%", left: "50%", position: "fixed" } : { bottom: 0, left: 0, position: "fixed" }}
                     >
                         <header className="settings-header">
-                            {view === 'main' ? <div className="spacer" style={{ width: 18 }} /> : (
-                            <div className="modal-header">
-                            <button className="back-btn" onClick={() => setView('main')}><ArrowLeft size={20} /></button>
-                            <h2>
-                                {view === 'archived' && 'Archived Chats'}
-                                {view === 'terms' && 'Terms of Use'}
-                                {view === 'privacy' && 'Privacy Policy'}
-                                {view === 'data-controls' && 'Data Controls'}
-                                {view === 'memories' && 'Memory'}
-                                {view === 'personalization' && 'Personalization'}
-                                {view === 'notifications' && 'Notifications'}
-                                {view === 'advanced' && 'Advanced Settings'}
-                                {view === 'connectors' && 'Connectors'}
-                                {view === 'tools' && 'Tools'}
-                                {view === 'about' && 'About'}
-                                {view === 'usage' && 'Usage & Billing'}
-                            </h2>
-                        </div>)}
-                            {view === 'personalization' && (
-                                <button className="settings-save-btn" onClick={savePersonalization} disabled={isSaving}>
-                                    {isSaving ? <RotateCcw size={14} className="spin" /> : <Save size={14} />}
-                                    <span>Save</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                                {view !== 'main' ? (
+                                    <button 
+                                        className="settings-back-btn" 
+                                        onClick={() => setView('main')}
+                                        title="Back"
+                                        style={{
+                                            background: 'rgba(255, 255, 255, 0.05)',
+                                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                                            borderRadius: '8px',
+                                            width: '32px',
+                                            height: '32px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer',
+                                            color: '#e5e7eb',
+                                            padding: 0,
+                                            margin: 0,
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                        onMouseOver={e => {
+                                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                                            e.currentTarget.style.color = '#ffffff';
+                                        }}
+                                        onMouseOut={e => {
+                                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                                            e.currentTarget.style.color = '#e5e7eb';
+                                        }}
+                                    >
+                                        <ArrowLeft size={16} />
+                                    </button>
+                                ) : null}
+                                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#f3f4f6', letterSpacing: '-0.01em' }}>
+                                    {getTitle()}
+                                </h3>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {view === 'personalization' && (
+                                    <button className="settings-save-btn" onClick={savePersonalization} disabled={isSaving}>
+                                        {isSaving ? <RotateCcw size={14} className="spin" /> : <Save size={14} />}
+                                        <span>Save</span>
+                                    </button>
+                                )}
+                                <button 
+                                    className="settings-close-x" 
+                                    onClick={handleClose} 
+                                    title="Close"
+                                    style={{
+                                        background: 'rgba(255, 255, 255, 0.05)',
+                                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                                        borderRadius: '8px',
+                                        width: '32px',
+                                        height: '32px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        color: 'rgba(255, 255, 255, 0.65)',
+                                        padding: 0,
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    onMouseOver={e => {
+                                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                                        e.currentTarget.style.color = '#ffffff';
+                                    }}
+                                    onMouseOut={e => {
+                                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                                        e.currentTarget.style.color = 'rgba(255, 255, 255, 0.65)';
+                                    }}
+                                >
+                                    <X size={16} />
                                 </button>
-                            )}
+                            </div>
                         </header>
 
                         <div className="settings-body">
@@ -392,6 +457,23 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                         <div className="settings-row no-hover">
                                             <div className="row-left"><Mail size={18} /> <span>Email</span></div>
                                             <span className="version-info">{userEmail || "not logged in"}</span>
+                                        </div>
+                                        <div className="settings-row clickable" onClick={() => onOpenPhoneModal?.()}>
+                                            <div className="row-left">
+                                                <Smartphone size={18} /> 
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                    <span>Phone Login</span>
+                                                    <span style={{ fontSize: '10px', opacity: 0.7 }}>
+                                                        {session?.user?.phone ? `${session.user.phone} linked to ${userEmail || session?.user?.email || "your account"}` : "Not linked — click to add"}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span className="version-info" style={{ color: session?.user?.phone ? '#e4e4e7' : 'inherit' }}>
+                                                    {session?.user?.phone || "Link Phone"}
+                                                </span>
+                                                <ChevronRight size={14} className="chevron" />
+                                            </div>
                                         </div>
                                         <div className="settings-row clickable" onClick={() => { navigate('/subscription'); handleClose(); }}>
                                             <div className="row-left"><CreditCard size={18} /> <span>Subscription & Billing</span></div>
@@ -1193,14 +1275,15 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                 width: '64px',
                                 height: '64px',
                                 borderRadius: '50%',
-                                background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+                                background: 'rgba(255, 255, 255, 0.08)',
+                                border: '1px solid rgba(255, 255, 255, 0.14)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 marginBottom: '20px',
-                                boxShadow: '0 8px 16px rgba(59, 130, 246, 0.3)'
+                                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)'
                             }}>
-                                <Zap size={32} color="#fff" />
+                                <Zap size={30} color="#f3f4f6" />
                             </div>
                             
                             <h2 style={{ fontSize: '1.4rem', fontWeight: 600, margin: '0 0 8px' }}>Advanced Settings Enabled</h2>

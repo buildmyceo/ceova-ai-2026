@@ -236,6 +236,12 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                             <div className="extensions-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
                                 
                                 <ExtensionCard 
+                                    icon={<Sparkles size={22} color="#ec4899" />} 
+                                    title="Generate Image" 
+                                    desc="Generate stunning AI images & art using DALL-E." 
+                                    onClick={() => handleToolSelect('/generate_image')} 
+                                />
+                                <ExtensionCard 
                                     icon={<Scissors size={22} color="#60a5fa" />} 
                                     title="Background Remover" 
                                     desc="Remove backgrounds from images instantly." 

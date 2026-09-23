@@ -1,14 +1,16 @@
 .auth-split-container {
     position: relative;
     display: flex;
-    height: 100vh;
+    min-height: 100vh;
     width: 100vw;
     background-color: #000000;
     color: #ffffff;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     justify-content: center;
     align-items: center;
-    overflow: hidden;
+    overflow-y: auto;
+    padding: max(env(safe-area-inset-top, 24px), 24px) 1.5rem max(env(safe-area-inset-bottom, 24px), 24px);
+    box-sizing: border-box;
 }
 
 .animated-bg {
@@ -19,6 +21,7 @@
     height: 100%;
     overflow: hidden;
     z-index: 0;
+    pointer-events: none;
 }
 
 .glow {
@@ -32,14 +35,14 @@
 }
 
 .glow-1 {
-    background: rgba(29, 155, 240, 0.15); /* Blue */
+    background: rgba(255, 255, 255, 0.04);
     top: -10%;
     left: -10%;
     animation-delay: 0s;
 }
 
 .glow-2 {
-    background: rgba(234, 67, 53, 0.1); /* Red/Orange */
+    background: rgba(255, 255, 255, 0.02);
     bottom: -10%;
     right: -10%;
     animation-delay: -4s;
@@ -81,7 +84,7 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    padding: 2rem;
+    padding: 2rem 1.5rem;
     position: relative;
     width: 100%;
     max-width: 600px;
@@ -96,18 +99,18 @@
 }
 
 .brand-logo-small {
-    height: 56px;
-    position: absolute;
-    top: -5rem;
-    left: 50%;
-    transform: translateX(-50%);
+    height: 52px;
+    margin-bottom: 2rem;
+    align-self: center;
+    filter: brightness(0) invert(1);
 }
 
 .auth-heading {
-    font-size: 2rem;
+    font-size: 1.85rem;
     font-weight: 700;
-    margin-bottom: 2rem;
+    margin-bottom: 1.75rem;
     text-align: center;
+    letter-spacing: -0.02em;
 }
 
 .auth-provider-btn {
@@ -122,7 +125,7 @@
     background-color: #0a0a0a;
     color: #ffffff;
     font-size: 0.95rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     margin-bottom: 12px;
     transition: background-color 0.2s, border-color 0.2s;
@@ -182,10 +185,12 @@
     color: #ffffff;
     font-size: 0.95rem;
     outline: none;
+    box-sizing: border-box;
 }
 
 .auth-input-pill:focus {
-    border-color: #1d9bf0;
+    border-color: rgba(255, 255, 255, 0.35); 
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
 }
 
 .auth-submit-btn {
@@ -193,29 +198,37 @@
     padding: 12px;
     border-radius: 9999px;
     border: none;
-    background-color: #1d9bf0;
-    color: #ffffff;
+    background-color: #ffffff;
+    color: #09090b;
+    font-weight: 600;
+    border: 1px solid #ffffff;
     font-size: 0.95rem;
-    font-weight: 700;
     cursor: pointer;
     margin-top: 4px;
     transition: background-color 0.2s;
 }
 
 .auth-submit-btn:hover {
-    background-color: #1a8cd8;
+    background-color: #e4e4e7;
+}
+
+.auth-submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 .auth-switch-text {
-    margin-top: 2rem;
+    margin-top: 1.75rem;
     color: #71767b;
     font-size: 0.95rem;
+    text-align: center;
 }
 
 .auth-link {
-    color: #1d9bf0;
+    color: #e4e4e7;
     cursor: pointer;
     text-decoration: none;
+    font-weight: 500;
 }
 
 .auth-link:hover {
@@ -229,6 +242,7 @@
     position: relative;
     max-width: 380px;
     text-align: center;
+    line-height: 1.4;
 }
 
 .auth-footer-terms a {
@@ -240,25 +254,161 @@
     color: #ffffff;
 }
 
+/* Phone Auth Tabs & Inputs */
+.auth-tabs {
+    display: flex;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 3px;
+    border-radius: 9999px;
+    margin-bottom: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.auth-tab-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 9999px;
+    border: none;
+    background: transparent;
+    color: #888;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.auth-tab-btn.active {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-weight: 600;
+}
+
+.auth-phone-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.auth-country-select {
+    width: 110px;
+    padding: 12px 10px;
+    border-radius: 9999px;
+    border: 1px solid #333333;
+    background-color: #0a0a0a;
+    color: #ffffff;
+    font-size: 0.88rem;
+    outline: none;
+    cursor: pointer;
+}
+
+.auth-country-select option {
+    background-color: #141417;
+    color: #ffffff;
+}
+
+.auth-country-select:focus {
+    border-color: #e4e4e7;
+}
+
+.auth-otp-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    gap: 12px;
+}
+
+.auth-otp-inputs {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.auth-otp-box {
+    width: 44px;
+    height: 52px;
+    background-color: #0a0a0a;
+    border: 1px solid #333333;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 1.25rem;
+    font-weight: 600;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.auth-otp-box:focus {
+    border-color: #e4e4e7;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
+}
+
+.auth-resend-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    font-size: 0.82rem;
+    color: #71767b;
+    padding: 0 4px;
+}
+
+.auth-change-phone-btn {
+    background: none;
+    border: none;
+    color: #e4e4e7;
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+
+.auth-resend-btn {
+    background: none;
+    border: none;
+    color: #e4e4e7;
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+
+.auth-resend-btn:disabled {
+    color: #555;
+    cursor: not-allowed;
+}
+
+.auth-error-chip {
+    padding: 8px 14px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    color: #fca5a5;
+    font-size: 0.85rem;
+    margin-bottom: 14px;
+    text-align: center;
+}
+
+.auth-error-chip.info {
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #93c5fd;
+}
+
 @media (max-width: 768px) {
     .auth-full-panel {
         max-width: 100%;
-        padding: 2rem 1.5rem;
+        padding: 1.5rem 1rem;
         flex-direction: column;
         justify-content: center;
     }
     .brand-logo-small {
-        position: relative;
-        top: 0;
-        left: 0;
-        transform: none;
-        margin-bottom: 2rem;
+        margin-bottom: 1.5rem;
         align-self: center;
     }
     .auth-footer-terms {
-        position: relative;
-        bottom: 0;
-        margin-top: 2rem;
+        margin-top: 1.5rem;
         text-align: center;
     }
 }
