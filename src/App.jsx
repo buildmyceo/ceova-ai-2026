@@ -17,9 +17,10 @@ const LegalCenter = lazy(() => import('./pages/LegalCenter'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const Subscription = lazy(() => import('./pages/Subscription'));
 const Download = lazy(() => import('./pages/Download'));
+const QuickBar = lazy(() => import('./pages/QuickBar'));
 
 const RESERVED_APP_PATHS = new Set([
-    'dashboard', 'legal', 'privacy', 'terms', 'subscription',
+    'dashboard', 'legal', 'privacy', 'terms', 'subscription', 'library', 'quickbar',
     'auth', 'login', 'signup', 'download', 'api', 'p', 'sites', 'assets', 'favicon.ico'
 ]);
 
@@ -41,6 +42,19 @@ export default function App() {
             subscription.unsubscribe();
         };
     }, []);
+
+    const isQuickBar = typeof window !== 'undefined' && (
+        window.location.hash.includes('quickbar') || 
+        window.location.pathname === '/quickbar'
+    );
+
+    if (isQuickBar) {
+        return (
+            <Suspense fallback={null}>
+                <QuickBar />
+            </Suspense>
+        );
+    }
 
     if (loading) {
         return (
@@ -71,6 +85,7 @@ export default function App() {
                     <Route path="/privacy" element={<Navigate to="/legal/privacy-policy" replace />} />
                     <Route path="/terms" element={<Navigate to="/legal/terms-conditions" replace />} />
                     <Route path="/dashboard" element={<ProtectedRoute><Home session={session} /></ProtectedRoute>} />
+                    <Route path="/library" element={<Navigate to="/dashboard" replace state={{ openLibrary: true }} />} />
 
                     <Route path="/subscription" element={<ProtectedRoute><Subscription session={session} /></ProtectedRoute>} />
                     <Route path="/auth/callback" element={<AuthCallback />} />

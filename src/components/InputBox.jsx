@@ -1,11 +1,20 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical } from 'lucide-react';
+import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical, Sparkles, Search, Image as ImageIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../services/supabase';
+import { useAuth } from '../contexts/AuthProvider';
+import { cacheManager } from '../services/CacheManager';
+import { 
+    fetchUserLibraryItems,
+    isAiItem,
+    isGdriveItem,
+    isGmailItem,
+    isCalendarItem,
+    isCeovaItem
+} from '../services/libraryFetchEngine';
 import ExtensionsModal from './ExtensionsModal';
-import { ImageCard, FileCard, MailCard, CalendarCard } from '../pages/Library';
-import '../pages/Library.css';
+import './LibraryPickerModal.css';
 
 const COMMON_EMOJIS = [
     "😊", "😂", "🥰", "😎", "🤔", "😅", "🔥", "✨", 
@@ -13,10 +22,132 @@ const COMMON_EMOJIS = [
     "🎉", "❤️", "⭐", "🌈", "⚡", "🎯", "📝", "🌍"
 ];
 
+const fmtDate = (d) => {
+    if (!d) return '';
+    try {
+        const date = new Date(d);
+        if (isNaN(date.getTime())) return '';
+        return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } catch {
+        return '';
+    }
+};
+
+const fmtSize = (bytes) => {
+    if (!bytes || isNaN(bytes)) return '';
+    if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+    return Math.round(bytes / 1024) + ' KB';
+};
+
+function PickerImageCard({ item, onClick }) {
+    const [err, setErr] = useState(false);
+    const driveId = item.drive_id || (item.id && !String(item.id).includes('-') ? item.id : null);
+    const src = err ? null : (item.thumbnail_url || item.url || (driveId ? `https://lh3.googleusercontent.com/d/${driveId}=s400` : null));
+
+    return (
+        <div 
+            className="lib-picker-img-card" 
+            onClick={() => onClick(item)}
+            title={`Click to attach ${item.name}`}
+        >
+            <div className="lib-picker-img-wrap">
+                {src && !err ? (
+                    <img
+                        src={src}
+                        alt={item.name}
+                        className="lib-picker-img"
+                        loading="lazy"
+                        onError={() => setErr(true)}
+                    />
+                ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717a' }}>
+                        <ImageIcon size={28} />
+                    </div>
+                )}
+                <div className="lib-picker-img-overlay">
+                    <span className="lib-picker-attach-pill">+ Attach</span>
+                </div>
+            </div>
+            <div className="lib-picker-img-meta">
+                <span className="lib-picker-item-name">{item.name}</span>
+                <span className="lib-picker-item-sub">
+                    {item.size ? fmtSize(item.size) + ' • ' : ''}
+                    {item.created_at ? fmtDate(item.created_at) : 'Image'}
+                </span>
+            </div>
+        </div>
+    );
+}
+
+function PickerRowCard({ item, onClick }) {
+    const isMail = isGmailItem(item);
+    const isCal = isCalendarItem(item);
+    const isImg = item.kind === 'image' || item.mime_type?.startsWith('image/');
+    const isAi = isAiItem(item);
+
+    let Icon = FileText;
+    let label = 'File';
+    if (isMail) {
+        Icon = Mail;
+        label = 'Gmail';
+    } else if (isCal) {
+        Icon = CalendarIcon;
+        label = 'Calendar';
+    } else if (isImg) {
+        Icon = ImageIcon;
+        label = 'Image';
+    } else if (isAi) {
+        Icon = Sparkles;
+        label = 'AI';
+    } else if (item.mime_type?.includes('pdf') || item.name?.endsWith('.pdf')) {
+        label = 'PDF';
+    } else if (item.mime_type?.includes('sheet') || item.name?.endsWith('.csv') || item.name?.endsWith('.xlsx')) {
+        label = 'Sheet';
+    } else if (item.mime_type?.includes('presentation') || item.name?.endsWith('.pptx')) {
+        label = 'Slides';
+    } else if (item.mime_type?.includes('word') || item.name?.endsWith('.docx')) {
+        label = 'Doc';
+    }
+
+    return (
+        <div 
+            className="lib-picker-row-card" 
+            onClick={() => onClick(item)}
+            title={`Click to attach ${item.name}`}
+        >
+            <div className="lib-picker-row-icon-box">
+                <Icon size={16} />
+            </div>
+            <div className="lib-picker-row-info">
+                <span className="lib-picker-row-name">{item.name}</span>
+                {item.snippet && (
+                    <p className="lib-picker-row-snippet">{item.snippet}</p>
+                )}
+                <div className="lib-picker-row-meta">
+                    <span className="lib-picker-badge-label">{label}</span>
+                    {item.size ? <span>{fmtSize(item.size)}</span> : null}
+                    {item.from_sender && <span>From: {item.from_sender.split('<')[0].trim()}</span>}
+                    {item.location && <span>📍 {item.location}</span>}
+                    {item.start_time ? (
+                        <span>📅 {fmtDate(item.start_time)}</span>
+                    ) : item.created_at ? (
+                        <span>{fmtDate(item.created_at)}</span>
+                    ) : null}
+                </div>
+            </div>
+            <span className="lib-picker-row-action">+ Attach</span>
+        </div>
+    );
+}
+
 export default function InputBox({ 
     input, setInput, handleSend, isLoading, handleStop, isHome,
-    localDirectoryHandle, setLocalDirectoryHandle, onOpenLibrary
+    localDirectoryHandle, setLocalDirectoryHandle, onOpenLibrary,
+    session: sessionProp
 }) {
+    const { session: authSession, user: authUser } = useAuth() || {};
+    const effectiveSession = sessionProp || authSession;
+
     const textareaRef = useRef(null);
     const fileInputRef = useRef(null);
     const [isEmojiOpen, setIsEmojiOpen] = useState(false);
@@ -38,152 +169,155 @@ export default function InputBox({
     const [librarySearch, setLibrarySearch] = useState('');
     const recognitionRef = useRef(null);
 
+    // Preload library items from cache on mount for instant zero-latency opening
+    useEffect(() => {
+        cacheManager.getLibraryItems().then(cached => {
+            if (cached && cached.length > 0) {
+                setLibraryItems(cached);
+            }
+        }).catch(() => {});
+    }, []);
+
     useEffect(() => {
         const checkGmailConnection = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
+            const uid = effectiveSession?.user?.id || authUser?.id;
+            if (uid) {
                 const { data } = await supabase
                     .from('user_google_tokens')
                     .select('*')
-                    .eq('user_id', user.id)
+                    .eq('user_id', uid)
                     .single();
                 if (data) setIsGmailConnected(true);
             }
         };
         checkGmailConnection();
-    }, []);
+    }, [effectiveSession?.user?.id, authUser?.id]);
 
-    // Fetch library items from Supabase for the picker
+    // Close on escape key
+    useEffect(() => {
+        if (!isLibraryPickerOpen) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                setIsLibraryPickerOpen(false);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isLibraryPickerOpen]);
+
+    // Fetch library items using unified engine
     const openLibraryPicker = async () => {
         setIsLibraryPickerOpen(true);
         setLibrarySearch('');
-        setLibraryLoading(true);
+
+        // Step 1: Immediate cache retrieval for instant UI
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-            const items = [];
-
-            // 1. Drive files (CEOVA + Google Drive)
-            const { data: driveFiles } = await supabase
-                .from('files')
-                .select('id, drive_id, name, mime_type, category, storage_source, web_view_link, web_download_link, thumbnail_url, size, created_at')
-                .eq('user_id', user.id)
-                .not('is_trashed', 'eq', true)
-                .order('created_at', { ascending: false })
-                .limit(200);
-
-            const pathsToSign = [];
-            (driveFiles || []).forEach(df => {
-               if (df.web_view_link && !df.web_view_link.startsWith('http')) {
-                   const cleanLink = df.web_view_link.startsWith('/') ? df.web_view_link.substring(1) : df.web_view_link;
-                   pathsToSign.push(cleanLink);
-               }
-            });
-            let signedUrlsMap = {};
-            if (pathsToSign.length > 0) {
-               for (let i = 0; i < pathsToSign.length; i += 50) {
-                   const chunk = pathsToSign.slice(i, i + 50);
-                   const { data: signedData } = await supabase.storage.from('user_files').createSignedUrls(chunk, 3600);
-                   if (signedData) {
-                       signedData.forEach(item => {
-                           if (!item.error) signedUrlsMap[item.path] = item.signedUrl;
-                       });
-                   }
-               }
+            const cached = await cacheManager.getLibraryItems();
+            if (cached && cached.length > 0) {
+                setLibraryItems(cached);
+                setLibraryLoading(false);
+            } else {
+                setLibraryLoading(true);
             }
+        } catch (e) {
+            setLibraryLoading(true);
+        }
 
-            (driveFiles || []).forEach(f => {
-                const isImg = f.category === 'images' || f.mime_type?.startsWith('image/');
-                const driveId = f.drive_id || (f.id && !String(f.id).includes('-') ? f.id : null);
-                
-                const getFullUrl = (link) => {
-                   if (!link) return null;
-                   if (link.startsWith('http')) return link;
-                   const cleanLink = link.startsWith('/') ? link.substring(1) : link;
-                   if (signedUrlsMap[cleanLink]) return signedUrlsMap[cleanLink];
-                   return `${supabase.supabaseUrl}/storage/v1/object/public/user_files/${cleanLink}`;
-                };
+        // Step 2: Resolve user ID with multiple fallbacks
+        let userId = effectiveSession?.user?.id || authUser?.id;
+        if (!userId) {
+            try {
+                const { data: sessData } = await supabase.auth.getSession();
+                userId = sessData?.session?.user?.id;
+            } catch (e) {}
+        }
+        if (!userId) {
+            try {
+                const { data: uData } = await supabase.auth.getUser();
+                userId = uData?.user?.id;
+            } catch (e) {}
+        }
+        if (!userId) {
+            try {
+                const localAuth = JSON.parse(localStorage.getItem('ceova-auth-token') || '{}');
+                userId = localAuth?.user?.id;
+            } catch (e) {}
+        }
 
-                const resolvedUrl = getFullUrl(f.web_view_link);
-                items.push({
-                    id: f.id,
-                    drive_id: driveId,
-                    name: f.name,
-                    mime_type: f.mime_type,
-                    category: f.category,
-                    url: resolvedUrl,
-                    web_view_link: resolvedUrl,
-                    thumbnail_url: f.thumbnail_url,
-                    source: f.storage_source || 'gdrive',
-                    kind: isImg ? 'image' : 'file',
-                    type: 'file',
-                    created_at: f.created_at,
-                    size: f.size
-                });
-            });
+        if (!userId) {
+            setLibraryLoading(false);
+            return;
+        }
 
-            // 2. Gmail emails
-            const { data: emails } = await supabase
-                .from('gmail_emails')
-                .select('id, name, snippet, from_sender, web_view_link')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false })
-                .limit(100);
-            (emails || []).forEach(e => items.push({
-                id: `gmail-${e.id}`,
-                name: e.name || 'Email',
-                mime_type: 'message/rfc822',
-                url: e.web_view_link,
-                snippet: e.snippet,
-                from_sender: e.from_sender,
-                source: 'gmail',
-                type: 'email'
-            }));
-
-            // 3. Calendar events
-            const { data: events } = await supabase
-                .from('calendar_events')
-                .select('id, name, start_time, location')
-                .eq('user_id', user.id)
-                .order('start_time', { ascending: true })
-                .limit(100);
-            (events || []).forEach(ev => items.push({
-                id: `cal-${ev.id}`,
-                name: ev.name || 'Event',
-                mime_type: 'text/calendar',
-                url: null,
-                snippet: ev.start_time ? new Date(ev.start_time).toLocaleString() : '',
-                source: 'gcalendar',
-                type: 'event'
-            }));
-
-            const seen = new Set();
-            const deduped = items.filter(it => {
-                const key = it.drive_id || (it.name ? `${it.name}-${it.size || ''}` : null) || it.url || it.id;
-                if (seen.has(key)) return false;
-                seen.add(key);
-                return true;
-            });
-
-            setLibraryItems(deduped);
-        } catch(e) {
-            console.error('Library picker load error:', e);
+        // Step 3: Fetch latest library items and sync cache
+        try {
+            const fresh = await fetchUserLibraryItems(userId);
+            if (fresh && fresh.length > 0) {
+                setLibraryItems(fresh);
+            }
+        } catch (err) {
+            console.error('[LibraryPicker] Load error:', err);
         } finally {
             setLibraryLoading(false);
         }
     };
 
+    // Calculate tab counts matching Library.jsx exactly
+    const libraryCounts = useMemo(() => {
+        const counts = { ceova: 0, gdrive: 0, gmail: 0, gcalendar: 0, ai: 0, total: libraryItems.length };
+        libraryItems.forEach(it => {
+            if (isAiItem(it)) counts.ai++;
+            else if (isGdriveItem(it)) counts.gdrive++;
+            else if (isGmailItem(it)) counts.gmail++;
+            else if (isCalendarItem(it)) counts.gcalendar++;
+            else counts.ceova++;
+        });
+        return counts;
+    }, [libraryItems]);
+
+    const libraryTabs = useMemo(() => [
+        { id: 'ceova', label: 'CEOVA Drive', count: libraryCounts.ceova },
+        { id: 'gdrive', label: 'Google Drive', count: libraryCounts.gdrive },
+        { id: 'gmail', label: 'Google Mail', count: libraryCounts.gmail },
+        { id: 'gcalendar', label: 'Google Calendar', count: libraryCounts.gcalendar },
+        { id: 'ai', label: 'AI Generated', count: libraryCounts.ai },
+    ], [libraryCounts]);
+
+    // Filter items based on active tab and search matching Library.jsx
+    const filteredLibraryItems = useMemo(() => {
+        return libraryItems.filter(it => {
+            if (libraryTab === 'ceova' && !isCeovaItem(it)) return false;
+            if (libraryTab === 'gdrive' && !isGdriveItem(it)) return false;
+            if (libraryTab === 'gmail' && !isGmailItem(it)) return false;
+            if (libraryTab === 'gcalendar' && !isCalendarItem(it)) return false;
+            if (libraryTab === 'ai' && !isAiItem(it)) return false;
+
+            if (librarySearch.trim()) {
+                const q = librarySearch.toLowerCase();
+                const matchName = it.name?.toLowerCase().includes(q);
+                const matchSnippet = it.snippet?.toLowerCase().includes(q);
+                const matchSender = it.from_sender?.toLowerCase().includes(q);
+                const matchLoc = it.location?.toLowerCase().includes(q);
+                if (!matchName && !matchSnippet && !matchSender && !matchLoc) return false;
+            }
+            return true;
+        });
+    }, [libraryItems, libraryTab, librarySearch]);
+
     const attachLibraryItem = (item) => {
-        // Build a lightweight pseudo-file object compatible with handleSend
+        const isImg = item.kind === 'image' || item.mime_type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(item.name || '');
+        const driveId = item.drive_id || (item.id && !String(item.id).includes('-') ? item.id : null);
+        const resolvedUrl = item.url || item.web_view_link || item.thumbnail_url || (driveId ? `https://lh3.googleusercontent.com/d/${driveId}=s400` : '');
         const pseudoFile = {
-            name: item.name,
-            type: item.mime_type || 'application/octet-stream',
-            url: item.url,
-            thumbnail_url: item.thumbnail_url,
+            name: item.name || 'Library File',
+            type: item.mime_type || (isImg ? 'image/jpeg' : 'application/octet-stream'),
+            url: resolvedUrl,
+            thumbnail_url: item.thumbnail_url || resolvedUrl,
             source: item.source,
             snippet: item.snippet,
             from_sender: item.from_sender,
             isLibraryItem: true,
+            size: item.size || 0,
         };
         setFiles(prev => [...prev, pseudoFile]);
         setIsLibraryPickerOpen(false);
@@ -366,11 +500,11 @@ export default function InputBox({
                         {files.map((file, idx) => (
                             <div key={idx} className="file-preview-item">
                                 <div className="preview-media-box">
-                                    {file.type.startsWith('image/') ? (
-                                        <img src={file.url} alt="preview" className="preview-img" />
+                                    {(file.type?.startsWith('image/') || file.thumbnail_url) ? (
+                                        <img src={file.thumbnail_url || file.url} alt="preview" className="preview-img" />
                                     ) : (
                                         <div className="file-icon-box">
-                                            <span className="file-ext">{file.name.split('.').pop().toUpperCase()}</span>
+                                            <span className="file-ext">{(file.name || 'FILE').split('.').pop().toUpperCase()}</span>
                                         </div>
                                     )}
                                 </div>
@@ -436,6 +570,14 @@ export default function InputBox({
                             {isPlusOpen && isToolsSubmenuOpen && (
                                 <div className="plus-dropdown-menu">
 
+                                    <button onClick={() => {
+                                        setIsPlusOpen(false);
+                                        setIsToolsSubmenuOpen(false);
+                                        setInput(prev => prev + (prev.trim() ? " " : "") + "/generate_image ");
+                                        textareaRef.current?.focus();
+                                    }}>
+                                        <Sparkles size={18} /> Generate Image
+                                    </button>
                                     <button onClick={() => {
                                         setIsPlusOpen(false);
                                         setIsToolsSubmenuOpen(false);
@@ -681,9 +823,6 @@ export default function InputBox({
                     </div>
                 </div>
             </div>
-            <div className="input-footer">
-                Ceova can make mistakes. Check important info.
-            </div>
             
             <ExtensionsModal 
                 isOpen={isExtensionsModalOpen} 
@@ -695,123 +834,163 @@ export default function InputBox({
                 }}
             />
 
-            {/* ── Library Picker Modal ─────────────────────────── */}
+            {/* ── High-End Glassmorphic Library Picker Modal ─────────────────────────── */}
             {isLibraryPickerOpen && typeof document !== 'undefined' && createPortal(
                 <div
-                    style={{
-                        position: 'fixed', inset: 0, zIndex: 9999,
-                        background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
+                    className="lib-picker-overlay"
                     onClick={() => setIsLibraryPickerOpen(false)}
                 >
                     <div
-                        style={{
-                            background: 'var(--bg-secondary, #1a1a2e)',
-                            border: '1px solid var(--border-color, rgba(255,255,255,0.1))',
-                            borderRadius: '18px',
-                            width: '560px',
-                            maxWidth: '95vw',
-                            maxHeight: '75vh',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            overflow: 'hidden',
-                            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-                        }}
+                        className="lib-picker-modal"
                         onClick={e => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div style={{ padding: '18px 20px 12px', borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.08))', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <BookOpen size={18} color="var(--brand-color, #10a37f)" />
-                            <span style={{ fontWeight: 600, fontSize: '15px', color: 'var(--text-main)' }}>Select from Library</span>
+                        <div className="lib-picker-header">
+                            <div className="lib-picker-icon-badge">
+                                <BookOpen size={17} />
+                            </div>
+                            <div className="lib-picker-title-group">
+                                <h3 className="lib-picker-title">Select from Library</h3>
+                                <span className="lib-picker-total-badge">
+                                    {libraryCounts.total} items
+                                </span>
+                            </div>
                             <button
-                                onClick={(e) => { e.stopPropagation(); setIsLibraryPickerOpen(false); }}
-                                style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-main)', padding: '8px', zIndex: 10, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                className="lib-picker-close-btn"
+                                onClick={() => setIsLibraryPickerOpen(false)}
+                                title="Close (Esc)"
                             >
-                                <X size={20} />
+                                <X size={17} />
                             </button>
                         </div>
 
-                        {/* Search */}
-                        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-color, rgba(255,255,255,0.06))' }}>
-                            <input
-                                autoFocus
-                                placeholder="Search files, emails, events…"
-                                value={librarySearch}
-                                onChange={e => setLibrarySearch(e.target.value)}
-                                style={{
-                                    width: '100%', boxSizing: 'border-box',
-                                    background: 'var(--bg-primary, #0d0d1a)',
-                                    border: '1px solid var(--border-color, rgba(255,255,255,0.1))',
-                                    borderRadius: '10px', padding: '9px 14px',
-                                    color: 'var(--text-main)', fontSize: '14px', outline: 'none'
-                                }}
-                            />
+                        {/* Search Bar */}
+                        <div className="lib-picker-search-wrap">
+                            <div className="lib-picker-search-inner">
+                                <Search size={14} className="lib-picker-search-icon" />
+                                <input
+                                    autoFocus
+                                    className="lib-picker-search-input"
+                                    placeholder={`Search in ${libraryTabs.find(t => t.id === libraryTab)?.label || 'library'}...`}
+                                    value={librarySearch}
+                                    onChange={e => setLibrarySearch(e.target.value)}
+                                />
+                                {librarySearch && (
+                                    <button 
+                                        className="lib-picker-search-clear" 
+                                        onClick={() => setLibrarySearch('')}
+                                        title="Clear search"
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
-                        {/* Tabs */}
-                        <div className="lib-tabs" style={{ padding: '0 16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary, #1a1a2e)', overflowX: 'auto', whiteSpace: 'nowrap' }}>
-                            <button className={`lib-tab ${libraryTab === 'ceova' ? 'active' : ''}`} onClick={() => setLibraryTab('ceova')}>CEOVA Drive</button>
-                            <button className={`lib-tab ${libraryTab === 'gdrive' ? 'active' : ''}`} onClick={() => setLibraryTab('gdrive')}>Google Drive</button>
-                            <button className={`lib-tab ${libraryTab === 'gmail' ? 'active' : ''}`} onClick={() => setLibraryTab('gmail')}>Google Mail</button>
-                            <button className={`lib-tab ${libraryTab === 'gcalendar' ? 'active' : ''}`} onClick={() => setLibraryTab('gcalendar')}>Google Calendar</button>
-                            <button className={`lib-tab ${libraryTab === 'ai' ? 'active' : ''}`} onClick={() => setLibraryTab('ai')}>AI Generated</button>
+                        {/* Minimalist Pill Tabs */}
+                        <div className="lib-picker-tabs-bar">
+                            {libraryTabs.map(tab => (
+                                <button
+                                    key={tab.id}
+                                    className={`lib-picker-pill-tab ${libraryTab === tab.id ? 'active' : ''}`}
+                                    onClick={() => setLibraryTab(tab.id)}
+                                >
+                                    <span>{tab.label}</span>
+                                    <span className="lib-picker-tab-count">{tab.count}</span>
+                                </button>
+                            ))}
                         </div>
 
-                        {/* Items */}
-                        <div style={{ 
-                            overflowY: 'auto', flex: 1, minHeight: 0, padding: '16px',
-                            background: 'var(--bg-primary, #0d0d1a)'
-                        }}>
+                        {/* Items Viewport */}
+                        <div className="lib-picker-viewport">
                             {libraryLoading ? (
-                                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                                    <div style={{ marginBottom: '10px' }}>Loading library…</div>
+                                <div className="lib-picker-loading">
+                                    <div className="lib-picker-spinner" />
+                                    <span>Loading library items...</span>
                                 </div>
                             ) : (() => {
-                                const filtered = libraryItems.filter(it => {
-                                    if (librarySearch) {
-                                        const term = librarySearch.toLowerCase();
-                                        if (!(it.name?.toLowerCase().includes(term) || it.snippet?.toLowerCase().includes(term) || it.from_sender?.toLowerCase().includes(term))) return false;
-                                    }
-                                    if (libraryTab === 'ceova') return it.source === 'local' || it.source === 'ceova';
-                                    if (libraryTab === 'gdrive') return it.source === 'gdrive';
-                                    if (libraryTab === 'gmail') return it.source === 'gmail';
-                                    if (libraryTab === 'gcalendar') return it.source === 'gcalendar';
-                                    if (libraryTab === 'ai') return it.source === 'ai_generated' || it.source === 'ai';
-                                    return true;
-                                });
-                                
-                                const images = filtered.filter(it => it.kind === 'image' || it.mime_type?.startsWith('image/'));
-                                const others = filtered.filter(it => !(it.kind === 'image' || it.mime_type?.startsWith('image/')));
+                                if (filteredLibraryItems.length === 0) {
+                                    const emptyInfo = {
+                                        ceova: {
+                                            title: "No CEOVA files found",
+                                            desc: librarySearch ? "No files match your search query." : "Upload files or drop attachments in chat to store them in your CEOVA Drive."
+                                        },
+                                        gdrive: {
+                                            title: "No Google Drive files",
+                                            desc: librarySearch ? "No drive files match your search query." : "Connect Google in Connectors menu to access your files here."
+                                        },
+                                        gmail: {
+                                            title: "No Gmail messages",
+                                            desc: librarySearch ? "No emails match your search query." : "Connect your Google account to browse and attach email threads."
+                                        },
+                                        gcalendar: {
+                                            title: "No calendar events",
+                                            desc: librarySearch ? "No events match your search query." : "Sync Google Calendar to attach meetings and schedules."
+                                        },
+                                        ai: {
+                                            title: "No AI generated files",
+                                            desc: librarySearch ? "No AI files match your search query." : "Ask Ceova to generate images, charts or documents to see them here."
+                                        }
+                                    }[libraryTab] || { title: "No items found", desc: "No matching items found." };
 
-                                if (filtered.length === 0) {
-                                    return <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '14px' }}>No items found</div>;
+                                    return (
+                                        <div className="lib-picker-empty">
+                                            <div className="lib-picker-empty-icon">
+                                                {libraryTab === 'gcalendar' ? <CalendarIcon size={24} /> :
+                                                 libraryTab === 'gmail' ? <Mail size={24} /> :
+                                                 libraryTab === 'ai' ? <Sparkles size={24} /> :
+                                                 libraryTab === 'gdrive' ? <Cloud size={24} /> :
+                                                 <Folder size={24} />}
+                                            </div>
+                                            <h4 className="lib-picker-empty-title">{emptyInfo.title}</h4>
+                                            <p className="lib-picker-empty-desc">{emptyInfo.desc}</p>
+                                        </div>
+                                    );
                                 }
+
+                                const images = filteredLibraryItems.filter(it => it.kind === 'image' || it.mime_type?.startsWith('image/'));
+                                const others = filteredLibraryItems.filter(it => !(it.kind === 'image' || it.mime_type?.startsWith('image/')));
 
                                 return (
                                     <>
                                         {images.length > 0 && (
-                                            <div className="lib-grid-images" style={{ marginBottom: '16px', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px' }}>
+                                            <div className="lib-picker-grid-images">
                                                 {images.map(item => (
-                                                    <ImageCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onDownload={() => {}} onVisit={() => {}} />
+                                                    <PickerImageCard
+                                                        key={item.id}
+                                                        item={item}
+                                                        onClick={attachLibraryItem}
+                                                    />
                                                 ))}
                                             </div>
                                         )}
                                         {others.length > 0 && (
-                                            <div className="lib-grid-files">
-                                                {others.map(item => {
-                                                    if (item.type === 'email') return <MailCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onVisit={() => {}} onSummarize={() => {}} />;
-                                                    if (item.type === 'event') return <CalendarCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onVisit={() => {}} onSummarize={() => {}} />;
-                                                    return <FileCard key={item.id} item={item} onClick={attachLibraryItem} onPreview={() => {}} onDownload={() => {}} onVisit={() => {}} onSummarize={() => {}} onOCR={() => {}} />;
-                                                })}
+                                            <div className="lib-picker-grid-files">
+                                                {others.map(item => (
+                                                    <PickerRowCard
+                                                        key={item.id}
+                                                        item={item}
+                                                        onClick={attachLibraryItem}
+                                                    />
+                                                ))}
                                             </div>
                                         )}
                                     </>
                                 );
                             })()}
                         </div>
-                        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border-color, rgba(255,255,255,0.06))', fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>
-                            Click any item to attach it to your message
+
+                        {/* Footer */}
+                        <div className="lib-picker-footer">
+                            <span className="lib-picker-footer-tip">
+                                💡 Click any file to attach it to your message
+                            </span>
+                            <button
+                                className="lib-picker-footer-close"
+                                onClick={() => setIsLibraryPickerOpen(false)}
+                            >
+                                Done
+                            </button>
                         </div>
                     </div>
                 </div>,

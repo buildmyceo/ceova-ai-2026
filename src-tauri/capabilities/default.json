@@ -14,6 +14,7 @@
     "autostart:default",
     "process:default",
     "fs:default",
+    "global-shortcut:default",
     {
       "identifier": "shell:allow-execute",
       "allow": [

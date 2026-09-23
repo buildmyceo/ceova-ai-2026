@@ -14,11 +14,26 @@
     "windows": [
       {
         "title": "CEOVA",
+        "label": "main",
         "width": 1280,
         "height": 800,
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true
+      },
+      {
+        "title": "CEOVA Quick Bar",
+        "label": "quickbar",
+        "url": "/#quickbar",
+        "width": 640,
+        "height": 130,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": true
       }
     ],
     "security": {

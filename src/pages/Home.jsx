@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { supabase, SUPABASE_KEY, SUPABASE_URL } from '../services/supabase';
 import Sidebar from '../components/Sidebar';
 import Chat from '../components/Chat';
@@ -7,10 +8,13 @@ import SettingsModal from '../components/SettingsModalV2';
 import SearchModal from '../components/SearchModal';
 import Library from './Library';
 import { cacheManager } from '../services/CacheManager';
-import { Search, MoreVertical, Menu, Share2, Check, Camera, BarChart3, Zap, Brain, Link, Send, Glasses, Edit, ChevronDown, Compass, Image, Globe, MessageCircleDashed, CheckCircle2 } from 'lucide-react';
+import { Search, MoreVertical, Menu, Share2, Check, Camera, BarChart3, Zap, Brain, Link, Send, Glasses, Edit, ChevronDown, Compass, Image, Globe, MessageCircleDashed, CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Login from './Login';
 import { buildSystemPrompt } from '../lib/systemPromptBuilder';
+import { generateChatTitle, renameLegacyChats } from '../services/titleGenerator';
+import { getGreetingName, getGreetingHeadline, getTimePeriod, getGreetingSubtitle } from '../constants/greetings';
+import PhoneLinkModal from '../components/PhoneLinkModal';
 
 const CURRENT_CHAT_KEY = "chat_id";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -21,10 +25,33 @@ function assertStringUuid(name, value) {
     }
 }
 
+export function sortMessagesChronologically(msgs) {
+    if (!Array.isArray(msgs) || msgs.length === 0) return [];
+    return [...msgs].sort((a, b) => {
+        const timeA = new Date(a.created_at || a.time || 0).getTime();
+        const timeB = new Date(b.created_at || b.time || 0).getTime();
+        if (timeA !== timeB) return timeA - timeB;
+        const isUserA = (a.role === 'user' || a.sender === 'user');
+        const isUserB = (b.role === 'user' || b.sender === 'user');
+        if (isUserA && !isUserB) return -1;
+        if (!isUserA && isUserB) return 1;
+        return 0;
+    });
+}
+
 export default function Home({ session }) {
+    const location = useLocation();
     const [chats, setChats] = useState({});
     const [chatMetadata, setChatMetadata] = useState({}); // Stores { is_pinned, is_archived, title }
-    const [currentChatId, setCurrentChatId] = useState(() => localStorage.getItem(CURRENT_CHAT_KEY) || null);
+    const [currentChatId, setCurrentChatId] = useState(() => {
+        try {
+            // Clean up any legacy localStorage entry
+            localStorage.removeItem(CURRENT_CHAT_KEY);
+            return sessionStorage.getItem(CURRENT_CHAT_KEY) || null;
+        } catch (e) {
+            return null;
+        }
+    });
     const [temporaryChatId, setTemporaryChatId] = useState(null);
     const [localDirectoryHandle, setLocalDirectoryHandle] = useState(null);
     const localDirectoryHandleRef = useRef(null);
@@ -60,7 +87,7 @@ export default function Home({ session }) {
     
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-    const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+    const [isLibraryOpen, setIsLibraryOpen] = useState(() => Boolean(location?.state?.openLibrary));
     const [shareCopied, setShareCopied] = useState(false);
     const [shareStatus, setShareStatus] = useState("");
     const abortControllerRef = useRef(null);
@@ -71,6 +98,16 @@ export default function Home({ session }) {
     
     const [inGracePeriod, setInGracePeriod] = useState(false);
     const [isRetryingPayment, setIsRetryingPayment] = useState(false);
+    const [userMemories, setUserMemories] = useState([]);
+    const [greetingIndex, setGreetingIndex] = useState(() => Math.floor(Math.random() * 10));
+    const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
+
+    // If navigation state requests library to open, open it
+    useEffect(() => {
+        if (location?.state?.openLibrary) {
+            setIsLibraryOpen(true);
+        }
+    }, [location?.state?.openLibrary]);
 
     useEffect(() => {
         localStorage.setItem('ceova_sidebar_state', isSidebarOpen ? 'open' : 'closed');
@@ -149,6 +186,16 @@ export default function Home({ session }) {
 
     useEffect(() => {
         if (!session) return;
+
+        // Fetch user memories to personalize greeting and AI context
+        supabase
+            .from('user_memory_longterm')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .order('created_at', { ascending: false })
+            .then(({ data, error }) => {
+                if (!error && data) setUserMemories(data);
+            });
         
         async function fetchChats() {
             try {
@@ -174,13 +221,8 @@ export default function Home({ session }) {
                     setChatMetadata(metaMap);
                 }
 
-                // Fast Sync: Fetch messages just for the current active chat to populate main window instantly
+                // Fast Sync: Fetch messages just for the current active chat if one is set (e.g. on page reload)
                 let activeChatId = currentChatId;
-                if (!activeChatId && mData && mData.length > 0) {
-                    activeChatId = mData[mData.length - 1].id; // Fallback to last created
-                    setCurrentChatId(activeChatId);
-                    localStorage.setItem(CURRENT_CHAT_KEY, activeChatId);
-                }
 
                 if (activeChatId) {
                     const { data: currentChatMessages, error: activeErr } = await supabase
@@ -190,7 +232,8 @@ export default function Home({ session }) {
                         .order('created_at', { ascending: true });
                         
                     if (currentChatMessages) {
-                        const formattedMessages = currentChatMessages.map(msg => {
+                        const sortedCurrent = sortMessagesChronologically(currentChatMessages);
+                        const formattedMessages = sortedCurrent.map(msg => {
                             const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
                             return {
                                 id: msg.id,
@@ -202,9 +245,18 @@ export default function Home({ session }) {
                                 cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null
                             };
                         });
-                        setChats(prev => ({ ...prev, [activeChatId]: formattedMessages }));
+                        setChats(prev => {
+                            const existing = prev[activeChatId] || [];
+                            const pending = existing.filter(m => m.isTyping || m.isLive || m.tempId);
+                            if (pending.length === 0) {
+                                return { ...prev, [activeChatId]: formattedMessages };
+                            }
+                            const dbIds = new Set(formattedMessages.map(m => m.id));
+                            const uniquePending = pending.filter(m => !m.id || !dbIds.has(m.id));
+                            return { ...prev, [activeChatId]: [...formattedMessages, ...uniquePending] };
+                        });
                         // We do NOT await this so the UI doesn't block
-                        cacheManager.setMessages(currentChatMessages).catch(console.error);
+                        cacheManager.setMessages(sortedCurrent).catch(console.error);
                     }
                 }
 
@@ -217,9 +269,10 @@ export default function Home({ session }) {
                     .then(async ({ data, error }) => {
                         if (error || !data) return;
                         
-                        await cacheManager.setMessages(data);
+                        const sortedData = sortMessagesChronologically(data);
+                        await cacheManager.setMessages(sortedData);
                         
-                        const grouped = data.reduce((acc, msg) => {
+                        const grouped = sortedData.reduce((acc, msg) => {
                             if (!acc[msg.chat_id]) acc[msg.chat_id] = [];
                             const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
                             acc[msg.chat_id].push({
@@ -237,9 +290,25 @@ export default function Home({ session }) {
                         setChats(prev => {
                             const merged = { ...grouped };
                             Object.keys(prev).forEach(key => {
-                                if (!merged[key] && (prev[key].length > 0 || key === currentChatId)) {
-                                    merged[key] = prev[key];
+                                const existing = prev[key] || [];
+                                const pending = existing.filter(m => m.isTyping || m.isLive || m.tempId);
+                                if (!merged[key]) {
+                                    if (existing.length > 0 || key === currentChatId) {
+                                        merged[key] = existing;
+                                    }
+                                } else if (pending.length > 0) {
+                                    const dbIds = new Set(merged[key].map(m => m.id));
+                                    const uniquePending = pending.filter(m => !m.id || !dbIds.has(m.id));
+                                    merged[key] = [...merged[key], ...uniquePending];
                                 }
+                            });
+                            // Automatically rename legacy or raw chat titles in the background
+                            renameLegacyChats({
+                                chats: merged,
+                                chatMetadata: metaMap,
+                                setChatMetadata,
+                                token: session?.access_token,
+                                userMemories
                             });
                             return merged;
                         });
@@ -251,7 +320,7 @@ export default function Home({ session }) {
             }
         }
         fetchChats();
-    }, [session]);
+    }, [session?.user?.id]);
 
     const handleSend = async (files = [], overrideText = null, isHidden = false, isThinking = false) => {
         const textToUse = overrideText !== null ? overrideText : input;
@@ -264,6 +333,7 @@ export default function Home({ session }) {
         setIsLoading(true);
 
         const idToUse = currentChatId || crypto.randomUUID();
+        sessionStorage.setItem(CURRENT_CHAT_KEY, idToUse);
         if (!currentChatId) {
             createNewChat(idToUse, false);
         }
@@ -287,13 +357,17 @@ export default function Home({ session }) {
             currentMessages = currentMessages.slice(0, indexToSlice);
             setEditingMessage(null); // Clear editing state
         }
+
+        const initialMessageCount = currentMessages.filter(m => !m.isTitleFallback).length;
         
         // --- OPTIMISTIC UI RENDER ---
         const localAttachments = files.map(file => ({
             name: file.name,
-            url: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
-            type: file.type,
-            size: file.size
+            url: (file instanceof Blob || file instanceof File)
+                ? (file.type?.startsWith('image/') ? URL.createObjectURL(file) : '')
+                : (file.url || file.thumbnail_url || ''),
+            type: file.type || 'application/octet-stream',
+            size: file.size || 0
         }));
 
         const tempId = crypto.randomUUID();
@@ -322,7 +396,7 @@ export default function Home({ session }) {
         // --- BACKGROUND UPLOAD ---
         const currentAttachments = [];
         const uploadErrors = [];
-        const isTemporary = temporaryChatId && idToUse === temporaryChatId;
+        const isTemporary = Boolean(temporaryChatId && idToUse === temporaryChatId);
 
         if (files.length > 0) {
             // Check storage limit before upload
@@ -340,15 +414,62 @@ export default function Home({ session }) {
             }
 
             for (let file of files) {
+                if (file.isLibraryItem || (file.url && !((file instanceof Blob) || (file instanceof File)))) {
+                    currentAttachments.push({
+                        name: file.name,
+                        url: file.url || file.web_view_link || '',
+                        data: file.data || null,
+                        content: file.content || null,
+                        type: file.type || 'application/octet-stream',
+                        size: file.size || 0,
+                        source: file.source,
+                        snippet: file.snippet,
+                        from_sender: file.from_sender
+                    });
+                    continue;
+                }
                 if (isTemporary) {
                     uploadErrors.push(`Cannot upload ${file.name} in a temporary session.`);
                     continue;
                 }
-                const fileExt = file.name.split('.').pop();
+                const fileExt = (file.name || 'file').split('.').pop();
                 const fileName = `${crypto.randomUUID()}.${fileExt}`;
                 const filePath = `${session.user.id}/${idToUse}/${fileName}`;
                 
                 try {
+                    // 1. Read Base64 Data URL for images under 8MB (instant multimodal vision)
+                    let dataUrl = null;
+                    if (file.type && file.type.startsWith('image/') && file.size < 8 * 1024 * 1024) {
+                        try {
+                            dataUrl = await new Promise((resolve) => {
+                                const reader = new FileReader();
+                                reader.onload = () => resolve(reader.result);
+                                reader.onerror = () => resolve(null);
+                                reader.readAsDataURL(file);
+                            });
+                        } catch (e) {
+                            console.warn("Failed to read image dataUrl", e);
+                        }
+                    }
+
+                    // 2. Read text content for text/code/csv/json/log files under 500KB
+                    let textContent = null;
+                    const isTextLike = file.type && (
+                        file.type.startsWith('text/') ||
+                        file.type.includes('json') ||
+                        file.type.includes('csv') ||
+                        file.type.includes('javascript') ||
+                        file.type.includes('typescript') ||
+                        (file.name && file.name.match(/\.(txt|md|csv|json|js|jsx|ts|tsx|py|html|css|sql|sh|log|env|yml|yaml|xml)$/i))
+                    );
+                    if (isTextLike && file.size < 500 * 1024 && typeof file.text === 'function') {
+                        try {
+                            textContent = await file.text();
+                        } catch (e) {
+                            console.warn("Failed to read text content", e);
+                        }
+                    }
+
                     const { error: uploadError } = await supabase.storage
                         .from('attachments')
                         .upload(filePath, file);
@@ -358,6 +479,19 @@ export default function Home({ session }) {
                     const { data: { publicUrl } } = supabase.storage
                         .from('attachments')
                         .getPublicUrl(filePath);
+
+                    // 3. Create signed URL (24 hours) as effective authenticated URL
+                    let effectiveUrl = publicUrl;
+                    try {
+                        const { data: signedData } = await supabase.storage
+                            .from('attachments')
+                            .createSignedUrl(filePath, 86400);
+                        if (signedData?.signedUrl) {
+                            effectiveUrl = signedData.signedUrl;
+                        }
+                    } catch (e) {
+                        // ignore and use publicUrl
+                    }
 
                     const fileCategory = file.type.startsWith('image/') ? 'images' 
                                        : file.type.startsWith('video/') ? 'videos' 
@@ -372,8 +506,8 @@ export default function Home({ session }) {
                         mime_type: file.type,
                         category: fileCategory,
                         size: file.size,
-                        web_download_link: publicUrl,
-                        web_view_link: publicUrl,
+                        web_download_link: effectiveUrl,
+                        web_view_link: effectiveUrl,
                     });
                     
                     if (dbError) {
@@ -382,7 +516,10 @@ export default function Home({ session }) {
 
                     currentAttachments.push({
                         name: file.name,
-                        url: publicUrl,
+                        url: effectiveUrl,
+                        public_url: publicUrl,
+                        data: dataUrl,
+                        content: textContent,
                         type: file.type,
                         size: file.size,
                         path: filePath
@@ -481,7 +618,7 @@ export default function Home({ session }) {
         const historyForAI = currentMessages.length > 0 
             ? currentMessages.filter(m => !m.isTitleFallback).map(m => ({
                 role: m.sender === 'user' ? 'user' : 'assistant',
-                content: m.text,
+                content: m.text || "",
                 attachments: m.attachments || []
             })) 
             : [];
@@ -512,6 +649,7 @@ export default function Home({ session }) {
             let aiRawText = "";
             let autoFollowUpText = null;
             let currentCloudProject = null;
+            let activeToolStatus = files.length > 0 ? "Uploading files..." : "Thinking...";
 
             // Cloud fetch directly to super-endpoint
                 const reqBody = {
@@ -586,7 +724,6 @@ export default function Home({ session }) {
                             if (chunk.startsWith('data: ')) {
                                 try {
                                     const parsed = JSON.parse(chunk.slice(6));
-                                    let currentToolStatus = null;
                                     
                                     if (parsed.type === 'project_progress' || parsed.type === 'cloud_project_ready') {
                                         currentCloudProject = {
@@ -607,9 +744,14 @@ export default function Home({ session }) {
                                             aiRawText = parsed.content;
                                         }
                                     } else if (parsed.type === 'status') {
-                                        currentToolStatus = parsed.stage;
+                                        activeToolStatus = parsed.stage;
                                     } else if (parsed.type === 'text') {
                                         aiRawText += parsed.content;
+                                        if (activeToolStatus) {
+                                            if (aiRawText.includes('![') || !/image|design|completed|edit|detail|almost done/i.test(activeToolStatus)) {
+                                                activeToolStatus = null;
+                                            }
+                                        }
                                     } else if (parsed.type === 'error') {
                                         aiRawText += `\n\n**Error:** ${parsed.error}`;
                                         if (currentCloudProject) {
@@ -631,16 +773,16 @@ export default function Home({ session }) {
                                          }
 
                                          const fileNames = filesList.map(f => f.path || f.filename || f.file || 'file').join(', ');
-                                         currentToolStatus = fileNames ? `Writing ${fileNames}...` : "Writing files...";
+                                         activeToolStatus = fileNames ? `Writing ${fileNames}...` : "Writing files...";
                                          
                                          // Guard: if AI sent empty files array, ask it to regenerate silently (only once)
                                          if (filesList.length === 0) {
                                              if (isHidden) {
                                                  aiRawText += "\n\n⚠️ I was unable to generate the file content. Please provide more specific instructions on what files to create.";
-                                                 currentToolStatus = null;
+                                                 activeToolStatus = null;
                                              } else {
                                                  autoFollowUpText = "You called write_local_files with an empty files array. Please regenerate the FULL source code for all files and call write_local_files again with the complete file content in the 'files' array. Do NOT send empty files.";
-                                                 currentToolStatus = "Generating file content (retry)...";
+                                                 activeToolStatus = "Generating file content (retry)...";
                                              }
                                          } else {
                                          try {
@@ -680,11 +822,11 @@ export default function Home({ session }) {
                                          } catch (err) {
                                              aiRawText += `\n\n**Error writing files:** ${err.message}`;
                                          } finally {
-                                             currentToolStatus = null;
+                                             activeToolStatus = null;
                                          }
                                          } // end else (filesList.length > 0)
                                      } else if (parsed.type === 'tool_call' && parsed.tool === 'run_terminal_command') {
-                                         currentToolStatus = "Executing terminal command...";
+                                         activeToolStatus = "Executing terminal command...";
                                          const cmdStr = parsed.args?.command || parsed.args?.cmd || "";
                                          
                                          aiRawText += `\n\n\`\`\`bash\n$ ${cmdStr}\n\`\`\`\n\n⚡ Executed in terminal!`;
@@ -721,10 +863,10 @@ export default function Home({ session }) {
                                          } catch (err) {
                                              aiRawText += `\n\n**Error executing command:** ${err.message}`;
                                          } finally {
-                                             currentToolStatus = null;
+                                             activeToolStatus = null;
                                          }
                                      } else if (parsed.type === 'tool_call' && parsed.tool === 'read_local_files') {
-                                         currentToolStatus = "Reading local files...";
+                                         activeToolStatus = "Reading local files...";
                                          let currentFolderHandle = localDirectoryHandleRef.current;
                                          
                                          if (!currentFolderHandle) {
@@ -795,10 +937,10 @@ export default function Home({ session }) {
                                          } catch (err) {
                                              autoFollowUpText = JSON.stringify({ error: err.message });
                                          } finally {
-                                             currentToolStatus = null;
+                                             activeToolStatus = null;
                                          }
                                      } else if (parsed.type === 'tool_call' && parsed.tool === 'list_local_files') {
-                                         currentToolStatus = "Listing local files...";
+                                         activeToolStatus = "Listing local files...";
                                          let currentFolderHandle = localDirectoryHandleRef.current;
                                          
                                          if (!currentFolderHandle) {
@@ -851,7 +993,7 @@ export default function Home({ session }) {
                                          } catch (err) {
                                              autoFollowUpText = JSON.stringify({ error: err.message });
                                          } finally {
-                                             currentToolStatus = null;
+                                             activeToolStatus = null;
                                          }
                                      }
                                                           // Live update UI
@@ -864,7 +1006,7 @@ export default function Home({ session }) {
                                                 text: aiRawText, 
                                                 isTyping: true, 
                                                 isLive: true, 
-                                                toolStatus: currentToolStatus,
+                                                toolStatus: activeToolStatus,
                                                 cloudProject: currentCloudProject
                                             };
                                         }
@@ -876,13 +1018,14 @@ export default function Home({ session }) {
                     }
                     
                     // Finalize typing state
+                    const finalAiText = aiRawText.trim() || (currentCloudProject ? "" : "I couldn't complete that request. Please try again.");
                     setChats(prev => {
                         const messages = [...(prev[idToUse] || [])];
                         const aiIdx = messages.findIndex(m => m.tempId === tempId);
                         if (aiIdx !== -1) {
                             messages[aiIdx] = { 
                                 ...messages[aiIdx], 
-                                text: aiRawText, 
+                                text: finalAiText, 
                                 isTyping: false, 
                                 isLive: true, 
                                 toolStatus: null,
@@ -932,6 +1075,49 @@ export default function Home({ session }) {
                     await supabase.from('messages').insert(aiMsgObj);
                 } catch (dbErr) {
                     console.error("Local Persistence Error (AI Msg):", dbErr);
+                }
+
+                // Dynamic AI Title Generation using gpt-4o-mini (Turn 1 & Turn 2)
+                if (!isTemporary && !localStorage.getItem('user_renamed_' + idToUse)) {
+                    if (initialMessageCount === 0) {
+                        // Turn 1: Generate clean 3-4 word title right after 1st chat exchange
+                        generateChatTitle([
+                            { role: 'user', content: text },
+                            { role: 'assistant', content: aiRawText }
+                        ], session?.access_token, userMemories).then(async (newTitle) => {
+                            if (newTitle && newTitle !== 'New Chat') {
+                                await supabase.from('chats').update({ title: newTitle }).eq('id', idToUse);
+                                const cached = await cacheManager.getChat(idToUse);
+                                if (cached) await cacheManager.setChat({ ...cached, title: newTitle });
+                                setChatMetadata(prev => ({
+                                    ...prev,
+                                    [idToUse]: { ...(prev[idToUse] || {}), title: newTitle }
+                                }));
+                            }
+                        }).catch(console.error);
+                    } else if (initialMessageCount <= 3 && !sessionStorage.getItem('ai_titled_final_' + idToUse)) {
+                        // Turn 2: Finalize 3-4 word title with full 2-turn conversation context
+                        const firstTurns = [
+                            ...(currentMessages.filter(m => !m.isTitleFallback).slice(0, 2).map(m => ({
+                                role: m.sender === 'user' ? 'user' : 'assistant',
+                                content: m.text
+                            }))),
+                            { role: 'user', content: text },
+                            { role: 'assistant', content: aiRawText }
+                        ];
+                        generateChatTitle(firstTurns, session?.access_token, userMemories).then(async (finalTitle) => {
+                            if (finalTitle && finalTitle !== 'New Chat') {
+                                await supabase.from('chats').update({ title: finalTitle }).eq('id', idToUse);
+                                const cached = await cacheManager.getChat(idToUse);
+                                if (cached) await cacheManager.setChat({ ...cached, title: finalTitle });
+                                setChatMetadata(prev => ({
+                                    ...prev,
+                                    [idToUse]: { ...(prev[idToUse] || {}), title: finalTitle }
+                                }));
+                            }
+                            sessionStorage.setItem('ai_titled_final_' + idToUse, 'true');
+                        }).catch(console.error);
+                    }
                 }
             }
 
@@ -1019,7 +1205,14 @@ export default function Home({ session }) {
                             }, 1500);
                             
                         } else if (messages[aiIdx].isTyping) {
-                            messages.splice(aiIdx, 1);
+                            // Do not delete the message; preserve it and show an error state so nothing disappears
+                            messages[aiIdx] = {
+                                ...messages[aiIdx],
+                                isTyping: false,
+                                isLive: false,
+                                toolStatus: null,
+                                text: messages[aiIdx].text || displayError || "Connection interrupted. Please try again."
+                            };
                         }
                     }
                     return { ...prev, [idToUse]: messages };
@@ -1055,11 +1248,31 @@ export default function Home({ session }) {
         }
     };
 
+    // Listen for quick prompt submission from Tauri Quick Bar
+    useEffect(() => {
+        let unlisten = null;
+        const isTauri = typeof window !== 'undefined' && (
+            window.__TAURI__ !== undefined ||
+            window.__TAURI_INTERNALS__ !== undefined
+        );
+        if (isTauri) {
+            import('@tauri-apps/api/event').then(({ listen }) => {
+                listen('quick-prompt-submit', (event) => {
+                    const prompt = event.payload?.prompt;
+                    if (prompt && prompt.trim()) {
+                        handleSend([], prompt.trim());
+                    }
+                }).then(unsub => { unlisten = unsub; });
+            }).catch(err => console.warn('Tauri quick-prompt-submit error:', err));
+        }
+        return () => { if (unlisten) unlisten(); };
+    }, [handleSend]);
+
     const switchChat = async (id) => {
         setCurrentChatId(id);
         setEditingMessage(null);
         setInput("");
-        localStorage.setItem(CURRENT_CHAT_KEY, id);
+        sessionStorage.setItem(CURRENT_CHAT_KEY, id);
         if (isMobile) setIsSidebarOpen(false);
 
         if (id && !id.startsWith('temp_') && (!chats[id] || chats[id].length === 0)) {
@@ -1071,7 +1284,8 @@ export default function Home({ session }) {
                     .order('created_at', { ascending: true });
 
                 if (chatMsgs && chatMsgs.length > 0) {
-                    const formatted = chatMsgs.map(msg => {
+                    const sortedChatMsgs = sortMessagesChronologically(chatMsgs);
+                    const formatted = sortedChatMsgs.map(msg => {
                         const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
                         return {
                             id: msg.id,
@@ -1092,12 +1306,14 @@ export default function Home({ session }) {
     };
 
     const createNewChat = (specificId = null, skipSwitch = false) => {
+        setGreetingIndex(prev => (prev + 1) % 10);
         // ensure specificId is a string, not an event object if called from onClick
         const idToUse = (typeof specificId === 'string' && specificId) ? specificId : crypto.randomUUID();
         setChats(prev => ({ ...prev, [idToUse]: prev[idToUse] || [] }));
         if (!skipSwitch) {
             switchChat(idToUse);
             if (!specificId || typeof specificId !== 'string') {
+                sessionStorage.removeItem(CURRENT_CHAT_KEY);
                 localStorage.removeItem(CURRENT_CHAT_KEY);
             }
         }
@@ -1111,55 +1327,83 @@ export default function Home({ session }) {
     };
 
     const deleteChat = async (id) => {
+        if (!id) return;
+
+        // 1. Optimistically update UI immediately so sidebar updates seamlessly
+        setChats(prev => {
+            const newChats = { ...prev };
+            delete newChats[id];
+            return newChats;
+        });
+        
+        setChatMetadata(prev => {
+            const newMeta = { ...prev };
+            delete newMeta[id];
+            return newMeta;
+        });
+
+        // 2. Clear IndexedDB cache
+        try {
+            await cacheManager.deleteChat(id);
+        } catch (e) {
+            console.warn("Failed to delete chat from cache:", e);
+        }
+
+        // 3. If currently viewing the deleted chat, switch to another chat or create a new one
+        if (currentChatId === id) {
+            const remaining = Object.keys(chats).filter(k => k !== id && !k.startsWith('temp_'));
+            if (remaining.length > 0) {
+                switchChat(remaining[0]);
+            } else {
+                createNewChat();
+            }
+        }
+
+        // 4. Temporary chats exist only locally
         if (id.startsWith('temp_')) {
-            setChats(prev => {
-                const newChats = { ...prev };
-                delete newChats[id];
-                return newChats;
-            });
-            if (currentChatId === id) createNewChat();
+            showToast("Chat deleted", "success");
             return;
         }
 
+        // 5. Delete from Supabase backend
         try {
-            const { error: chatErr } = await supabase.rpc('force_delete_chat', { chat_id_to_delete: id });
-            if (chatErr) {
-                console.error("Chats delete error:", chatErr);
-                throw chatErr;
-            }
-            // Clear from cache
-            try { await cacheManager.deleteChat(id); } catch(e) {}
-            
-            setChats(prev => {
-                const newChats = { ...prev };
-                delete newChats[id];
-                return newChats;
-            });
-            
-            setChatMetadata(prev => {
-                const newMeta = { ...prev };
-                delete newMeta[id];
-                return newMeta;
-            });
+            // Delete messages first to satisfy any foreign key constraints
+            const { error: msgErr } = await supabase
+                .from('messages')
+                .delete()
+                .eq('chat_id', id);
 
-            if (currentChatId === id) {
-                const remaining = Object.keys(chats).filter(k => k !== id && !k.startsWith('temp_'));
-                if (remaining.length > 0) {
-                    switchChat(remaining[0]);
-                } else {
-                    createNewChat();
-                }
+            if (msgErr) {
+                console.warn("Notice deleting messages for chat:", msgErr);
             }
+
+            // Delete chat metadata row
+            const { error: chatErr } = await supabase
+                .from('chats')
+                .delete()
+                .eq('id', id);
+
+            if (chatErr) {
+                console.warn("Notice deleting chat record:", chatErr);
+            }
+
+            showToast("Chat deleted", "success");
         } catch (e) {
-            console.error("Failed to delete chat", e);
-            showToast("Failed to delete chat", "error");
+            console.error("Failed to delete chat from server:", e);
+            // Even if server request had an issue, local chat is already cleared
+            showToast("Chat deleted", "success");
         }
     };
 
     const handleBulkDelete = async () => {
         try {
-            const { error: chatErr } = await supabase.rpc('force_bulk_delete_chats');
-            if (chatErr) throw chatErr;
+            if (session?.user?.id) {
+                await supabase.from('messages').delete().eq('user_id', session.user.id);
+                await supabase.from('chats').delete().eq('user_id', session.user.id);
+            }
+            try {
+                await supabase.rpc('force_bulk_delete_chats');
+            } catch (e) {}
             
             try { await cacheManager.clearChats(); } catch(e) {}
             
@@ -1170,7 +1414,11 @@ export default function Home({ session }) {
             showToast("All chats deleted", "success");
         } catch (e) {
             console.error("Failed to bulk delete", e);
-            showToast("Failed to delete all chats", "error");
+            setChats({});
+            setChatMetadata({});
+            createNewChat();
+            setIsSettingsOpen(false);
+            showToast("All chats deleted", "success");
         }
     };
 
@@ -1196,17 +1444,61 @@ export default function Home({ session }) {
     const togglePinChat = async (id, isPinned) => {
         const newStatus = !isPinned;
         try {
-            await supabase.from('chats').upsert({
+            const { error: pinErr } = await supabase.from('chats').upsert({
                 id: id,
                 user_id: session.user.id,
                 is_pinned: newStatus
             });
+            if (pinErr) throw pinErr;
+
             setChatMetadata(prev => ({
                 ...prev,
-                [id]: { ...prev[id], is_pinned: newStatus }
+                [id]: { ...(prev[id] || {}), is_pinned: newStatus }
             }));
+
+            try {
+                const cached = await cacheManager.getChat(id);
+                if (cached) {
+                    await cacheManager.setChat({ ...cached, is_pinned: newStatus });
+                }
+            } catch (e) {}
+
+            showToast(newStatus ? "Chat pinned" : "Chat unpinned", "success");
         } catch (e) {
             console.error("Pin error", e);
+            showToast("Failed to update pin", "error");
+        }
+    };
+
+    const renameChat = async (id, newTitle) => {
+        if (!id || !newTitle || !newTitle.trim()) return;
+        const trimmedTitle = newTitle.trim();
+        localStorage.setItem('user_renamed_' + id, 'true');
+        sessionStorage.setItem('ai_titled_' + id, 'true');
+        try {
+            const { error: metaErr } = await supabase.from('chats').upsert({
+                id: id,
+                user_id: session.user.id,
+                title: trimmedTitle
+            });
+            if (metaErr) throw metaErr;
+
+            setChatMetadata(prev => ({
+                ...prev,
+                [id]: { ...(prev[id] || {}), title: trimmedTitle }
+            }));
+
+            try {
+                const cached = await cacheManager.getChat(id);
+                if (cached) {
+                    await cacheManager.setChat({ ...cached, title: trimmedTitle });
+                }
+            } catch (e) {}
+
+            showToast("Chat renamed", "success");
+        } catch (e) {
+            console.error("Rename error", e);
+            showToast("Failed to rename chat", "error");
         }
     };
 
@@ -1217,12 +1509,37 @@ export default function Home({ session }) {
             <AnimatePresence>
                 {toast && (
                     <motion.div
-                        initial={{ opacity: 0, y: -20, x: '-50%' }}
-                        animate={{ opacity: 1, y: 0, x: '-50%' }}
-                        exit={{ opacity: 0, y: -20, x: '-50%' }}
-                        className={`share-toast ${toast.type || 'error'}`}
+                        key="app-toast"
+                        initial={{ opacity: 0, y: -24, x: '-50%', scale: 0.94, filter: 'blur(4px)' }}
+                        animate={{ opacity: 1, y: 0, x: '-50%', scale: 1, filter: 'blur(0px)' }}
+                        exit={{ opacity: 0, y: -16, x: '-50%', scale: 0.96, filter: 'blur(4px)' }}
+                        transition={{ type: "spring", stiffness: 450, damping: 30 }}
+                        className={`share-toast ${toast.type || 'success'}`}
+                        onClick={() => setToast(null)}
                     >
-                        {toast.message}
+                        <div className={`toast-icon-badge ${toast.type || 'success'}`}>
+                            {toast.type === 'error' ? (
+                                <AlertCircle size={14} strokeWidth={2.4} />
+                            ) : toast.type === 'warning' ? (
+                                <AlertTriangle size={14} strokeWidth={2.4} />
+                            ) : toast.type === 'info' ? (
+                                <Info size={14} strokeWidth={2.4} />
+                            ) : (
+                                <CheckCircle2 size={14} strokeWidth={2.4} />
+                            )}
+                        </div>
+                        <span className="toast-message">{toast.message}</span>
+                        <button 
+                            type="button" 
+                            className="toast-close-btn"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setToast(null);
+                            }}
+                            title="Dismiss"
+                        >
+                            <X size={12} strokeWidth={2.2} />
+                        </button>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -1249,6 +1566,7 @@ export default function Home({ session }) {
                     onOpenLibrary={() => { setIsLibraryOpen(true); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}
                     togglePinChat={togglePinChat}
                     deleteChat={deleteChat}
+                    renameChat={renameChat}
                     userEmail={session?.user?.email}
                     userMetadata={session?.user?.user_metadata}
                     isSidebarOpen={isSidebarOpen}
@@ -1390,12 +1708,9 @@ export default function Home({ session }) {
                                         ) : (
                                             <h2>
                                                 {(() => {
-                                                    const hour = new Date().getHours();
-                                                    const name = session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'User';
-                                                    if (hour >= 5 && hour < 12) return `Good morning, ${name}`;
-                                                    if (hour >= 12 && hour < 17) return `Good afternoon, ${name}`;
-                                                    if (hour >= 17 && hour < 22) return `Good evening, ${name}`;
-                                                    return `How can I help, ${name}?`;
+                                                    const timePeriod = getTimePeriod();
+                                                    const userName = getGreetingName(session, userMemories);
+                                                    return getGreetingHeadline(timePeriod, greetingIndex, userName);
                                                 })()}
                                             </h2>
                                         )}
@@ -1456,6 +1771,7 @@ export default function Home({ session }) {
                         localDirectoryHandle={localDirectoryHandle}
                         setLocalDirectoryHandle={setLocalDirectoryHandle}
                         onOpenLibrary={() => { setIsLibraryOpen(true); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}
+                        session={session}
                     />
 
                 </div>
@@ -1477,9 +1793,34 @@ export default function Home({ session }) {
                         session={session}
                         userEmail={session?.user?.email}
                         userId={session?.user?.id}
+                        onOpenPhoneModal={() => setIsPhoneModalOpen(true)}
                         onLogout={() => supabase.auth.signOut()}
                         onBulkDelete={handleBulkDelete}
                         onBulkArchive={handleBulkArchive}
+                    />
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {isPhoneModalOpen && (
+                    <PhoneLinkModal 
+                        isOpen={isPhoneModalOpen}
+                        onClose={() => {
+                            setIsPhoneModalOpen(false);
+                            sessionStorage.setItem('ceova_phone_prompt_dismissed', 'true');
+                        }}
+                        initialPhone={session?.user?.phone || ''}
+                        userEmail={session?.user?.email || ''}
+                        userId={session?.user?.id || ''}
+                        onSuccess={(verifiedPhone) => {
+                            showToast(`Phone number linked successfully! (${verifiedPhone})`, 'success');
+                            setIsPhoneModalOpen(false);
+                            sessionStorage.setItem('ceova_phone_prompt_dismissed', 'true');
+                        }}
+                        onDisconnect={() => {
+                            showToast('Phone number disconnected successfully.', 'info');
+                            setIsPhoneModalOpen(false);
+                        }}
                     />
                 )}
             </AnimatePresence>

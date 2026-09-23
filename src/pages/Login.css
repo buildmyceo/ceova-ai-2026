@@ -32,14 +32,14 @@
 }
 
 .glow-1 {
-    background: rgba(29, 155, 240, 0.15); /* Blue */
+    background: rgba(255, 255, 255, 0.04);
     top: -10%;
     left: -10%;
     animation-delay: 0s;
 }
 
 .glow-2 {
-    background: rgba(234, 67, 53, 0.1); /* Red/Orange */
+    background: rgba(255, 255, 255, 0.02);
     bottom: -10%;
     right: -10%;
     animation-delay: -4s;
@@ -185,7 +185,7 @@
 }
 
 .auth-input-pill:focus {
-    border-color: #1d9bf0;
+    border-color: rgba(255, 255, 255, 0.35); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
 }
 
 .auth-submit-btn {
@@ -193,8 +193,10 @@
     padding: 12px;
     border-radius: 9999px;
     border: none;
-    background-color: #1d9bf0;
-    color: #ffffff;
+    background-color: #ffffff;
+    color: #09090b;
+    font-weight: 600;
+    border: 1px solid #ffffff;
     font-size: 0.95rem;
     font-weight: 700;
     cursor: pointer;
@@ -203,7 +205,7 @@
 }
 
 .auth-submit-btn:hover {
-    background-color: #1a8cd8;
+    background-color: #e4e4e7;
 }
 
 .auth-switch-text {
@@ -213,7 +215,7 @@
 }
 
 .auth-link {
-    color: #1d9bf0;
+    color: #e4e4e7;
     cursor: pointer;
     text-decoration: none;
 }
@@ -238,6 +240,131 @@
 
 .auth-footer-terms a:hover {
     color: #ffffff;
+}
+
+/* Phone Auth Tabs & Inputs */
+.auth-tabs {
+    display: flex;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 3px;
+    border-radius: 9999px;
+    margin-bottom: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.auth-tab-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 9999px;
+    border: none;
+    background: transparent;
+    color: #888;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.auth-tab-btn.active {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-weight: 600;
+}
+
+.auth-phone-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.auth-country-select {
+    width: 110px;
+    padding: 12px 10px;
+    border-radius: 9999px;
+    border: 1px solid #333333;
+    background-color: #0a0a0a;
+    color: #ffffff;
+    font-size: 0.88rem;
+    outline: none;
+    cursor: pointer;
+}
+
+.auth-country-select option {
+    background-color: #141417;
+    color: #ffffff;
+}
+
+.auth-country-select:focus {
+    border-color: #e4e4e7;
+}
+
+.auth-otp-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    gap: 12px;
+}
+
+.auth-otp-inputs {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.auth-otp-box {
+    width: 44px;
+    height: 52px;
+    background-color: #0a0a0a;
+    border: 1px solid #333333;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 1.25rem;
+    font-weight: 600;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.auth-otp-box:focus {
+    border-color: #e4e4e7;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
+}
+
+.auth-resend-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    font-size: 0.82rem;
+    color: #71767b;
+    padding: 0 4px;
+}
+
+.auth-change-phone-btn {
+    background: none;
+    border: none;
+    color: #e4e4e7;
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+
+.auth-resend-btn {
+    background: none;
+    border: none;
+    color: #e4e4e7;
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+
+.auth-resend-btn:disabled {
+    color: #555;
+    cursor: not-allowed;
 }
 
 @media (max-width: 768px) {
