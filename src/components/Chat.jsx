@@ -761,89 +761,87 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
   );
 }
 
-const CyclingStatus = ({ defaultStatus }) => {
-  const [statusIdx, setStatusIdx] = useState(0);
-  const [displayText, setDisplayText] = useState('');
-  
-  const statuses = ["Thinking...", "Writing...", "Searching..."];
-  const currentText = defaultStatus || statuses[statusIdx];
-  
-  // Smooth typewriter that types forward, pauses, then deletes backward
-  useEffect(() => {
-    let i = displayText.length;
-    let isDeleting = false;
-    let timer;
+const IMAGE_STATUSES = [
+  "Generating image...",
+  "Adding design...",
+  "Just completed...",
+  "Last edit..."
+];
 
-    const tick = () => {
-      if (!isDeleting && i < currentText.length) {
-        // Typing forward
-        i++;
-        setDisplayText(currentText.slice(0, i));
-        timer = setTimeout(tick, 40);
-      } else if (!isDeleting && i === currentText.length) {
-        // Pause at the end before next cycle (handled by outer interval, but we wait here)
-        // We only delete if it's a cycling status and we're about to change. 
-        // Actually, since currentText changes from the outer interval, when currentText changes, 
-        // this useEffect re-runs. 
-        // So we need a better approach to delete backward.
+const GENERAL_STATUSES = ["Thinking...", "Writing...", "Searching..."];
+
+const CyclingStatus = ({ defaultStatus }) => {
+  const [imageStatusIdx, setImageStatusIdx] = useState(0);
+  const [generalStatusIdx, setGeneralStatusIdx] = useState(0);
+  const startTimeRef = useRef(Date.now());
+
+  const isImageStatus = Boolean(
+    defaultStatus && (
+      /image|design|completed|edit|detail|almost done/i.test(defaultStatus)
+    ) && !/extracting visual|writing local/i.test(defaultStatus)
+  );
+
+  useEffect(() => {
+    startTimeRef.current = Date.now();
+  }, [isImageStatus]);
+
+  useEffect(() => {
+    const updateProgress = () => {
+      if (isImageStatus) {
+        const elapsed = Date.now() - startTimeRef.current;
+        // Advance every 2.6 seconds through the 4 requested stages, holding at the last stage
+        const idx = Math.min(Math.floor(elapsed / 2600), IMAGE_STATUSES.length - 1);
+        setImageStatusIdx(idx);
+      } else if (!defaultStatus) {
+        setGeneralStatusIdx(prev => (prev + 1) % GENERAL_STATUSES.length);
       }
     };
-    
-    // Instead of deleting, just type it out smoothly. If currentText changes, 
-    // we'll smoothly delete the old text then type the new one.
-  }, [currentText]);
 
-  // Let's rewrite the typewriter to handle transitions smoothly
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [textToType, setTextToType] = useState(currentText);
+    // Fast interval ensures smooth updates
+    const interval = setInterval(updateProgress, 400);
 
-  useEffect(() => {
-    if (textToType !== currentText) {
-      setIsDeleting(true);
-    }
-  }, [currentText, textToType]);
-
-  useEffect(() => {
-    let timer;
-    if (isDeleting) {
-      if (displayText.length > 0) {
-        timer = setTimeout(() => {
-          setDisplayText(displayText.slice(0, -1));
-        }, 20);
-      } else {
-        setIsDeleting(false);
-        setTextToType(currentText);
+    // Instant update whenever user switches back to this tab
+    const handleSync = () => {
+      if (document.visibilityState === 'visible') {
+        updateProgress();
       }
-    } else {
-      if (displayText.length < textToType.length) {
-        timer = setTimeout(() => {
-          setDisplayText(textToType.slice(0, displayText.length + 1));
-        }, 40);
-      }
-    }
-    return () => clearTimeout(timer);
-  }, [displayText, isDeleting, textToType, currentText]);
+    };
+    document.addEventListener('visibilitychange', handleSync);
+    window.addEventListener('focus', handleSync);
 
-  useEffect(() => {
-    if (defaultStatus) return;
-    const interval = setInterval(() => {
-      setStatusIdx(prev => (prev + 1) % statuses.length);
-    }, 2500);
-    return () => clearInterval(interval);
-  }, [defaultStatus]);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleSync);
+      window.removeEventListener('focus', handleSync);
+    };
+  }, [defaultStatus, isImageStatus]);
 
-  const lcText = textToType.toLowerCase();
+  const currentText = isImageStatus 
+    ? IMAGE_STATUSES[imageStatusIdx] 
+    : (defaultStatus || GENERAL_STATUSES[generalStatusIdx]);
+
+  const lcText = (currentText || '').toLowerCase();
   let iconSrc = null;
   if (lcText.includes('gmail')) iconSrc = '/gmail.png';
   else if (lcText.includes('drive')) iconSrc = '/drive.png';
   else if (lcText.includes('calendar')) iconSrc = '/google_calendar.png';
   
   return (
-    <div className="premium-typing-status" style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.8, minHeight: '24px' }}>
+    <div 
+      className="premium-typing-status" 
+      style={{ display: 'flex', alignItems: 'center', gap: '8px', minHeight: '24px' }}
+    >
       {iconSrc && <img src={iconSrc} alt="service icon" style={{ width: 14, height: 14, objectFit: 'contain' }} />}
-      <span className="typing-status-text" style={{ fontFamily: 'monospace', fontSize: '13px' }}>
-        {displayText}
-      </span>
+      <motion.span 
+        key={currentText}
+        className="typing-status-text" 
+        style={{ fontFamily: 'monospace', fontSize: '13px' }}
+        initial={{ opacity: 0.4 }}
+        animate={{ opacity: [0.4, 1, 0.4] }}
+        transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+      >
+        {currentText}
+      </motion.span>
     </div>
   );
 };

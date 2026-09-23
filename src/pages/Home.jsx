@@ -47,17 +47,7 @@ export default function Home({ session }) {
         try {
             // Clean up any legacy localStorage entry
             localStorage.removeItem(CURRENT_CHAT_KEY);
-            const navEntries = typeof performance !== 'undefined' && performance.getEntriesByType ? performance.getEntriesByType('navigation') : [];
-            const isReload = navEntries.length > 0
-                ? navEntries[0].type === 'reload'
-                : (typeof performance !== 'undefined' && performance.navigation ? performance.navigation.type === 1 : false);
-
-            if (isReload) {
-                return sessionStorage.getItem(CURRENT_CHAT_KEY) || null;
-            } else {
-                sessionStorage.removeItem(CURRENT_CHAT_KEY);
-                return null;
-            }
+            return sessionStorage.getItem(CURRENT_CHAT_KEY) || null;
         } catch (e) {
             return null;
         }
@@ -255,7 +245,16 @@ export default function Home({ session }) {
                                 cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null
                             };
                         });
-                        setChats(prev => ({ ...prev, [activeChatId]: formattedMessages }));
+                        setChats(prev => {
+                            const existing = prev[activeChatId] || [];
+                            const pending = existing.filter(m => m.isTyping || m.isLive || m.tempId);
+                            if (pending.length === 0) {
+                                return { ...prev, [activeChatId]: formattedMessages };
+                            }
+                            const dbIds = new Set(formattedMessages.map(m => m.id));
+                            const uniquePending = pending.filter(m => !m.id || !dbIds.has(m.id));
+                            return { ...prev, [activeChatId]: [...formattedMessages, ...uniquePending] };
+                        });
                         // We do NOT await this so the UI doesn't block
                         cacheManager.setMessages(sortedCurrent).catch(console.error);
                     }
@@ -291,8 +290,16 @@ export default function Home({ session }) {
                         setChats(prev => {
                             const merged = { ...grouped };
                             Object.keys(prev).forEach(key => {
-                                if (!merged[key] && (prev[key].length > 0 || key === currentChatId)) {
-                                    merged[key] = prev[key];
+                                const existing = prev[key] || [];
+                                const pending = existing.filter(m => m.isTyping || m.isLive || m.tempId);
+                                if (!merged[key]) {
+                                    if (existing.length > 0 || key === currentChatId) {
+                                        merged[key] = existing;
+                                    }
+                                } else if (pending.length > 0) {
+                                    const dbIds = new Set(merged[key].map(m => m.id));
+                                    const uniquePending = pending.filter(m => !m.id || !dbIds.has(m.id));
+                                    merged[key] = [...merged[key], ...uniquePending];
                                 }
                             });
                             // Automatically rename legacy or raw chat titles in the background
@@ -313,7 +320,7 @@ export default function Home({ session }) {
             }
         }
         fetchChats();
-    }, [session]);
+    }, [session?.user?.id]);
 
     const handleSend = async (files = [], overrideText = null, isHidden = false, isThinking = false) => {
         const textToUse = overrideText !== null ? overrideText : input;
@@ -642,6 +649,7 @@ export default function Home({ session }) {
             let aiRawText = "";
             let autoFollowUpText = null;
             let currentCloudProject = null;
+            let activeToolStatus = files.length > 0 ? "Uploading files..." : "Thinking...";
 
             // Cloud fetch directly to super-endpoint
                 const reqBody = {
@@ -716,7 +724,6 @@ export default function Home({ session }) {
                             if (chunk.startsWith('data: ')) {
                                 try {
                                     const parsed = JSON.parse(chunk.slice(6));
-                                    let currentToolStatus = null;
                                     
                                     if (parsed.type === 'project_progress' || parsed.type === 'cloud_project_ready') {
                                         currentCloudProject = {
@@ -737,9 +744,14 @@ export default function Home({ session }) {
                                             aiRawText = parsed.content;
                                         }
                                     } else if (parsed.type === 'status') {
-                                        currentToolStatus = parsed.stage;
+                                        activeToolStatus = parsed.stage;
                                     } else if (parsed.type === 'text') {
                                         aiRawText += parsed.content;
+                                        if (activeToolStatus) {
+                                            if (aiRawText.includes('![') || !/image|design|completed|edit|detail|almost done/i.test(activeToolStatus)) {
+                                                activeToolStatus = null;
+                                            }
+                                        }
                                     } else if (parsed.type === 'error') {
                                         aiRawText += `\n\n**Error:** ${parsed.error}`;
                                         if (currentCloudProject) {
@@ -761,16 +773,16 @@ export default function Home({ session }) {
                                          }
 
                                          const fileNames = filesList.map(f => f.path || f.filename || f.file || 'file').join(', ');
-                                         currentToolStatus = fileNames ? `Writing ${fileNames}...` : "Writing files...";
+                                         activeToolStatus = fileNames ? `Writing ${fileNames}...` : "Writing files...";
                                          
                                          // Guard: if AI sent empty files array, ask it to regenerate silently (only once)
                                          if (filesList.length === 0) {
                                              if (isHidden) {
                                                  aiRawText += "\n\n⚠️ I was unable to generate the file content. Please provide more specific instructions on what files to create.";
-                                                 currentToolStatus = null;
+                                                 activeToolStatus = null;
                                              } else {
                                                  autoFollowUpText = "You called write_local_files with an empty files array. Please regenerate the FULL source code for all files and call write_local_files again with the complete file content in the 'files' array. Do NOT send empty files.";
-                                                 currentToolStatus = "Generating file content (retry)...";
+                                                 activeToolStatus = "Generating file content (retry)...";
                                              }
                                          } else {
                                          try {
@@ -810,11 +822,11 @@ export default function Home({ session }) {
                                          } catch (err) {
                                              aiRawText += `\n\n**Error writing files:** ${err.message}`;
                                          } finally {
-                                             currentToolStatus = null;
+                                             activeToolStatus = null;
                                          }
                                          } // end else (filesList.length > 0)
                                      } else if (parsed.type === 'tool_call' && parsed.tool === 'run_terminal_command') {
-                                         currentToolStatus = "Executing terminal command...";
+                                         activeToolStatus = "Executing terminal command...";
                                          const cmdStr = parsed.args?.command || parsed.args?.cmd || "";
                                          
                                          aiRawText += `\n\n\`\`\`bash\n$ ${cmdStr}\n\`\`\`\n\n⚡ Executed in terminal!`;
@@ -851,10 +863,10 @@ export default function Home({ session }) {
                                          } catch (err) {
                                              aiRawText += `\n\n**Error executing command:** ${err.message}`;
                                          } finally {
-                                             currentToolStatus = null;
+                                             activeToolStatus = null;
                                          }
                                      } else if (parsed.type === 'tool_call' && parsed.tool === 'read_local_files') {
-                                         currentToolStatus = "Reading local files...";
+                                         activeToolStatus = "Reading local files...";
                                          let currentFolderHandle = localDirectoryHandleRef.current;
                                          
                                          if (!currentFolderHandle) {
@@ -925,10 +937,10 @@ export default function Home({ session }) {
                                          } catch (err) {
                                              autoFollowUpText = JSON.stringify({ error: err.message });
                                          } finally {
-                                             currentToolStatus = null;
+                                             activeToolStatus = null;
                                          }
                                      } else if (parsed.type === 'tool_call' && parsed.tool === 'list_local_files') {
-                                         currentToolStatus = "Listing local files...";
+                                         activeToolStatus = "Listing local files...";
                                          let currentFolderHandle = localDirectoryHandleRef.current;
                                          
                                          if (!currentFolderHandle) {
@@ -981,7 +993,7 @@ export default function Home({ session }) {
                                          } catch (err) {
                                              autoFollowUpText = JSON.stringify({ error: err.message });
                                          } finally {
-                                             currentToolStatus = null;
+                                             activeToolStatus = null;
                                          }
                                      }
                                                           // Live update UI
@@ -994,7 +1006,7 @@ export default function Home({ session }) {
                                                 text: aiRawText, 
                                                 isTyping: true, 
                                                 isLive: true, 
-                                                toolStatus: currentToolStatus,
+                                                toolStatus: activeToolStatus,
                                                 cloudProject: currentCloudProject
                                             };
                                         }
@@ -1006,13 +1018,14 @@ export default function Home({ session }) {
                     }
                     
                     // Finalize typing state
+                    const finalAiText = aiRawText.trim() || (currentCloudProject ? "" : "I couldn't complete that request. Please try again.");
                     setChats(prev => {
                         const messages = [...(prev[idToUse] || [])];
                         const aiIdx = messages.findIndex(m => m.tempId === tempId);
                         if (aiIdx !== -1) {
                             messages[aiIdx] = { 
                                 ...messages[aiIdx], 
-                                text: aiRawText, 
+                                text: finalAiText, 
                                 isTyping: false, 
                                 isLive: true, 
                                 toolStatus: null,
@@ -1192,7 +1205,14 @@ export default function Home({ session }) {
                             }, 1500);
                             
                         } else if (messages[aiIdx].isTyping) {
-                            messages.splice(aiIdx, 1);
+                            // Do not delete the message; preserve it and show an error state so nothing disappears
+                            messages[aiIdx] = {
+                                ...messages[aiIdx],
+                                isTyping: false,
+                                isLive: false,
+                                toolStatus: null,
+                                text: messages[aiIdx].text || displayError || "Connection interrupted. Please try again."
+                            };
                         }
                     }
                     return { ...prev, [idToUse]: messages };

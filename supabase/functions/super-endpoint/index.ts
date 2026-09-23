@@ -744,9 +744,10 @@ STRICT RULES:
                         systemPrompt = `You are Ceova, a friendly, intelligent AI assistant. Keep your replies natural, concise, and helpful.${userProfileBlock}${memoryContext}${timeContext}`;
                     } else {
                         const imageGenDirective = intent.toolSchemas.some((s: any) => s.id === 'generate_image')
-                            ? `\n\n🎨 IMAGE GENERATION CAPABILITY:\nYou have the 'generate_image' tool available (powered by OpenAI gpt-image-1).
+                            ? `\n\n🎨 IMAGE GENERATION & SURGICAL INPAINTING CAPABILITY:\nYou have the 'generate_image' tool available (powered by OpenAI gpt-image-2.5-sunburst).
 - When the user asks you to create, draw, generate, or render an image, artwork, illustration, photo, or visual, invoke the 'generate_image' tool with a detailed prompt describing the scene.
-- When the user asks QUESTIONS about image generation, asks which model was used (OpenAI gpt-image-1), asks how it was created, or asks for advice, ALWAYS answer informatively in conversational text. DO NOT invoke 'generate_image' for informational questions.\n`
+- When the user asks to remove an object, person, item, or backdrop element from an image, invoke the 'generate_image' tool with the user's removal instruction.
+- When the user asks QUESTIONS about image generation, asks which model was used (OpenAI gpt-image-2.5-sunburst), asks how it was created, or asks for advice, ALWAYS answer informatively in conversational text. DO NOT invoke 'generate_image' for informational questions.\n`
                             : '';
 
                         const toolsSection = hasTools
@@ -1092,17 +1093,15 @@ ${analyticsText}
                             } else if (toolId.includes('connector')) {
                                 friendlyStatus = 'Connecting to service…';
                             }
-                            // Seamlessly redirect background_remover to generate_image if user asks to remove a person or object
-                            // The generate-image tool now handles inpainting intent detection and surgical prompt building internally
+                            // Seamlessly redirect background_remover to generate_image if user asks to remove a person, item, or object
+                            // The generate-image tool handles inpainting intent detection, GPT-4o localization, and precision masking internally
                             if (toolId === 'background_remover') {
-                                const combinedContext = `${message} ${(history || []).slice(-3).map((h: any) => h.content).join(' ')}`;
-                                const isRemovingPersonOrObject = /(?:remove|erase|delete|crop\s*out|take\s*out|cut\s*out)\s+(?:the\s+)?(?:both\s+)?(?:person|people|man|woman|boy|girl|guy|object|item|laptop|bottle|chair|table|one\s+person|front\s+person|foreground\s+person)/i.test(combinedContext);
-                                const isStrictlyBackground = /(?:transparent\s+(?:png|bg|background)|remove\s+(?:the\s+)?(?:bg|background))/i.test(message) && !/(?:person|people|man|woman|boy|girl|guy|object|item|bottle|chair|table)/i.test(message);
+                                const isStrictlyBackground = /^\s*(?:make\s+)?(?:transparent\s+(?:png|bg|background)|remove\s+(?:the\s+)?(?:bg|background))\s*$/i.test((message || '').trim());
+                                const isRemovalIntent = /\b(?:remove|erase|delete|take\s*out|cut\s*out|crop\s*out|clear|get\s*rid\s*of|without)\b/i.test(message || '');
 
-                                if (isRemovingPersonOrObject && !isStrictlyBackground) {
+                                if (isRemovalIntent && !isStrictlyBackground) {
                                     toolId = 'generate_image';
                                     friendlyStatus = 'Removing object…';
-                                    // Pass the user's original message — the tool's inpainting detector will build the surgical prompt
                                     toolCallMatch = { tool: 'generate_image', args: { prompt: message || 'remove the object' } };
                                 }
                             }

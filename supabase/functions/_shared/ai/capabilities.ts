@@ -88,7 +88,7 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "image_gen",
-    description: "Generate high-quality AI images, illustrations, and visual art from text prompts using OpenAI gpt-image-1. Use this when the user explicitly requests to CREATE, DRAW, or GENERATE a new image.",
+    description: "Generate high-quality AI images, illustrations, and visual art from text prompts, and perform surgical inpainting / object removal using OpenAI gpt-image-2.5-sunburst. Use this when the user requests to create, draw, generate, or remove objects/people from an image.",
     keywords: [
       "generate image", "create image", "make image", "draw", "paint", "illustration", "generate picture", "create picture",
       "make picture", "generate photo", "create photo", "dall-e", "dalle", "render image", "generate artwork", "draw me",
@@ -97,7 +97,10 @@ export const CAPABILITIES: Capability[] = [
       "genrate image", "genrate picture", "genrate photo", "genrate a", "genrate an", "genrate artwork",
       "generate a", "generate an", "draw a", "draw me", "paint a", "paint me", "sketch a", "sketch of",
       "illustration of", "picture of", "pic of", "photo of", "photograph of", "image of", "artwork of",
-      "render a", "rendering of", "make a picture", "make a photo", "make an illustration", "wallpaper of"
+      "render a", "rendering of", "make a picture", "make a photo", "make an illustration", "wallpaper of",
+      "remove person", "remove both person", "remove people", "erase person", "erase both person", "remove from image",
+      "remove object", "recreate scene", "without person", "without people", "erase object", "remove that", "remove this",
+      "remove laptop", "remove macbook", "remove mackbook", "remove bottle", "remove bottel", "take out", "cut out", "crop out"
     ],
     toolIds: ["generate_image"],
     memoryCategories: ["preferences"],

@@ -234,7 +234,22 @@ export function routeIntent(
     /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(lowerMessage)
   );
 
-  if (isExplicitGenAction) {
+  const isImageGenConfirmation = isShortConfirmation && history && Array.isArray(history) && history.some(m => 
+    typeof m.content === 'string' && /generate|recreated|recreation/i.test(m.content) && m.role === 'assistant'
+  );
+
+  const hasImageInHistory = history && Array.isArray(history) && history.some(m => 
+    (m.attachments && m.attachments.some((a: any) => a.type?.startsWith('image/'))) ||
+    (typeof m.content === 'string' && /data:image\//i.test(m.content))
+  );
+
+  const isImageRemovalOrEdit = (hasImage || hasImageInHistory) && !isQuestion && (
+    /(?:remove|erase|delete|crop\s*out|take\s*out|cut\s*out|clear|get\s*rid\s*of)\s+(?:the\s+|that\s+|this\s+|both\s+|all\s+)?(?:\w+)/i.test(lowerMessage) ||
+    /\b(?:without|no)\s+(?:the\s+|that\s+)?(?:\w+)\b/i.test(lowerMessage) ||
+    /\b(?:recreate|generate|edit|modify)\s+(?:the\s+)?(?:image|scene|photo|picture)\s+(?:without|with|removing|erasing)\b/i.test(lowerMessage)
+  );
+
+  if (isExplicitGenAction || isImageGenConfirmation || isImageRemovalOrEdit) {
     const imageGenCap = CAPABILITIES.find(c => c.id === "image_gen");
     if (imageGenCap && !matchedCapabilities.includes(imageGenCap)) {
       matchedCapabilities.push(imageGenCap);

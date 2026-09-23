@@ -1091,12 +1091,30 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
   const isQuestion = isQuestionOrInquiry(effectiveMessage);
 
   // ── Detect imperative image generation command (never for inquiries/questions) ───
-  const isImageGenCommand = !isQuestion && (
+  const hasImageInHistory = history && Array.isArray(history) && history.some((m: any) => 
+    (m.attachments && m.attachments.some((a: any) => a.type?.startsWith('image/'))) ||
+    (typeof m.content === 'string' && /data:image\//i.test(m.content))
+  );
+  const imagePresent = hasImage || hasImageInHistory;
+
+  const isStrictlyBackgroundRemoval = imagePresent && 
+    /(?:transparent\s+(?:png|bg|background)|remove\s+(?:the\s+)?(?:bg|background))/i.test(effectiveMessage) && 
+    !/(?:laptop|person|people|man|woman|boy|girl|guy|object|item|table|bottle|chair|that|from\s+photo|from\s+image)/i.test(effectiveMessage);
+
+  const isImageEditOrRemoval = imagePresent && !isStrictlyBackgroundRemoval && (
+    /(?:remove|erase|delete|crop\s*out|take\s*out|cut\s*out|clear)\s+(?:the\s+)?(?:that\s+)?(?:both\s+)?(?:all\s+)?(?:[a-z0-9_\-]+\s+)*(?:from\s+)?(?:image|photo|picture)?/i.test(effectiveMessage) ||
+    /\b(?:remove|erase|delete)\s+(?:that|the|both|all)\b/i.test(effectiveMessage) ||
+    /\bwithout\s+(?:the\s+)?(?:[a-z0-9_\-]+)/i.test(effectiveMessage) ||
+    (/^(?:ok|okay|yes|yep|yeah|sure|proceed|do it|go ahead|generate it)\b/i.test(effectiveMessage.trim()) && history && Array.isArray(history) && history.some((m: any) => typeof m.content === 'string' && /(?:removing|remove|reconstructed|reconstruct|laptop|person|image|photo)/i.test(m.content) && m.role === 'assistant'))
+  );
+
+  const isImageGenCommand = !isQuestion && !isStrictlyBackgroundRemoval && (
     /^\s*\/?generate_image\b/i.test(effectiveMessage) ||
     /^\s*(?:please\s+)?(?:generate|create|make|draw|paint|sketch|render|genrate)\s+(?:a |an |me |the )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar)\b/i.test(effectiveMessage) ||
     /^\s*(?:genrate|genrate image|genrate picture|genrate a|genrate an)\b/i.test(effectiveMessage) ||
     /\b(?:generate|genrate|create|draw|render|make)\s+(?:an?\s+)?(?:image|picture|photo|illustration|artwork|graphic|wallpaper|avatar|logo)\b/i.test(effectiveMessage) ||
-    /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(effectiveMessage)
+    /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(effectiveMessage) ||
+    isImageEditOrRemoval
   );
 
   if (isImageGenCommand) {
@@ -1130,9 +1148,10 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
       : "";
 
     const imageGenDirective = intent.toolSchemas.some((s: any) => s.id === 'generate_image')
-      ? `\n\n🎨 IMAGE GENERATION CAPABILITY:\nYou have the 'generate_image' tool available (powered by OpenAI gpt-image-1).
+      ? `\n\n🎨 IMAGE GENERATION & SURGICAL INPAINTING CAPABILITY:\nYou have the 'generate_image' tool available (powered by OpenAI gpt-image-2.5-sunburst).
 - When the user asks you to create, draw, generate, or render an image, artwork, illustration, photo, or visual, invoke the 'generate_image' tool with a detailed prompt describing the scene.
-- When the user asks QUESTIONS about image generation, asks which model was used (OpenAI gpt-image-1), asks how it was created, or asks for advice, ALWAYS answer informatively in conversational text. DO NOT invoke 'generate_image' for informational questions.\n`
+- When the user asks to remove an object, person, item, or backdrop element from an image, invoke the 'generate_image' tool with the user's removal instruction.
+- When the user asks QUESTIONS about image generation, asks which model was used (OpenAI gpt-image-2.5-sunburst), asks how it was created, or asks for advice, ALWAYS answer informatively in conversational text. DO NOT invoke 'generate_image' for informational questions.\n`
       : '';
 
     const toolsPromptSection = hasTools
@@ -1220,16 +1239,19 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
   if (toolCallMatch) {
     const toolId = toolCallMatch.tool;
 
-    // Guard against background_remover being called when user is asking to remove a person or object
+    // Seamlessly redirect background_remover to generate_image if user is asking to remove a person or object
     if (toolId === "background_remover") {
       const combinedContext = `${effectiveMessage} ${(history || []).slice(-3).map((h: any) => typeof h.content === 'string' ? h.content : '').join(" ")}`;
-      const isRemovingPersonOrObject = /(?:remove|erase|delete|crop\s*out|take\s*out|cut\s*out)\s+(?:the\s+)?(?:person|people|man|woman|boy|girl|guy|object|item|laptop|one\s+person|front\s+person|foreground\s+person)/i.test(combinedContext);
+      const isRemovingPersonOrObject = /(?:remove|erase|delete|crop\s*out|take\s*out|cut\s*out)\s+(?:the\s+)?(?:both\s+)?(?:person|people|man|woman|boy|girl|guy|object|item|laptop|one\s+person|front\s+person|foreground\s+person)/i.test(combinedContext);
       const isStrictlyBackground = /(?:transparent\s+(?:png|bg|background)|remove\s+(?:the\s+)?(?:bg|background))/i.test(effectiveMessage) && !/(?:person|people|man|woman|boy|girl|guy|object|item)/i.test(effectiveMessage);
 
       if (isRemovingPersonOrObject && !isStrictlyBackground) {
-        finalTelegramReply = `⚠️ **Note on Image Editing:**\n\nMy background removal tool is designed to strip away the entire room/backdrop behind all people into a transparent PNG—it cannot erase an individual person or reconstruct the scene behind them.\n\nHowever, I can generate a brand new AI-rendered image recreating the scene with only the intended person. Would you like me to do that?`;
-        await reply(finalTelegramReply);
-        return new Response("ok");
+        toolCallMatch = {
+          tool: "generate_image",
+          args: {
+            prompt: `A realistic photo recreating the scene: ${effectiveMessage}, with all requested people/subjects removed, preserving the environment, lighting, furniture and objects.`
+          }
+        };
       }
     }
 
@@ -1244,7 +1266,7 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
         : "🚀 <b>Building your website…</b>\n<i>Generating components, styling, and deploying live to Ceova Cloud. Your live link will be ready in ~30 seconds…</i>";
       await sendAction("upload_document");
     } else if (toolId === "generate_image") {
-      interimStatus = "🎨 <b>Generating your image with AI…</b>\n<i>Crafting your artwork with DALL-E…</i>";
+      interimStatus = "🎨 <b>Generating images…</b>\n<i>Adding detail…</i>";
       await sendAction("upload_photo");
     } else if (toolId.includes("image") || toolId === "background_remover") {
       interimStatus = "🎨 <i>Processing image…</i>";
