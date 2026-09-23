@@ -96,7 +96,7 @@ function getImageDimensions(bytes: Uint8Array): { width: number; height: number;
 }
 
 /** Generate an RGBA PNG mask where the bounding box is transparent (alpha = 0) and the rest is opaque white (alpha = 255) */
-async function createMaskPng(
+export async function createMaskPng(
   width: number,
   height: number,
   box: { ymin: number; xmin: number; ymax: number; xmax: number }
@@ -194,7 +194,7 @@ function extractObjectToRemove(message: string, history?: any[]): string {
   const msg = (message || '').trim();
   
   const patterns = [
-    /\b(?:remove|erase|delete|take\s*out|cut\s*out|crop\s*out|clear|get\s*rid\s*of)\s+(?:the\s+)?(?:that\s+)?(?:this\s+)?(?:both\s+)?(?:all\s+)?(.+?)(?:\s+from\s+(?:the\s+)?(?:image|photo|picture|scene))?$/i,
+    /\b(?:remove|erase|delete|take\s*out|cut\s*out|crop\s*out|clear|get\s*rid\s*of)\s+(?:the\s+)?(?:that\s+)?(?:this\s+)?(.+?)(?:\s+from\s+(?:the\s+)?(?:image|photo|picture|scene))?$/i,
     /\bwithout\s+(?:the\s+)?(.+?)$/i,
   ];
   
@@ -231,7 +231,7 @@ export class GenerateImageTool implements Tool {
   metadata: ToolMetadata = {
     id: 'generate_image',
     name: 'Image Generator & Inpainter',
-    description: 'Generates high-quality AI images, illustrations, and performs surgical object removal / inpainting on photos using OpenAI (gpt-image-2.5-sunburst). Use this tool when the user commands to generate, create, draw, design, or remove objects/people from images.',
+    description: 'Generates high-quality AI images, illustrations, and performs surgical object removal / inpainting on photos using OpenAI (chatgpt-image-latest). Use this tool when the user commands to generate, create, draw, design, or remove objects/people from images.',
     category: 'AI Utilities',
     icon: 'sparkles',
     requiresImage: false,
@@ -454,29 +454,26 @@ Important:
           const inpaintPrompt = buildInpaintingPrompt(objectToRemove);
           const imageBlob = new Blob([imgBuffer], { type: targetImage.type || 'image/png' });
 
-          // 5. Try precision models in order of quality
+          // 5. Try precision models in order of quality (chatgpt-image-latest is ChatGPT's native engine)
           const inpaintCandidates = [
-            { model: 'gpt-image-2.5-sunburst', input_fidelity: 'high', quality: 'high' },
-            { model: 'gpt-image-2.5-flare', input_fidelity: 'high', quality: 'high' },
-            { model: 'gpt-image-1', input_fidelity: 'high', quality: 'standard' },
+            { model: 'chatgpt-image-latest' },
+            { model: 'gpt-image-2.5-sunburst' },
+            { model: 'gpt-image-2' },
+            { model: 'gpt-image-1' },
           ];
 
           for (const cand of inpaintCandidates) {
             try {
               const formData = new FormData();
-              formData.append('image', imageBlob, 'source.png');
+              formData.append('image', imageBlob, targetImage.name || 'image.png');
               if (maskBlob) {
                 formData.append('mask', maskBlob, 'mask.png');
               }
               formData.append('prompt', inpaintPrompt);
               formData.append('model', cand.model);
-              formData.append('input_fidelity', cand.input_fidelity);
-              if (cand.quality) {
-                formData.append('quality', cand.quality);
-              }
               formData.append('n', '1');
 
-              console.info(`[GenerateImageTool] Calling /v1/images/edits with ${cand.model} (hasMask: ${!!maskBlob}, input_fidelity: ${cand.input_fidelity})…`);
+              console.info(`[GenerateImageTool] Calling /v1/images/edits with ${cand.model} (hasMask: ${!!maskBlob})…`);
               const editResponse = await fetch('https://api.openai.com/v1/images/edits', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${apiKey}` },
@@ -539,9 +536,10 @@ Important:
           if (imgBuffer) {
             const imageBlob = new Blob([imgBuffer], { type: targetImage.type || 'image/png' });
             const editCandidates = [
-              { model: 'gpt-image-2.5-sunburst', input_fidelity: 'high' },
-              { model: 'gpt-image-2.5-flare', input_fidelity: 'high' },
-              { model: 'gpt-image-1', input_fidelity: 'high' },
+              { model: 'chatgpt-image-latest' },
+              { model: 'gpt-image-2.5-sunburst' },
+              { model: 'gpt-image-2' },
+              { model: 'gpt-image-1' },
             ];
 
             for (const cand of editCandidates) {
@@ -550,7 +548,6 @@ Important:
                 formData.append('image', imageBlob, targetImage.name || 'image.png');
                 formData.append('prompt', prompt);
                 formData.append('model', cand.model);
-                formData.append('input_fidelity', cand.input_fidelity);
                 formData.append('n', '1');
 
                 console.info(`[GenerateImageTool] Attempting standard /v1/images/edits with ${cand.model}`);
@@ -558,7 +555,7 @@ Important:
                   method: 'POST',
                   headers: { 'Authorization': `Bearer ${apiKey}` },
                   body: formData,
-                  signal: AbortSignal.timeout(45000)
+                  signal: AbortSignal.timeout(60000)
                 });
 
                 const editResText = await editResponse.text();
@@ -574,9 +571,11 @@ Important:
                   break;
                 } else {
                   console.warn(`[GenerateImageTool] Standard edit with ${cand.model} failed (${editResponse.status}): ${editResText.slice(0, 200)}`);
+                  lastErrorMsg = editJson?.error?.message || `Edit error with ${cand.model} (${editResponse.status})`;
                 }
               } catch (editErr: any) {
                 console.warn(`[GenerateImageTool] Standard edit error with ${cand.model}:`, editErr.message);
+                lastErrorMsg = editErr.message;
               }
             }
           }
@@ -586,9 +585,21 @@ Important:
       }
 
       // ══════════════════════════════════════════════════════════════════════════
-      // PATH C: GENERATION — No image attached, or edit failed → generate fresh
+      // PATH C: TEXT-TO-IMAGE GENERATION — Strictly for brand new prompts without an image
       // ══════════════════════════════════════════════════════════════════════════
       if (!b64Data && !generatedUrl) {
+        if (hasImageForEdit || isInpainting) {
+          // CRITICAL: NEVER fall back to DALL-E 3 from scratch when user wants to edit/inpaint an existing photo!
+          console.error(`[GenerateImageTool] Image edit failed across all models: ${lastErrorMsg}`);
+          return {
+            success: false,
+            error: {
+              code: 'EDIT_FAILED',
+              message: `Could not edit the photo: ${lastErrorMsg || 'The edit model failed to process the request'}. Please try again.`
+            }
+          };
+        }
+
         const candidateModels = ['dall-e-3', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-1', 'dall-e-2'];
 
         for (const model of candidateModels) {

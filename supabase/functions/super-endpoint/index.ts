@@ -401,6 +401,22 @@ STRICT RULES:
                         if (lastMsgWithAttachment) {
                             activeAttachments = [...lastMsgWithAttachment.attachments];
                             isHistoricalAttachment = true;
+                        } else {
+                            // Look for markdown image from previous assistant turn
+                            for (const msg of [...history].reverse()) {
+                                if (typeof msg.content === 'string') {
+                                    const imgMatch = msg.content.match(/!\[.*?\]\((https?:\/\/[^\s\)]+)\)/);
+                                    if (imgMatch && imgMatch[1]) {
+                                        activeAttachments.push({
+                                            type: 'image/png',
+                                            url: imgMatch[1],
+                                            name: 'previous_image.png'
+                                        });
+                                        isHistoricalAttachment = true;
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -744,10 +760,10 @@ STRICT RULES:
                         systemPrompt = `You are Ceova, a friendly, intelligent AI assistant. Keep your replies natural, concise, and helpful.${userProfileBlock}${memoryContext}${timeContext}`;
                     } else {
                         const imageGenDirective = intent.toolSchemas.some((s: any) => s.id === 'generate_image')
-                            ? `\n\n🎨 IMAGE GENERATION & SURGICAL INPAINTING CAPABILITY:\nYou have the 'generate_image' tool available (powered by OpenAI gpt-image-2.5-sunburst).
+                            ? `\n\n🎨 IMAGE GENERATION & SURGICAL INPAINTING CAPABILITY:\nYou have the 'generate_image' tool available (powered by OpenAI chatgpt-image-latest).
 - When the user asks you to create, draw, generate, or render an image, artwork, illustration, photo, or visual, invoke the 'generate_image' tool with a detailed prompt describing the scene.
 - When the user asks to remove an object, person, item, or backdrop element from an image, invoke the 'generate_image' tool with the user's removal instruction.
-- When the user asks QUESTIONS about image generation, asks which model was used (OpenAI gpt-image-2.5-sunburst), asks how it was created, or asks for advice, ALWAYS answer informatively in conversational text. DO NOT invoke 'generate_image' for informational questions.\n`
+- When the user asks QUESTIONS about image generation, asks which model was used (OpenAI chatgpt-image-latest), asks how it was created, or asks for advice, ALWAYS answer informatively in conversational text. DO NOT invoke 'generate_image' for informational questions.\n`
                             : '';
 
                         const toolsSection = hasTools
@@ -762,11 +778,11 @@ STRICT RULES:
 - MULTI-TURN PERSISTENCE: Images from previous turns remain active in context. NEVER ask the user to re-upload or send the image again!
 - IMAGE MODIFICATION / REMOVING PEOPLE & OBJECTS (AUTONOMOUS SEAMLESS SYSTEM BEHAVIOR):
   • 'background_remover' is ONLY for cutting out the foreground subject to transparent PNG (stripping the backdrop).
-  • When the user asks to remove a person, people, or object from an image (e.g. "remove both person from image", "remove the person in front", "remove the man", "erase person", "remove laptop"):
+  • When the user asks to remove a person, people, or object from an image (e.g. "remove that red bottel", "remove both person", "remove the laptop", "erase person", "remove mackbook"):
     1. ACT IMMEDIATELY LIKE CHATGPT: DO NOT give excuses, disclaimers, or refuse by saying you cannot inpaint pixels.
     2. DO NOT ask the user for confirmation or tell them to reply "generate it" or "proceed".
-    3. IMMEDIATELY invoke the 'generate_image' tool to generate an AI recreation of the scene with the requested person(s) or object(s) removed!
-    4. Base the recreation prompt on the VISUAL ANALYTICS: describe the exact physical room/environment (desk, furniture, laptops, wall colors, lighting, perspective, room features) in high detail, while completely excluding the requested person(s) or object(s).
+    3. IMMEDIATELY invoke the 'generate_image' tool with the user's exact removal request as the prompt argument (e.g. {"prompt": "remove that red bottle"} or {"prompt": "remove both person"}).
+    4. The system executes native surgical inpainting via OpenAI's 'chatgpt-image-latest' model, keeping 100% of people, faces, identities, room details, and lighting identical to the original photo while surgically erasing the requested item.
     5. Output the tool call format immediately so the user receives their modified image directly in one single turn.`
                             : '';
 
