@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -5,8 +6,10 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
+static QUICKBAR_PINNED: AtomicBool = AtomicBool::new(false);
+
 #[tauri::command]
-fn open_main_window_with_prompt(app: tauri::AppHandle, prompt: String) {
+fn open_main_window_with_prompt(app: tauri::AppHandle, prompt: Option<String>) {
     if let Some(quickbar) = app.get_webview_window("quickbar") {
         let _ = quickbar.hide();
     }
@@ -14,7 +17,11 @@ fn open_main_window_with_prompt(app: tauri::AppHandle, prompt: String) {
         let _ = main.unminimize();
         let _ = main.show();
         let _ = main.set_focus();
-        let _ = main.emit("quick-prompt-submit", serde_json::json!({ "prompt": prompt }));
+        if let Some(p) = prompt {
+            if !p.trim().is_empty() {
+                let _ = main.emit("quick-prompt-submit", serde_json::json!({ "prompt": p }));
+            }
+        }
     }
 }
 
@@ -23,6 +30,16 @@ fn hide_quickbar(app: tauri::AppHandle) {
     if let Some(quickbar) = app.get_webview_window("quickbar") {
         let _ = quickbar.hide();
     }
+}
+
+#[tauri::command]
+fn set_quickbar_pinned(pinned: bool) {
+    QUICKBAR_PINNED.store(pinned, Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn is_quickbar_pinned() -> bool {
+    QUICKBAR_PINNED.load(Ordering::Relaxed)
 }
 
 fn toggle_quickbar_window(app: &tauri::AppHandle) {
@@ -123,7 +140,7 @@ pub fn run() {
                     let _ = window.hide();
                 }
                 WindowEvent::Focused(false) => {
-                    if window.label() == "quickbar" {
+                    if window.label() == "quickbar" && !QUICKBAR_PINNED.load(Ordering::Relaxed) {
                         let _ = window.hide();
                     }
                 }
@@ -132,7 +149,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_main_window_with_prompt,
-            hide_quickbar
+            hide_quickbar,
+            set_quickbar_pinned,
+            is_quickbar_pinned
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

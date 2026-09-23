@@ -22,17 +22,19 @@
         "resizable": true
       },
       {
-        "title": "CEOVA Quick Bar",
+        "title": "CEOVA Companion",
         "label": "quickbar",
         "url": "/#quickbar",
-        "width": 640,
-        "height": 130,
+        "width": 480,
+        "height": 560,
+        "minWidth": 400,
+        "minHeight": 450,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
         "visible": false,
         "skipTaskbar": true,
-        "resizable": false,
+        "resizable": true,
         "shadow": true
       }
     ],
