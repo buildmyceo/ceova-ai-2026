@@ -10,6 +10,7 @@ import { useTheme } from './contexts/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoadingScreen from './components/LoadingScreen';
 import { initSocialLogin } from './services/mobileAuth';
+import { initBackgroundService } from './services/backgroundService';
 import './App.css';
 
 // Lazy loaded routes for bundle splitting and performance optimization
@@ -36,10 +37,11 @@ export default function App() {
     const { resolvedTheme } = useTheme();
     const navigate = useNavigate();
 
-    // Pre-warm Native Google Credential Manager
+    // Pre-warm Native Google Credential Manager & Background Service
     useEffect(() => {
         if (Capacitor.isNativePlatform()) {
             initSocialLogin();
+            initBackgroundService();
         }
     }, []);
 
