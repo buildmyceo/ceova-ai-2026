@@ -230,8 +230,8 @@ function buildInpaintingPrompt(objectToRemove: string): string {
 export class GenerateImageTool implements Tool {
   metadata: ToolMetadata = {
     id: 'generate_image',
-    name: 'Image Generator & Inpainter',
-    description: 'Generates high-quality AI images, illustrations, and performs surgical object removal / inpainting on photos using OpenAI (chatgpt-image-latest). Use this tool when the user commands to generate, create, draw, design, or remove objects/people from images.',
+    name: 'Image Generator',
+    description: 'Generates high-quality AI images, illustrations, and performs surgical object removal / inpainting on photos using OpenAI ChatGPT image models (chatgpt-image-latest). Use this tool when the user commands to generate, create, draw, design, or remove objects/people from images.',
     category: 'AI Utilities',
     icon: 'sparkles',
     requiresImage: false,
@@ -306,8 +306,10 @@ export class GenerateImageTool implements Tool {
 
     // Choose status stages based on operation type
     const statusStages = (isInpainting && hasImageForEdit)
-      ? ['Analyzing image…', 'Locating target…', 'Removing object…', 'Preserving details…']
-      : ['Generating image…', 'Adding design…', 'Just completed…', 'Last edit…'];
+      ? ['Analyzing image with ChatGPT…', 'Removing object…', 'Preserving details…', 'Finalizing output…']
+      : (hasImageForEdit
+        ? ['Editing image with ChatGPT…', 'Applying changes…', 'Preserving details…', 'Finalizing output…']
+        : ['Generating image with ChatGPT…', 'Adding design…', 'Refining details…', 'Finalizing…']);
 
     let currentStageIdx = 0;
     updateStatus(statusStages[currentStageIdx]);
@@ -331,20 +333,18 @@ export class GenerateImageTool implements Tool {
       let generatedUrl: string | null = null;
 
       // ══════════════════════════════════════════════════════════════════════════
-      // PATH A: SURGICAL INPAINTING — Mask-based Object Removal (ChatGPT Quality)
+      // PATH 1: CHATGPT NATIVE MULTIMODAL IMAGE EDITING (Image Attached)
+      // Directly uses OpenAI's official ChatGPT image model: chatgpt-image-latest
+      // No artificial bounding box detection, no synthetic mask holes, no black boxes.
       // ══════════════════════════════════════════════════════════════════════════
-      if (isInpainting && hasImageForEdit) {
-        console.info('[GenerateImageTool] SURGICAL INPAINTING MODE — object removal requested');
-        const objectToRemove = extractObjectToRemove(userMessage, context.history) || 'object';
-        updateStatus(`Locating ${objectToRemove}…`);
+      if (hasImageForEdit) {
+        console.info('[GenerateImageTool] CHATGPT MULTIMODAL IMAGE EDITING MODE (chatgpt-image-latest)');
+        updateStatus(isInpainting ? 'Removing object with ChatGPT…' : 'Editing image with ChatGPT…');
 
-        // 1. Decode attached image into a buffer and base64 for vision
         let imgBuffer: ArrayBuffer | null = null;
-        let base64ForVision: string | null = null;
         const rawDataUrl = targetImage.data || targetImage.content;
         if (rawDataUrl && typeof rawDataUrl === 'string') {
           const base64Data = rawDataUrl.includes(',') ? rawDataUrl.split(',')[1] : rawDataUrl;
-          base64ForVision = rawDataUrl.startsWith('data:') ? rawDataUrl : `data:image/png;base64,${base64Data}`;
           const binaryStr = atob(base64Data);
           const len = binaryStr.length;
           const bytes = new Uint8Array(len);
@@ -353,7 +353,6 @@ export class GenerateImageTool implements Tool {
           }
           imgBuffer = bytes.buffer;
         } else if (targetImage.url) {
-          base64ForVision = targetImage.url;
           const imgRes = await fetch(targetImage.url);
           if (imgRes.ok) {
             imgBuffer = await imgRes.arrayBuffer();
@@ -361,119 +360,56 @@ export class GenerateImageTool implements Tool {
         }
 
         if (imgBuffer) {
-          const dims = getImageDimensions(new Uint8Array(imgBuffer));
-          console.info(`[GenerateImageTool] Source image dimensions: ${dims.width}x${dims.height} (${dims.format})`);
-
-          // 2. Locate exact object coordinates via GPT-4o Vision
-          let boundingBox: { ymin: number; xmin: number; ymax: number; xmax: number } | null = null;
-          if (base64ForVision) {
-            try {
-              console.info(`[GenerateImageTool] Asking GPT-4o to locate "${objectToRemove}"…`);
-              const visionRes = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${apiKey}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  model: 'gpt-4o',
-                  messages: [
-                    {
-                      role: 'system',
-                      content: 'You are an expert image segmentation and object localization assistant. Return ONLY a valid JSON object with keys "found", "ymin", "xmin", "ymax", "xmax".'
-                    },
-                    {
-                      role: 'user',
-                      content: [
-                        {
-                          type: 'text',
-                          text: `Locate the object to remove: "${objectToRemove}".
-Note: The user may have phonetic spellings or typos (e.g. "mackbook" = macbook / laptop, "bottel" = bottle, "person" = human).
-Find the EXACT bounding box coordinates of "${objectToRemove}" as percentages (0 to 100) of image height and width:
-{
-  "found": true,
-  "ymin": number, // 0-100 percentage from top
-  "xmin": number, // 0-100 percentage from left
-  "ymax": number, // 0-100 percentage from top
-  "xmax": number  // 0-100 percentage from left
-}
-Important:
-- Add a 3-5% margin around the object so its edges, shadows, and reflections are included.
-- If multiple instances of the requested target exist (e.g. "both person"), include all of them.
-- If the object is genuinely not present in the image, return {"found": false}.`
-                        },
-                        {
-                          type: 'image_url',
-                          image_url: { url: base64ForVision }
-                        }
-                      ]
-                    }
-                  ],
-                  temperature: 0,
-                  response_format: { type: 'json_object' }
-                }),
-                signal: AbortSignal.timeout(20000)
-              });
-
-              if (visionRes.ok) {
-                const visionJson = await visionRes.json();
-                const content = visionJson.choices?.[0]?.message?.content;
-                const parsed = JSON.parse(content || '{}');
-                if (parsed.found && typeof parsed.ymin === 'number' && typeof parsed.ymax === 'number') {
-                  boundingBox = {
-                    ymin: Math.max(0, parsed.ymin),
-                    xmin: Math.max(0, parsed.xmin),
-                    ymax: Math.min(100, parsed.ymax),
-                    xmax: Math.min(100, parsed.xmax)
-                  };
-                  console.info(`[GenerateImageTool] ✅ Bounding box located:`, boundingBox);
-                } else {
-                  console.warn(`[GenerateImageTool] GPT-4o could not locate object:`, content);
-                }
-              }
-            } catch (vErr: any) {
-              console.warn('[GenerateImageTool] GPT-4o localization error:', vErr.message);
-            }
-          }
-
-          // 3. Generate PNG mask matching source image dimensions
-          let maskBlob: Blob | null = null;
-          if (boundingBox) {
-            try {
-              const maskBytes = await createMaskPng(dims.width, dims.height, boundingBox);
-              maskBlob = new Blob([maskBytes], { type: 'image/png' });
-              console.info(`[GenerateImageTool] ✅ Generated mask PNG (${maskBytes.length} bytes) for ${dims.width}x${dims.height}`);
-            } catch (mErr: any) {
-              console.warn('[GenerateImageTool] Mask generation error:', mErr.message);
-            }
-          }
-
-          updateStatus(`Removing ${objectToRemove}…`);
-
-          // 4. Inpainting prompt following OpenAI best practices
-          const inpaintPrompt = buildInpaintingPrompt(objectToRemove);
           const imageBlob = new Blob([imgBuffer], { type: targetImage.type || 'image/png' });
+          
+          // User's natural instruction for the edit
+          const editPrompt = (userMessage || prompt).trim()
+            .replace(/^\/?(?:generate_image|genrate_image)\s*/i, '')
+            .trim();
 
-          // 5. Try precision models in order of quality (chatgpt-image-latest is ChatGPT's native engine)
-          const inpaintCandidates = [
-            { model: 'chatgpt-image-latest' },
-            { model: 'gpt-image-2.5-sunburst' },
-            { model: 'gpt-image-2' },
-            { model: 'gpt-image-1' },
+          // Check if user manually supplied an explicit brush mask attachment (e.g. from canvas brush tool)
+          const userMaskAttachment = context.attachments?.find((a: any) => 
+            a !== targetImage && (a.isMask === true || (typeof a.name === 'string' && a.name.toLowerCase().includes('mask')))
+          );
+          let userMaskBlob: Blob | null = null;
+          if (userMaskAttachment) {
+            try {
+              const maskRaw = userMaskAttachment.data || userMaskAttachment.content;
+              if (maskRaw && typeof maskRaw === 'string') {
+                const b64 = maskRaw.includes(',') ? maskRaw.split(',')[1] : maskRaw;
+                const bStr = atob(b64);
+                const uBytes = new Uint8Array(bStr.length);
+                for (let i = 0; i < bStr.length; i++) uBytes[i] = bStr.charCodeAt(i);
+                userMaskBlob = new Blob([uBytes.buffer], { type: 'image/png' });
+              } else if (userMaskAttachment.url) {
+                const mRes = await fetch(userMaskAttachment.url);
+                if (mRes.ok) userMaskBlob = await mRes.blob();
+              }
+            } catch (mErr: any) {
+              console.warn('[GenerateImageTool] Could not process user mask attachment:', mErr.message);
+            }
+          }
+
+          // OpenAI ChatGPT model cascade: chatgpt-image-latest is the primary ChatGPT model
+          const editCandidates = [
+            'chatgpt-image-latest',
+            'gpt-image-2.5-sunburst',
+            'gpt-image-2',
+            'gpt-image-1'
           ];
 
-          for (const cand of inpaintCandidates) {
+          for (const cand of editCandidates) {
             try {
               const formData = new FormData();
               formData.append('image', imageBlob, targetImage.name || 'image.png');
-              if (maskBlob) {
-                formData.append('mask', maskBlob, 'mask.png');
+              if (userMaskBlob) {
+                formData.append('mask', userMaskBlob, 'mask.png');
               }
-              formData.append('prompt', inpaintPrompt);
-              formData.append('model', cand.model);
+              formData.append('prompt', editPrompt);
+              formData.append('model', cand);
               formData.append('n', '1');
 
-              console.info(`[GenerateImageTool] Calling /v1/images/edits with ${cand.model} (hasMask: ${!!maskBlob})…`);
+              console.info(`[GenerateImageTool] Calling /v1/images/edits with ${cand} (hasUserMask: ${!!userMaskBlob})…`);
               const editResponse = await fetch('https://api.openai.com/v1/images/edits', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${apiKey}` },
@@ -488,19 +424,19 @@ Important:
               if (editResponse.ok && editJson?.data?.[0]) {
                 const imageObj = editJson.data[0];
                 b64Data = imageObj.b64_json || null;
-                revisedPrompt = imageObj.revised_prompt || inpaintPrompt;
+                revisedPrompt = imageObj.revised_prompt || editPrompt;
                 generatedUrl = imageObj.url || null;
-                console.info(`[GenerateImageTool] ✅ Inpainting SUCCESS with ${cand.model}`);
+                console.info(`[GenerateImageTool] ✅ ChatGPT Edit SUCCESS with ${cand}`);
                 break;
               } else {
-                console.warn(`[GenerateImageTool] ${cand.model} failed (${editResponse.status}): ${editResText.slice(0, 300)}`);
-                lastErrorMsg = editJson?.error?.message || `Inpainting error with ${cand.model} (${editResponse.status})`;
+                console.warn(`[GenerateImageTool] ${cand} failed (${editResponse.status}): ${editResText.slice(0, 300)}`);
+                lastErrorMsg = editJson?.error?.message || `Edit error with ${cand} (${editResponse.status})`;
                 if (editResponse.status === 401 || (editResText && (editResText.includes('insufficient_quota') || editResText.includes('billing_hard_limit_reached')))) {
                   throw new Error(lastErrorMsg);
                 }
               }
             } catch (candErr: any) {
-              console.warn(`[GenerateImageTool] Error calling ${cand.model}:`, candErr.message);
+              console.warn(`[GenerateImageTool] Error calling ${cand}:`, candErr.message);
               lastErrorMsg = candErr.message;
               if (candErr.message?.includes('insufficient_quota') || candErr.message?.includes('invalid_api_key')) {
                 throw candErr;
@@ -510,101 +446,28 @@ Important:
         }
       }
 
-      // ══════════════════════════════════════════════════════════════════════════
-      // PATH B: STANDARD EDIT — Image attached but NOT inpainting
-      // ══════════════════════════════════════════════════════════════════════════
-      if (!b64Data && !generatedUrl && hasImageForEdit && !isInpainting) {
-        try {
-          let imgBuffer: ArrayBuffer | null = null;
-          const rawDataUrl = targetImage.data || targetImage.content;
-          if (rawDataUrl && typeof rawDataUrl === 'string') {
-            const base64Data = rawDataUrl.includes(',') ? rawDataUrl.split(',')[1] : rawDataUrl;
-            const binaryStr = atob(base64Data);
-            const len = binaryStr.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-              bytes[i] = binaryStr.charCodeAt(i);
-            }
-            imgBuffer = bytes.buffer;
-          } else if (targetImage.url) {
-            const imgRes = await fetch(targetImage.url);
-            if (imgRes.ok) {
-              imgBuffer = await imgRes.arrayBuffer();
-            }
+      // If an image was provided for editing but editing failed, STOP.
+      // NEVER fall back to DALL-E 3 text-to-image from scratch when the user asked to edit an existing photo!
+      if (!b64Data && !generatedUrl && hasImageForEdit) {
+        console.error(`[GenerateImageTool] Image edit failed across all models: ${lastErrorMsg}`);
+        return {
+          success: false,
+          error: {
+            code: 'EDIT_FAILED',
+            message: `Could not edit the photo: ${lastErrorMsg || 'The edit model failed to process the request'}. Please try again.`
           }
-
-          if (imgBuffer) {
-            const imageBlob = new Blob([imgBuffer], { type: targetImage.type || 'image/png' });
-            const editCandidates = [
-              { model: 'chatgpt-image-latest' },
-              { model: 'gpt-image-2.5-sunburst' },
-              { model: 'gpt-image-2' },
-              { model: 'gpt-image-1' },
-            ];
-
-            for (const cand of editCandidates) {
-              try {
-                const formData = new FormData();
-                formData.append('image', imageBlob, targetImage.name || 'image.png');
-                formData.append('prompt', prompt);
-                formData.append('model', cand.model);
-                formData.append('n', '1');
-
-                console.info(`[GenerateImageTool] Attempting standard /v1/images/edits with ${cand.model}`);
-                const editResponse = await fetch('https://api.openai.com/v1/images/edits', {
-                  method: 'POST',
-                  headers: { 'Authorization': `Bearer ${apiKey}` },
-                  body: formData,
-                  signal: AbortSignal.timeout(60000)
-                });
-
-                const editResText = await editResponse.text();
-                let editJson: any = null;
-                try { editJson = JSON.parse(editResText); } catch {}
-
-                if (editResponse.ok && editJson?.data?.[0]) {
-                  const imageObj = editJson.data[0];
-                  b64Data = imageObj.b64_json || null;
-                  revisedPrompt = imageObj.revised_prompt || prompt;
-                  generatedUrl = imageObj.url || null;
-                  console.info(`[GenerateImageTool] ✅ Standard edit SUCCESS with ${cand.model}`);
-                  break;
-                } else {
-                  console.warn(`[GenerateImageTool] Standard edit with ${cand.model} failed (${editResponse.status}): ${editResText.slice(0, 200)}`);
-                  lastErrorMsg = editJson?.error?.message || `Edit error with ${cand.model} (${editResponse.status})`;
-                }
-              } catch (editErr: any) {
-                console.warn(`[GenerateImageTool] Standard edit error with ${cand.model}:`, editErr.message);
-                lastErrorMsg = editErr.message;
-              }
-            }
-          }
-        } catch (e: any) {
-          console.warn('[GenerateImageTool] Error processing attachment for edit:', e.message);
-        }
+        };
       }
 
       // ══════════════════════════════════════════════════════════════════════════
-      // PATH C: TEXT-TO-IMAGE GENERATION — Strictly for brand new prompts without an image
+      // PATH 2: TEXT-TO-IMAGE GENERATION — Strictly for brand new prompts without an image
       // ══════════════════════════════════════════════════════════════════════════
       if (!b64Data && !generatedUrl) {
-        if (hasImageForEdit || isInpainting) {
-          // CRITICAL: NEVER fall back to DALL-E 3 from scratch when user wants to edit/inpaint an existing photo!
-          console.error(`[GenerateImageTool] Image edit failed across all models: ${lastErrorMsg}`);
-          return {
-            success: false,
-            error: {
-              code: 'EDIT_FAILED',
-              message: `Could not edit the photo: ${lastErrorMsg || 'The edit model failed to process the request'}. Please try again.`
-            }
-          };
-        }
-
-        const candidateModels = ['dall-e-3', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-1', 'dall-e-2'];
+        const candidateModels = ['chatgpt-image-latest', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-1', 'dall-e-3', 'dall-e-2'];
 
         for (const model of candidateModels) {
           let requestBody: Record<string, any>;
-          if (model === 'gpt-image-2.5-sunburst' || model === 'gpt-image-2.5-flare' || model === 'gpt-image-1') {
+          if (model === 'chatgpt-image-latest' || model === 'gpt-image-2.5-sunburst' || model === 'gpt-image-2.5-flare' || model === 'gpt-image-1') {
             requestBody = {
               model: model,
               prompt: prompt,
