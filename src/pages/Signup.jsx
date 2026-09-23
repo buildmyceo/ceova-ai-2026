@@ -27,7 +27,7 @@ export default function Signup({ onClose, onSwitchToLogin }) {
     const handleEmailSignup = async () => {
         if (!name || !email || !password) return setAuthError("Fill in all fields.");
         setAuthError("Signing up...");
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: { 
@@ -35,8 +35,19 @@ export default function Signup({ onClose, onSwitchToLogin }) {
                 data: { full_name: name }
             }
         });
-        if (error) setAuthError(error.message);
-        else setAuthError("Check your email verification link!");
+        if (error) {
+            const msg = error.message || "";
+            if (msg.toLowerCase().includes("rate limit")) {
+                setAuthError("Email verification limit reached. Try 'Sign up with Google' or ask admin to disable Confirm Email!");
+            } else {
+                setAuthError(msg);
+            }
+        } else if (data?.session) {
+            setAuthError("");
+            // Session established immediately
+        } else {
+            setAuthError("Check your email verification link!");
+        }
     };
 
     // Listen for the oauth-callback deep link event from Tauri (ceova://auth/callback#access_token=...)
