@@ -417,20 +417,40 @@ export default function Home({ session }) {
                 if (file.isLibraryItem || (file.url && !((file instanceof Blob) || (file instanceof File)))) {
                     let libraryContent = file.content || file.snippet || null;
                     let libraryData = file.data || null;
-
-                    // If it's a PDF from library with a URL and content hasn't been extracted yet, fetch and extract it!
+                    const driveId = file.drive_id || (file.id && !String(file.id).includes('-') ? file.id : null);
                     const isLibPdf = (file.type && file.type.includes('pdf')) || (file.name && file.name.toLowerCase().endsWith('.pdf'));
-                    if (!libraryContent && isLibPdf && file.url) {
+
+                    // If it's a PDF from Google Drive or library and content hasn't been extracted yet, fetch and extract it!
+                    if (!libraryContent && isLibPdf) {
                         try {
                             const { extractPdfContent } = await import('../utils/pdfExtractor.js');
-                            const pdfRes = await fetch(file.url);
-                            if (pdfRes.ok) {
-                                const blob = await pdfRes.blob();
+                            let blob = null;
+
+                            // If it's from Google Drive, use Google access token
+                            const googleToken = localStorage.getItem('google_provider_token');
+                            if (driveId && googleToken) {
+                                const driveRes = await fetch(`https://www.googleapis.com/drive/v3/files/${driveId}?alt=media`, {
+                                    headers: { Authorization: `Bearer ${googleToken}` }
+                                });
+                                if (driveRes.ok) {
+                                    blob = await driveRes.blob();
+                                }
+                            }
+
+                            // If not Google Drive or token fetch failed, try direct file.url
+                            if (!blob && file.url) {
+                                const pdfRes = await fetch(file.url);
+                                if (pdfRes.ok) {
+                                    blob = await pdfRes.blob();
+                                }
+                            }
+
+                            if (blob) {
                                 const extracted = await extractPdfContent(blob);
-                                if (extracted.text) {
+                                if (extracted?.text) {
                                     libraryContent = extracted.text;
                                 }
-                                if (!libraryData && extracted.pageImages?.length > 0) {
+                                if (!libraryData && extracted?.pageImages?.length > 0) {
                                     libraryData = extracted.pageImages[0];
                                 }
                             }
@@ -442,11 +462,12 @@ export default function Home({ session }) {
                     currentAttachments.push({
                         name: file.name,
                         url: file.url || file.web_view_link || '',
+                        drive_id: driveId,
                         data: libraryData,
                         content: libraryContent,
                         type: file.type || (isLibPdf ? 'application/pdf' : 'application/octet-stream'),
                         size: file.size || 0,
-                        source: file.source,
+                        source: file.source || (driveId ? 'gdrive' : undefined),
                         snippet: file.snippet,
                         from_sender: file.from_sender,
                         thread_id: file.thread_id || null,

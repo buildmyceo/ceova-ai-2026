@@ -9,6 +9,7 @@ import { CloudDevOrchestrator } from '../_shared/ai/cloud-dev-orchestrator.ts';
 import { TokenOptimizerService } from '../_shared/ai/token-optimizer.ts';
 import { MemoryRetriever } from '../_shared/ai/memory-retriever.ts';
 import { MemoryExtractor } from '../_shared/ai/memory-extractor.ts';
+import { fetchGoogleDriveFileBytes } from "../_shared/services/google-auth.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MAX_HISTORY_MESSAGES  = 15;  // Reduced from 20 to cut token usage
@@ -864,12 +865,29 @@ STRICT RULES:
 
                         if (!isImage) {
                             let fileText = att.content || att.snippet || "";
-                            if (!fileText && att.url) {
+                            if (!fileText && (att.url || att.drive_id)) {
                                 if (isPdf) {
                                     try {
-                                        const docRes = await fetch(att.url);
-                                        if (docRes.ok) {
-                                            const buf = await docRes.arrayBuffer();
+                                        let buf: ArrayBuffer | null = null;
+                                        const isGDrive = att.source === 'gdrive' || !!att.drive_id || (att.url && (att.url.includes('drive.google.com') || att.url.includes('googleusercontent.com')));
+
+                                        // 1. Try Google Drive API with OAuth if from Drive
+                                        if (isGDrive && user?.id) {
+                                            const driveRes = await fetchGoogleDriveFileBytes(user.id, att.drive_id || att.url);
+                                            if (driveRes?.data) {
+                                                buf = driveRes.data;
+                                            }
+                                        }
+
+                                        // 2. Direct fetch fallback
+                                        if (!buf && att.url) {
+                                            const docRes = await fetch(att.url);
+                                            if (docRes.ok) {
+                                                buf = await docRes.arrayBuffer();
+                                            }
+                                        }
+
+                                        if (buf) {
                                             const { extractText } = await import('https://esm.sh/unpdf@1.8.1');
                                             const res = await extractText(new Uint8Array(buf), { mergePages: true });
                                             const extracted = typeof res.text === 'string' ? res.text : (Array.isArray(res.text) ? res.text.join('\n\n') : '');
@@ -880,12 +898,21 @@ STRICT RULES:
                                     } catch (e: any) {
                                         console.warn("Failed to fetch/extract attached PDF text on server:", e.message);
                                     }
-                                } else if (att.type.includes('text') || att.type.includes('json') || att.type.includes('csv') || att.type.includes('javascript') || att.type.includes('typescript') || (att.name && att.name.match(/\.(txt|md|csv|json|js|jsx|ts|tsx|py|html|css|sql|sh|log|env|yml|yaml|xml)$/i))) {
+                                } else if (att.type?.includes('text') || att.type?.includes('json') || att.type?.includes('csv') || att.type?.includes('javascript') || att.type?.includes('typescript') || (att.name && att.name.match(/\.(txt|md|csv|json|js|jsx|ts|tsx|py|html|css|sql|sh|log|env|yml|yaml|xml)$/i))) {
                                     try {
-                                        const docRes = await fetch(att.url);
-                                        if (docRes.ok) {
-                                            const text = await docRes.text();
-                                            fileText = text.slice(0, 30000);
+                                        const isGDrive = att.source === 'gdrive' || !!att.drive_id || (att.url && (att.url.includes('drive.google.com') || att.url.includes('googleusercontent.com')));
+                                        if (isGDrive && user?.id) {
+                                            const driveRes = await fetchGoogleDriveFileBytes(user.id, att.drive_id || att.url);
+                                            if (driveRes?.data) {
+                                                fileText = new TextDecoder().decode(new Uint8Array(driveRes.data)).slice(0, 30000);
+                                            }
+                                        }
+                                        if (!fileText && att.url) {
+                                            const docRes = await fetch(att.url);
+                                            if (docRes.ok) {
+                                                const text = await docRes.text();
+                                                fileText = text.slice(0, 30000);
+                                            }
                                         }
                                     } catch (e: any) {
                                         console.warn("Failed to fetch attached document text:", e.message);

@@ -1,6 +1,7 @@
 import { Tool, ToolMetadata, ToolContext, ToolResult } from '../types.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
 import { PDFDocument, rgb, degrees, StandardFonts } from 'https://esm.sh/pdf-lib@1.17.1';
+import { fetchGoogleDriveFileBytes } from '../../services/google-auth.ts';
 
 export class PdfToolkitTool implements Tool {
   metadata: ToolMetadata = {
@@ -41,10 +42,33 @@ export class PdfToolkitTool implements Tool {
     }
   };
 
-  private async fetchPdfBytes(url: string): Promise<ArrayBuffer> {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Failed to fetch PDF.');
-    return await res.arrayBuffer();
+  private async fetchPdfBytes(url: string, context?: ToolContext, attachment?: any): Promise<ArrayBuffer> {
+    // 1. If attachment is from Google Drive or URL is Google Drive, fetch via Google Drive API with OAuth
+    const isGDrive = attachment?.source === 'gdrive' || !!attachment?.drive_id || (url && (url.includes('drive.google.com') || url.includes('googleusercontent.com')));
+    if (isGDrive && context?.userId) {
+      try {
+        const driveRes = await fetchGoogleDriveFileBytes(context.userId, attachment?.drive_id || url);
+        if (driveRes?.data) {
+          return driveRes.data;
+        }
+      } catch (gErr: any) {
+        console.warn('[PdfToolkit] Google Drive fetch failed, trying direct:', gErr.message);
+      }
+    }
+
+    // 2. Direct fetch fallback
+    if (url) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          return await res.arrayBuffer();
+        }
+      } catch (fErr: any) {
+        console.warn('[PdfToolkit] Direct fetch failed:', fErr.message);
+      }
+    }
+
+    throw new Error('Failed to fetch PDF. If this file is from Google Drive, please ensure Google Drive is connected.');
   }
 
   private parsePages(pagesStr: string, totalPages: number): number[] {
@@ -155,42 +179,17 @@ export class PdfToolkitTool implements Tool {
 
       if (action === 'read_text') {
         const targetPdf = pdfAttachments[0];
-        if (!targetPdf.url) throw new Error("No URL found for the PDF.");
+        if (!targetPdf.url && !targetPdf.drive_id) throw new Error("No URL or ID found for the PDF.");
         updateStatus('Reading PDF text...');
-        const bytes = await this.fetchPdfBytes(targetPdf.url);
+        const bytes = await this.fetchPdfBytes(targetPdf.url || '', context, targetPdf);
         try {
-          // Extract raw text from PDF content streams using pdf-lib
-          const pdfDoc = await PDFDocument.load(bytes);
-          const pageCount = pdfDoc.getPageCount();
+          const { extractText } = await import('https://esm.sh/unpdf@1.8.1');
+          const res = await extractText(new Uint8Array(bytes), { mergePages: true });
+          const extracted = typeof res.text === 'string' ? res.text : (Array.isArray(res.text) ? res.text.join('\n\n') : '');
+          const pageCount = res.totalPages || 1;
           
-          // Use a basic approach: extract any readable ASCII text from the raw bytes
-          const rawBytes = new Uint8Array(bytes);
-          const rawText = new TextDecoder('utf-8', { fatal: false }).decode(rawBytes);
-          
-          // Extract text between BT and ET markers (PDF text objects)
-          const textChunks: string[] = [];
-          const btEtRegex = /BT([\s\S]*?)ET/g;
-          let btMatch;
-          while ((btMatch = btEtRegex.exec(rawText)) !== null) {
-            const block = btMatch[1];
-            // Extract strings from parentheses (Tj, TJ operators)
-            const strRegex = /\(([^)]*)\)/g;
-            let strMatch;
-            while ((strMatch = strRegex.exec(block)) !== null) {
-              const str = strMatch[1]
-                .replace(/\\n/g, '\n')
-                .replace(/\\r/g, '\r')
-                .replace(/\\t/g, '\t')
-                .replace(/\\\(/g, '(')
-                .replace(/\\\)/g, ')')
-                .replace(/\\\\/g, '\\');
-              if (str.trim().length > 0) textChunks.push(str);
-            }
-          }
-          
-          const extractedText = textChunks.join(' ').trim();
-          const resultText = extractedText.length > 0
-            ? `PDF Text (${pageCount} pages):\n\n${extractedText}`
+          const resultText = extracted && extracted.trim().length > 0
+            ? `PDF Text (${pageCount} pages):\n\n${extracted.trim()}`
             : `PDF has ${pageCount} pages but no extractable text (may be scanned/image-only). Use image analysis for scanned PDFs.`;
           
           updateStatus('Finished');
@@ -210,8 +209,8 @@ export class PdfToolkitTool implements Tool {
       if (action === 'merge') {
         const mergedPdf = await PDFDocument.create();
         for (const attachment of pdfAttachments) {
-          if (!attachment.url) continue;
-          const bytes = await this.fetchPdfBytes(attachment.url);
+          if (!attachment.url && !attachment.drive_id) continue;
+          const bytes = await this.fetchPdfBytes(attachment.url || '', context, attachment);
           const pdf = await PDFDocument.load(bytes, { password: args.password });
           const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
           copiedPages.forEach((page) => mergedPdf.addPage(page));
@@ -222,8 +221,8 @@ export class PdfToolkitTool implements Tool {
 
       } else {
         const targetPdf = pdfAttachments[0];
-        if (!targetPdf.url) throw new Error("No URL found for the PDF.");
-        const bytes = await this.fetchPdfBytes(targetPdf.url);
+        if (!targetPdf.url && !targetPdf.drive_id) throw new Error("No URL or ID found for the PDF.");
+        const bytes = await this.fetchPdfBytes(targetPdf.url || '', context, targetPdf);
         const pdfDoc = await PDFDocument.load(bytes, { password: args.password });
         const totalPages = pdfDoc.getPageCount();
 

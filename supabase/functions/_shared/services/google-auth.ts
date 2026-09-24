@@ -103,3 +103,50 @@ export class GoogleAuthService {
 }
 
 export const googleAuthService = new GoogleAuthService();
+
+export async function fetchGoogleDriveFileBytes(userId: string, fileIdOrUrl: string): Promise<{ data: ArrayBuffer; mimeType?: string } | null> {
+    if (!userId || !fileIdOrUrl) return null;
+    
+    // Extract driveId if full URL was provided
+    let driveId = fileIdOrUrl.trim();
+    if (driveId.includes('drive.google.com') || driveId.includes('googleusercontent.com') || driveId.includes('googleapis.com')) {
+        const match = driveId.match(/(?:\/d\/|id=|files\/)([a-zA-Z0-9_-]{20,})/);
+        if (match) driveId = match[1];
+    }
+    
+    // Clean up any query params or hashes
+    driveId = driveId.split('?')[0].split('&')[0].split('#')[0];
+
+    const token = await googleAuthService.getValidAccessToken(userId);
+    if (!token) {
+        Logger.WARN(`No Google token found for user ${userId} to fetch drive file.`);
+        return null;
+    }
+
+    try {
+        // 1. First attempt: standard binary media download
+        let res = await fetch(`https://www.googleapis.com/drive/v3/files/${driveId}?alt=media`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+
+        // 2. If it's a Google Workspace doc/sheet/slides (returns 403 cannotDownloadFile), export to PDF
+        if (!res.ok && (res.status === 403 || res.status === 400)) {
+            res = await fetch(`https://www.googleapis.com/drive/v3/files/${driveId}/export?mimeType=application/pdf`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+        }
+
+        if (!res.ok) {
+            const errText = await res.text().catch(() => '');
+            Logger.WARN(`Failed to fetch Drive file ${driveId}: HTTP ${res.status} - ${errText}`);
+            return null;
+        }
+
+        const contentType = res.headers.get('content-type') || 'application/pdf';
+        const buffer = await res.arrayBuffer();
+        return { data: buffer, mimeType: contentType };
+    } catch (err: any) {
+        Logger.ERROR(`Error downloading Google Drive file ${driveId}: ${err.message}`);
+        return null;
+    }
+}
