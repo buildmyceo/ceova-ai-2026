@@ -415,16 +415,42 @@ export default function Home({ session }) {
 
             for (let file of files) {
                 if (file.isLibraryItem || (file.url && !((file instanceof Blob) || (file instanceof File)))) {
+                    let libraryContent = file.content || file.snippet || null;
+                    let libraryData = file.data || null;
+
+                    // If it's a PDF from library with a URL and content hasn't been extracted yet, fetch and extract it!
+                    const isLibPdf = (file.type && file.type.includes('pdf')) || (file.name && file.name.toLowerCase().endsWith('.pdf'));
+                    if (!libraryContent && isLibPdf && file.url) {
+                        try {
+                            const { extractPdfContent } = await import('../utils/pdfExtractor.js');
+                            const pdfRes = await fetch(file.url);
+                            if (pdfRes.ok) {
+                                const blob = await pdfRes.blob();
+                                const extracted = await extractPdfContent(blob);
+                                if (extracted.text) {
+                                    libraryContent = extracted.text;
+                                }
+                                if (!libraryData && extracted.pageImages?.length > 0) {
+                                    libraryData = extracted.pageImages[0];
+                                }
+                            }
+                        } catch (libPdfErr) {
+                            console.warn("Failed to extract library PDF text:", libPdfErr);
+                        }
+                    }
+
                     currentAttachments.push({
                         name: file.name,
                         url: file.url || file.web_view_link || '',
-                        data: file.data || null,
-                        content: file.content || null,
-                        type: file.type || 'application/octet-stream',
+                        data: libraryData,
+                        content: libraryContent,
+                        type: file.type || (isLibPdf ? 'application/pdf' : 'application/octet-stream'),
                         size: file.size || 0,
                         source: file.source,
                         snippet: file.snippet,
-                        from_sender: file.from_sender
+                        from_sender: file.from_sender,
+                        thread_id: file.thread_id || null,
+                        gmail_id: file.gmail_id || null
                     });
                     continue;
                 }
@@ -470,6 +496,23 @@ export default function Home({ session }) {
                         }
                     }
 
+                    // 2.5. Extract text & visual renders from PDF documents under 25MB
+                    const isPdf = (file.type && file.type.includes('pdf')) || (file.name && file.name.toLowerCase().endsWith('.pdf'));
+                    if (isPdf && file.size < 25 * 1024 * 1024) {
+                        try {
+                            const { extractPdfContent } = await import('../utils/pdfExtractor.js');
+                            const extracted = await extractPdfContent(file);
+                            if (extracted.text) {
+                                textContent = extracted.text;
+                            }
+                            if (!dataUrl && extracted.pageImages && extracted.pageImages.length > 0) {
+                                dataUrl = extracted.pageImages[0];
+                            }
+                        } catch (pdfErr) {
+                            console.warn("Failed to extract PDF content:", pdfErr);
+                        }
+                    }
+
                     const { error: uploadError } = await supabase.storage
                         .from('attachments')
                         .upload(filePath, file);
@@ -493,19 +536,20 @@ export default function Home({ session }) {
                         // ignore and use publicUrl
                     }
 
-                    const fileCategory = file.type.startsWith('image/') ? 'images' 
-                                       : file.type.startsWith('video/') ? 'videos' 
-                                       : file.type.startsWith('audio/') ? 'audio' 
-                                       : file.type.includes('pdf') ? 'pdfs' 
+                    const fileCategory = file.type?.startsWith('image/') ? 'images' 
+                                       : file.type?.startsWith('video/') ? 'videos' 
+                                       : file.type?.startsWith('audio/') ? 'audio' 
+                                       : isPdf ? 'pdfs' 
                                        : 'documents';
                                        
                     const { error: dbError } = await supabase.from('files').insert({
                         user_id: session.user.id,
                         storage_source: 'local',
                         name: file.name,
-                        mime_type: file.type,
+                        mime_type: file.type || (isPdf ? 'application/pdf' : 'application/octet-stream'),
                         category: fileCategory,
                         size: file.size,
+                        ocr_text: textContent ? textContent.slice(0, 10000) : null,
                         web_download_link: effectiveUrl,
                         web_view_link: effectiveUrl,
                     });
@@ -520,7 +564,7 @@ export default function Home({ session }) {
                         public_url: publicUrl,
                         data: dataUrl,
                         content: textContent,
-                        type: file.type,
+                        type: file.type || (isPdf ? 'application/pdf' : 'application/octet-stream'),
                         size: file.size,
                         path: filePath
                     });

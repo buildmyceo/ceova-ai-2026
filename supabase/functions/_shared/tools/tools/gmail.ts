@@ -95,10 +95,27 @@ export const GmailConnectorTool: Tool = {
       }
 
       // Handle common parameter aliases
-      const recipient = args.recipient || args.to;
-      const subject = args.subject;
-      const body = args.body || args.message;
+      let recipient = args.recipient || args.to;
+      let subject = args.subject;
+      let body = args.body || args.message;
+      let threadId = args.thread_id;
 
+      // Auto-populate from attached email if present in conversation context
+      const attachedEmail = (context.attachments || []).find((a: any) =>
+        a.thread_id || a.from_sender || a.source === 'gmail' || a.type === 'message/rfc822'
+      );
+      if (attachedEmail) {
+        if (!threadId && attachedEmail.thread_id) {
+          threadId = attachedEmail.thread_id;
+        }
+        if (!recipient && attachedEmail.from_sender) {
+          const emailMatch = attachedEmail.from_sender.match(/<([^>]+)>/);
+          recipient = emailMatch ? emailMatch[1] : attachedEmail.from_sender.trim();
+        }
+        if (!subject && attachedEmail.name) {
+          subject = attachedEmail.name.startsWith("Re:") ? attachedEmail.name : `Re: ${attachedEmail.name}`;
+        }
+      }
 
       // Fetch attachments if any
       let fetchedAttachments: any[] = [];
@@ -147,7 +164,7 @@ export const GmailConnectorTool: Tool = {
         case "draft_email":
           return await draftEmail(accessToken, recipient, subject, body, fetchedAttachments);
         case "reply_email":
-          return await replyEmail(accessToken, args.thread_id, recipient, subject, body, fetchedAttachments);
+          return await replyEmail(accessToken, threadId, recipient, subject, body, fetchedAttachments);
         case "list_labels":
           return await listLabels(accessToken);
         default:
@@ -250,7 +267,20 @@ async function draftEmail(token: string, to: string, subject: string, body: stri
 }
 
 async function replyEmail(token: string, threadId: string, to: string, subject: string, body: string, attachments: any[] = []): Promise<ToolResult> {
-  if (!threadId || !to || !subject || !body) throw new Error("thread_id, recipient, subject, and body are required to reply.");
+  if (!threadId || !to || !subject || !body) {
+    const missing = [];
+    if (!threadId) missing.push("thread_id");
+    if (!to) missing.push("recipient");
+    if (!subject) missing.push("subject");
+    if (!body) missing.push("body");
+    return {
+      success: false,
+      error: {
+        code: "MISSING_REQUIRED_FIELDS",
+        message: `Missing required fields to reply to Gmail thread: ${missing.join(', ')}. If replying to an attached report or PDF without an active Gmail thread, draft the response in text directly or search for the email thread first using search_emails.`
+      }
+    };
+  }
   if (!to.includes("@")) {
     return {
       success: false,

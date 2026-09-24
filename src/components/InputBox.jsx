@@ -306,16 +306,20 @@ export default function InputBox({
 
     const attachLibraryItem = (item) => {
         const isImg = item.kind === 'image' || item.mime_type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(item.name || '');
+        const isEmail = item.source === 'gmail' || item.category === 'mail' || item.mime_type === 'message/rfc822' || !!item.from_sender;
         const driveId = item.drive_id || (item.id && !String(item.id).includes('-') ? item.id : null);
         const resolvedUrl = item.url || item.web_view_link || item.thumbnail_url || (driveId ? `https://lh3.googleusercontent.com/d/${driveId}=s400` : '');
         const pseudoFile = {
-            name: item.name || 'Library File',
-            type: item.mime_type || (isImg ? 'image/jpeg' : 'application/octet-stream'),
+            name: item.name || (isEmail ? 'Attached Email' : 'Library File'),
+            type: item.mime_type || (isImg ? 'image/jpeg' : (isEmail ? 'message/rfc822' : 'application/octet-stream')),
             url: resolvedUrl,
             thumbnail_url: item.thumbnail_url || resolvedUrl,
-            source: item.source,
+            source: item.source || (isEmail ? 'gmail' : undefined),
             snippet: item.snippet,
             from_sender: item.from_sender,
+            thread_id: item.thread_id,
+            gmail_id: item.gmail_id,
+            content: item.content || item.body || item.snippet || item.ocr_text || null,
             isLibraryItem: true,
             size: item.size || 0,
         };
