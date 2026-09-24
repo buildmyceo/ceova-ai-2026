@@ -17,7 +17,7 @@ export const GmailConnectorTool: Tool = {
       properties: {
         action: {
           type: "string",
-          description: "The Gmail action to perform",
+          description: "The Gmail action to perform. MANDATORY TWO-WAY DRAFT POLICY: When writing or replying to an email, ALWAYS choose 'draft_email' first. Only use 'send_email' or 'reply_email' after the user has reviewed the draft in chat and explicitly instructed to send it.",
           enum: ["read_inbox", "search_emails", "read_email", "send_email", "draft_email", "reply_email", "list_labels"]
         },
         recipient: {
@@ -55,7 +55,7 @@ export const GmailConnectorTool: Tool = {
         },
         thread_id: {
           type: "string",
-          description: "The thread ID to reply to (for reply_email)"
+          description: "The thread ID to reply or draft to (for reply_email or draft_email)"
         }
       },
       required: ["action"]
@@ -82,13 +82,13 @@ export const GmailConnectorTool: Tool = {
       let action = args.action;
       if (!action) {
         if (args.recipient || args.to || args.subject || args.body) {
-          action = "send_email";
+          action = "draft_email";
         } else if (args.query) {
           action = "search_emails";
         } else if (args.message_id) {
           action = "read_email";
         } else if (args.thread_id) {
-          action = "reply_email";
+          action = "draft_email";
         } else {
           action = "read_inbox";
         }
@@ -115,6 +115,46 @@ export const GmailConnectorTool: Tool = {
         if (!subject && attachedEmail.name) {
           subject = attachedEmail.name.startsWith("Re:") ? attachedEmail.name : `Re: ${attachedEmail.name}`;
         }
+      }
+
+      // If action is reply_email or send_email and fields are missing, inspect conversation history for recent draft
+      if ((action === "reply_email" || action === "send_email") && (!recipient || !body) && Array.isArray(context.history)) {
+        for (let i = context.history.length - 1; i >= 0; i--) {
+          const content = context.history[i]?.content || "";
+          if (content.includes("Draft Created in Gmail") || content.includes("**Draft Preview:**") || content.includes("**Message Preview:**")) {
+            if (!recipient) {
+              const toMatch = content.match(/\*\*To:\*\*\s*([^\s\n]+@[^\s\n]+)/);
+              if (toMatch) recipient = toMatch[1];
+            }
+            if (!subject) {
+              const subMatch = content.match(/\*\*Subject:\*\*\s*([^\n]+)/);
+              if (subMatch) subject = subMatch[1].trim();
+            }
+            if (!threadId) {
+              const threadMatch = content.match(/\*\*Thread ID:\*\*\s*([^\s\n]+)/);
+              if (threadMatch) threadId = threadMatch[1];
+            }
+            if (!body) {
+              const bodyMatch = content.match(/(?:\*\*Message Preview:\*\*|\*\*Draft Preview:\*\*)\s*\n([\s\S]*?)(?:\n\s*---\n|\n\s*I have (?:saved|created) this draft|$)/);
+              if (bodyMatch) body = bodyMatch[1].trim();
+            }
+            break;
+          }
+        }
+      }
+
+      // MANDATORY TWO-WAY DRAFTING POLICY:
+      // If the action is send_email or reply_email, verify if the user has explicitly confirmed sending.
+      // If this is an initial instruction to compose/reply (e.g. "reply by saying...", "write an email to...", "send an email saying..."),
+      // redirect to draft_email so the user can review in chat and Gmail first.
+      const userMsg = (context.message || "").toLowerCase().trim();
+      const isComposingOrNewRequest = /\b(?:saying|tell\s+them|write|compose|draft|replay|reply\s+by|reply\s+to|send\s+an\s+email\s+to|send\s+a\s+mail\s+to|send\s+email\s+to)\b/i.test(userMsg);
+      const isExplicitSendConfirmation = /^(?:yes|send|send\s*it|send\s*now|send\s*the\s*email|send\s*the\s*mail|send\s*the\s*reply|send\s*reply|proceed|looks\s*good|confirm|approved|approve|go\s*ahead|please\s*send|ok\s*send|okay\s*send)(?:[\s!,.]|$)/i.test(userMsg);
+      const isForcedSend = args.force_send === true || args.confirmed === true;
+
+      if ((action === "send_email" || action === "reply_email") && !isForcedSend && !isExplicitSendConfirmation && isComposingOrNewRequest) {
+        Logger.INFO(`Two-way draft policy: intercepting ${action} to draft_email for user review first.`);
+        action = "draft_email";
       }
 
       // Fetch attachments if any
@@ -162,7 +202,7 @@ export const GmailConnectorTool: Tool = {
         case "send_email":
           return await sendEmail(accessToken, recipient, subject, body, fetchedAttachments);
         case "draft_email":
-          return await draftEmail(accessToken, recipient, subject, body, fetchedAttachments);
+          return await draftEmail(accessToken, recipient, subject, body, fetchedAttachments, threadId);
         case "reply_email":
           return await replyEmail(accessToken, threadId, recipient, subject, body, fetchedAttachments);
         case "list_labels":
@@ -248,7 +288,7 @@ async function sendEmail(token: string, to: string, subject: string, body: strin
   return { success: true, data: { text: `✅ Email successfully sent to ${to}.` } };
 }
 
-async function draftEmail(token: string, to: string, subject: string, body: string, attachments: any[] = []): Promise<ToolResult> {
+async function draftEmail(token: string, to: string, subject: string, body: string, attachments: any[] = [], threadId?: string): Promise<ToolResult> {
   if (!to || !subject || !body) {
     const missing = [];
     if (!to) missing.push("recipient");
@@ -266,12 +306,38 @@ async function draftEmail(token: string, to: string, subject: string, body: stri
     };
   }
   
-  const raw = createRawEmail(to, subject, body, undefined, attachments);
+  // Resolve threadId if missing but subject or to is present
+  let resolvedThreadId = threadId;
+  if (!resolvedThreadId && (subject || to)) {
+    try {
+      const cleanSubject = (subject || "").replace(/^Re:\s*/i, "").trim();
+      const query = cleanSubject ? `subject:"${cleanSubject}"` : (to ? `to:${to}` : "");
+      if (query) {
+        const searchUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=1`;
+        const searchRes = await fetch(searchUrl, { headers: { Authorization: `Bearer ${token}` } });
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          if (searchData.messages && searchData.messages[0]?.threadId) {
+            resolvedThreadId = searchData.messages[0].threadId;
+          }
+        }
+      }
+    } catch (e: any) {
+      Logger.WARN(`Failed to search matching thread for draft: ${e.message}`);
+    }
+  }
+
+  const raw = createRawEmail(to, subject, body, resolvedThreadId, attachments);
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/drafts`;
+  const draftMessage: any = { raw };
+  if (resolvedThreadId) {
+    draftMessage.threadId = resolvedThreadId;
+  }
+
   const res = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ message: { raw } })
+    body: JSON.stringify({ message: draftMessage })
   });
 
   if (!res.ok) {
@@ -281,7 +347,29 @@ async function draftEmail(token: string, to: string, subject: string, body: stri
     }
     throw new Error(errorText);
   }
-  return { success: true, data: { text: `📝 Email draft to ${to} created successfully.` } };
+
+  const responseData = await res.json().catch(() => ({}));
+  const draftId = responseData?.id;
+
+  const previewText = `📝 **Draft Created in Gmail**\n\n` +
+    `**To:** ${to}\n` +
+    `**Subject:** ${subject}\n` +
+    (resolvedThreadId ? `**Thread ID:** ${resolvedThreadId}\n\n` : `\n`) +
+    `**Message Preview:**\n${body}\n\n` +
+    `---\n` +
+    `I have created this draft in your Gmail and provided the preview above. Would you like me to send it now?`;
+
+  return {
+    success: true,
+    data: {
+      text: previewText,
+      draft_id: draftId,
+      thread_id: resolvedThreadId,
+      recipient: to,
+      subject,
+      body
+    }
+  };
 }
 
 async function replyEmail(token: string, threadId: string | undefined, to: string, subject: string, body: string, attachments: any[] = []): Promise<ToolResult> {
@@ -435,7 +523,7 @@ function createRawEmail(to: string, subject: string, body: string, threadId?: st
     message.push(`--${boundary}`);
     message.push("Content-Type: text/html; charset=utf-8");
     message.push("");
-    message.push(body.replace(/\\n/g, "<br>"));
+    message.push(body.replace(/\\n/g, "<br>").replace(/\r?\n/g, "<br>"));
     
     for (const att of attachments) {
       message.push("");
@@ -451,7 +539,7 @@ function createRawEmail(to: string, subject: string, body: string, threadId?: st
   } else {
     message.push("Content-Type: text/html; charset=utf-8");
     message.push("");
-    message.push(body.replace(/\\n/g, "<br>"));
+    message.push(body.replace(/\\n/g, "<br>").replace(/\r?\n/g, "<br>"));
   }
   
   const raw = message.join("\r\n");

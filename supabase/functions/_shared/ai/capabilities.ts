@@ -22,7 +22,7 @@ export interface Capability {
 export const CAPABILITIES: Capability[] = [
   {
     id: "gmail",
-    description: "Read, search, send, reply, draft and organize Gmail. IMPORTANT: When asked to send an email, ALWAYS use draft_email first. Tell the user you created a draft and ask for confirmation. ONLY use send_email if the user explicitly confirms.",
+    description: "Read, search, send, reply, draft and organize Gmail. MANDATORY TWO-WAY DRAFT WORKFLOW: When asked to send OR reply to an email, ALWAYS use draft_email first (pass thread_id if replying to a thread). Present the full draft preview in chat (To, Subject, Body) and ask user to confirm before sending. ONLY use send_email or reply_email after the user explicitly confirms (e.g. 'send it', 'yes').",
     keywords: ["email", "mail", "gmail", "send", "inbox", "reply", "draft", "message", "compose", "unread", "attachment", "forward", "cc", "bcc", "subject"],
     toolIds: ["gmail_connector"],
     memoryCategories: ["email", "contacts", "communication"],
