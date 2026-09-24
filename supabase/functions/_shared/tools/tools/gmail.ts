@@ -213,11 +213,20 @@ async function readSpecificEmail(token: string, messageId: string): Promise<Tool
 }
 
 async function sendEmail(token: string, to: string, subject: string, body: string, attachments: any[] = []): Promise<ToolResult> {
-  if (!to || !subject || !body) throw new Error("recipient, subject, and body are required to send an email.");
+  if (!to || !subject || !body) {
+    const missing = [];
+    if (!to) missing.push("recipient");
+    if (!subject) missing.push("subject");
+    if (!body) missing.push("body");
+    return {
+      success: false,
+      error: { code: "MISSING_REQUIRED_FIELDS", message: `Cannot send email: missing ${missing.join(', ')}. Please specify the recipient's email address.` }
+    };
+  }
   if (!to.includes("@")) {
     return {
       success: false,
-      error: { code: "INVALID_RECIPIENT", message: `Recipient must be a valid email address containing '@'. You passed: "${to}"` }
+      error: { code: "INVALID_RECIPIENT", message: `Recipient must be a valid email address containing '@'. You passed: "${to}". Please provide their valid email address.` }
     };
   }
   
@@ -240,11 +249,20 @@ async function sendEmail(token: string, to: string, subject: string, body: strin
 }
 
 async function draftEmail(token: string, to: string, subject: string, body: string, attachments: any[] = []): Promise<ToolResult> {
-  if (!to || !subject || !body) throw new Error("recipient, subject, and body are required to draft an email.");
+  if (!to || !subject || !body) {
+    const missing = [];
+    if (!to) missing.push("recipient");
+    if (!subject) missing.push("subject");
+    if (!body) missing.push("body");
+    return {
+      success: false,
+      error: { code: "MISSING_REQUIRED_FIELDS", message: `Cannot draft email: missing ${missing.join(', ')}. Please specify the recipient's email address.` }
+    };
+  }
   if (!to.includes("@")) {
     return {
       success: false,
-      error: { code: "INVALID_RECIPIENT", message: `Recipient must be a valid email address containing '@'. You passed: "${to}"` }
+      error: { code: "INVALID_RECIPIENT", message: `Recipient must be a valid email address containing '@'. You passed: "${to}". Please provide their valid email address.` }
     };
   }
   
@@ -266,44 +284,73 @@ async function draftEmail(token: string, to: string, subject: string, body: stri
   return { success: true, data: { text: `📝 Email draft to ${to} created successfully.` } };
 }
 
-async function replyEmail(token: string, threadId: string, to: string, subject: string, body: string, attachments: any[] = []): Promise<ToolResult> {
-  if (!threadId || !to || !subject || !body) {
-    const missing = [];
-    if (!threadId) missing.push("thread_id");
-    if (!to) missing.push("recipient");
-    if (!subject) missing.push("subject");
-    if (!body) missing.push("body");
-    return {
-      success: false,
-      error: {
-        code: "MISSING_REQUIRED_FIELDS",
-        message: `Missing required fields to reply to Gmail thread: ${missing.join(', ')}. If replying to an attached report or PDF without an active Gmail thread, draft the response in text directly or search for the email thread first using search_emails.`
+async function replyEmail(token: string, threadId: string | undefined, to: string, subject: string, body: string, attachments: any[] = []): Promise<ToolResult> {
+  // If threadId is missing, attempt to find matching thread by subject or recipient in Gmail
+  let resolvedThreadId = threadId;
+  if (!resolvedThreadId && (subject || to)) {
+    try {
+      const cleanSubject = (subject || "").replace(/^Re:\s*/i, "").trim();
+      const query = cleanSubject ? `subject:"${cleanSubject}"` : (to ? `to:${to}` : "");
+      if (query) {
+        const searchUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=1`;
+        const searchRes = await fetch(searchUrl, { headers: { Authorization: `Bearer ${token}` } });
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          if (searchData.messages && searchData.messages[0]?.threadId) {
+            resolvedThreadId = searchData.messages[0].threadId;
+          }
+        }
       }
-    };
-  }
-  if (!to.includes("@")) {
-    return {
-      success: false,
-      error: { code: "INVALID_RECIPIENT", message: `Recipient must be a valid email address containing '@'. You passed: "${to}"` }
-    };
-  }
-  
-  const raw = createRawEmail(to, subject, body, threadId, attachments);
-  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ raw, threadId })
-  });
-
-  if (!res.ok) {
-    const errorText = await res.text();
-    if (res.status === 403 && errorText.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT")) {
-      throw new Error("Missing permission to reply to emails. Please go to your CEOVA Library and click 'Connect / Sync Google Mail' to grant CEOVA permission to send emails.");
+    } catch (e: any) {
+      Logger.WARN(`Failed to search matching thread: ${e.message}`);
     }
-    throw new Error(errorText);
   }
-  return { success: true, data: { text: `✅ Reply successfully sent on thread ${threadId}.` } };
+
+  // If we have recipient, subject, and body:
+  if (to && subject && body) {
+    if (!to.includes("@")) {
+      return {
+        success: false,
+        error: { code: "INVALID_RECIPIENT", message: `Recipient must be a valid email address containing '@'. You passed: "${to}". Please provide their email address.` }
+      };
+    }
+
+    // If no existing thread was found, send as fresh email with Re: subject
+    if (!resolvedThreadId) {
+      Logger.INFO(`No Gmail thread found for reply, sending as new email to ${to}`);
+      return await sendEmail(token, to, subject, body, attachments);
+    }
+
+    // Send reply on thread
+    const raw = createRawEmail(to, subject, body, resolvedThreadId, attachments);
+    const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ raw, threadId: resolvedThreadId })
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      if (res.status === 403 && errorText.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT")) {
+        throw new Error("Missing permission to reply to emails. Please go to your CEOVA Library and click 'Connect / Sync Google Mail' to grant CEOVA permission to send emails.");
+      }
+      throw new Error(errorText);
+    }
+    return { success: true, data: { text: `✅ Reply successfully sent on thread ${resolvedThreadId} to ${to}.` } };
+  }
+
+  const missing = [];
+  if (!to) missing.push("recipient email address");
+  if (!subject) missing.push("subject");
+  if (!body) missing.push("message body");
+  return {
+    success: false,
+    error: {
+      code: "MISSING_REQUIRED_FIELDS",
+      message: `Could not send email: missing ${missing.join(', ')}. Please provide the recipient's email address so I can send it.`
+    }
+  };
 }
 
 async function listLabels(token: string): Promise<ToolResult> {
