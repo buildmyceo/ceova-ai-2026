@@ -40,7 +40,7 @@ export const isCeovaItem = (it) => !!it && (
  * ai_generated_files, gmail_emails, and calendar_events.
  * Deduplicates and updates cacheManager.
  */
-export async function fetchUserLibraryItems(userId) {
+export async function fetchUserLibraryItems(userId, options = {}) {
     if (!userId) return [];
 
     const items = [];
@@ -279,14 +279,17 @@ export async function fetchUserLibraryItems(userId) {
                 web_view_link: e.web_view_link,
                 mime_type: 'message/rfc822'
             }));
-        } else {
+        }
+
+        // If forceLiveGoogle or if database has no emails, fetch live from Gmail
+        if (options.forceLiveGoogle || mailList.length === 0) {
             try {
                 const liveMailRes = await fetchGoogleEmails(userId);
-                if (liveMailRes?.success && liveMailRes?.emails) {
+                if (liveMailRes?.success && liveMailRes?.emails && liveMailRes.emails.length > 0) {
                     mailList = liveMailRes.emails;
                 }
             } catch (mErr) {
-                console.warn('[libraryFetchEngine] Live mail fallback error:', mErr);
+                console.warn('[libraryFetchEngine] Live mail fetch error:', mErr);
             }
         }
         mailList.forEach(e => items.push(e));
@@ -331,14 +334,17 @@ export async function fetchUserLibraryItems(userId) {
                     mime_type: 'text/calendar'
                 };
             });
-        } else {
+        }
+
+        // If forceLiveGoogle or if database has no events, fetch live from Calendar
+        if (options.forceLiveGoogle || calList.length === 0) {
             try {
                 const liveCalRes = await fetchGoogleCalendarEvents(userId);
-                if (liveCalRes?.success && liveCalRes?.events) {
+                if (liveCalRes?.success && liveCalRes?.events && liveCalRes.events.length > 0) {
                     calList = liveCalRes.events;
                 }
             } catch (cErr) {
-                console.warn('[libraryFetchEngine] Live calendar fallback error:', cErr);
+                console.warn('[libraryFetchEngine] Live calendar fetch error:', cErr);
             }
         }
         calList.forEach(evt => items.push(evt));

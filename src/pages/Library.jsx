@@ -6,13 +6,14 @@ import {
   Download, ExternalLink, Calendar as CalendarIcon, MessageSquare, Filter,
   Grid3X3, List, ChevronLeft, Sparkles, User, Loader2,
   ZoomIn, Copy, Check, Brain, Paperclip, SortDesc, Zap, MoreVertical,
-  HardDrive, Cloud, RefreshCw, Eye, AlertCircle, Mail, Inbox, Send, Bookmark, MapPin, Users, Video as VideoCam
+  HardDrive, Cloud, RefreshCw, Eye, AlertCircle, Mail, Inbox, Send, Bookmark, MapPin, Users, Video as VideoCam,
+  Plus, Clock
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { syncGoogleDrive, connectGoogleDrive } from '../services/gdriveSyncEngine';
 import { fetchGoogleEmails } from '../services/gmailSyncEngine';
-import { fetchGoogleCalendarEvents } from '../services/gcalendarSyncEngine';
+import { fetchGoogleCalendarEvents, createGoogleCalendarEvent } from '../services/gcalendarSyncEngine';
 import { summarizeDocument, performOCR } from '../services/libraryAIService';
 import { cacheManager } from '../services/CacheManager';
 import { 
@@ -439,6 +440,333 @@ function ActionCard({ item, onPreview, onDownload, onVisit, onDelete }) {
   );
 }
 
+// ─── Add Calendar Event Modal ───────────────────────────────────────────────
+function AddEventModal({ isOpen, onClose, onEventCreated, userId }) {
+  const [title, setTitle] = useState('');
+  const [isAllDay, setIsAllDay] = useState(false);
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [startTime, setStartTime] = useState('10:00');
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [endTime, setEndTime] = useState('11:00');
+  const [location, setLocation] = useState('');
+  const [attendees, setAttendees] = useState('');
+  const [description, setDescription] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      setError('Event title is required');
+      return;
+    }
+    if (!startDate) {
+      setError('Start date is required');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    const parsedAttendees = attendees
+      ? attendees.split(/[,;\s]+/).map(a => a.trim()).filter(a => a.includes('@'))
+      : [];
+
+    const res = await createGoogleCalendarEvent(userId, {
+      title,
+      description,
+      location,
+      startDate,
+      startTime,
+      endDate: endDate || startDate,
+      endTime,
+      isAllDay,
+      attendees: parsedAttendees
+    });
+
+    setLoading(false);
+
+    if (res.success && res.event) {
+      onEventCreated(res.event);
+      onClose();
+    } else {
+      setError(res.error || 'Failed to create event in Google Calendar');
+    }
+  };
+
+  return (
+    <div className="lib-lightbox" onClick={onClose}>
+      <button className="lib-lightbox-close" onClick={onClose}><X size={22} /></button>
+      <div
+        className="lib-lightbox-body"
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--bg-main)',
+          padding: '28px',
+          borderRadius: '16px',
+          border: '1px solid var(--border-color)',
+          maxWidth: '540px',
+          width: '92%',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+          <div style={{ background: 'rgba(56, 189, 248, 0.15)', padding: '10px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <CalendarIcon color="#38bdf8" size={24} />
+          </div>
+          <div>
+            <h3 style={{ color: 'var(--text-main)', fontSize: '18px', fontWeight: 600, margin: 0 }}>Add Calendar Event</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '12px', margin: '2px 0 0' }}>Saves directly to your Google Calendar</p>
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', padding: '10px 14px', color: '#fca5a5', fontSize: '13px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertCircle size={16} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Title */}
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>EVENT TITLE *</label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Product Demo with Team"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'rgba(255,255,255,0.04)',
+                color: 'var(--text-main)',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          {/* All day toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="checkbox"
+              id="isAllDayEvent"
+              checked={isAllDay}
+              onChange={e => setIsAllDay(e.target.checked)}
+              style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+            />
+            <label htmlFor="isAllDayEvent" style={{ fontSize: '13px', color: 'var(--text-main)', cursor: 'pointer', userSelect: 'none' }}>
+              All-day event
+            </label>
+          </div>
+
+          {/* Dates & Times */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>START DATE *</label>
+              <input
+                type="date"
+                required
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'var(--text-main)',
+                  fontSize: '13px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              {!isAllDay && (
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'rgba(255,255,255,0.04)',
+                    color: 'var(--text-main)',
+                    fontSize: '13px',
+                    outline: 'none',
+                    marginTop: '6px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              )}
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>END DATE</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'var(--text-main)',
+                  fontSize: '13px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              {!isAllDay && (
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'rgba(255,255,255,0.04)',
+                    color: 'var(--text-main)',
+                    fontSize: '13px',
+                    outline: 'none',
+                    marginTop: '6px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Location */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>LOCATION / MEET LINK</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                placeholder="Google Meet, Zoom, or office address"
+                value={location}
+                onChange={e => setLocation(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px 9px 34px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'var(--text-main)',
+                  fontSize: '13px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              <MapPin size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            </div>
+          </div>
+
+          {/* Attendees */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>GUESTS / ATTENDEES</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                placeholder="colleague@example.com, client@domain.com"
+                value={attendees}
+                onChange={e => setAttendees(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px 9px 34px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'var(--text-main)',
+                  fontSize: '13px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              <Users size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>DESCRIPTION / AGENDA</label>
+            <textarea
+              rows={3}
+              placeholder="Notes or details about this event..."
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'rgba(255,255,255,0.04)',
+                color: 'var(--text-main)',
+                fontSize: '13px',
+                outline: 'none',
+                resize: 'vertical',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '9px 16px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'transparent',
+                color: 'var(--text-main)',
+                fontSize: '13px',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                padding: '9px 20px',
+                borderRadius: '8px',
+                border: 'none',
+                background: '#38bdf8',
+                color: '#000',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                opacity: loading ? 0.7 : 1
+              }}
+            >
+              {loading ? <Loader2 size={15} className="lib-spin" /> : <Plus size={15} />}
+              <span>{loading ? 'Adding Event...' : 'Add Event'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Library Page Component ──────────────────────────────────────────────
 export default function Library({ session, onBack, switchChat }) {
   const { resolvedTheme } = useTheme();
@@ -459,11 +787,19 @@ export default function Library({ session, onBack, switchChat }) {
   const [aiModal, setAiModal] = useState(null);
   const [emailPreview, setEmailPreview] = useState(null);
   const [eventPreview, setEventPreview] = useState(null);
+  const [showAddEventModal, setShowAddEventModal] = useState(false);
 
   // Raw items
   const [allItems, setAllItems] = useState([]);
 
-  // ── Trigger Storage Services Sync (Google Drive) ─────────────────
+  const handleEventCreated = (newEvent) => {
+    if (!newEvent) return;
+    setAllItems(prev => [newEvent, ...prev]);
+    setSyncNotice(`Event "${newEvent.name}" added to Google Calendar!`);
+    setTimeout(() => setSyncNotice(''), 5000);
+  };
+
+  // ── Trigger Storage Services Sync (Google Drive, Gmail, Google Calendar) ──
   const handleSyncDrive = async () => {
     if (!session?.user?.id) return;
     const userId = session.user.id;
@@ -474,7 +810,7 @@ export default function Library({ session, onBack, switchChat }) {
 
       const res = await syncGoogleDrive(userId);
       console.log('[Library] Drive sync result:', res);
-      if (res.needsAuth) {
+      if (res?.needsAuth) {
         needsAuth = true;
       }
 
@@ -497,7 +833,7 @@ export default function Library({ session, onBack, switchChat }) {
 
       setNeedsDriveAuth(false);
       setSyncNotice('Cloud services synced.');
-      await fetchLibraryData();
+      await fetchLibraryData(true);
     } catch (e) {
       console.warn('Cloud sync error:', e);
       setSyncNotice('Cloud sync error.');
@@ -507,23 +843,25 @@ export default function Library({ session, onBack, switchChat }) {
   };
 
   // ── Fetch Content (Chat messages + Google Drive + Google Mail + Google Calendar) ──
-  const fetchLibraryData = useCallback(async () => {
+  const fetchLibraryData = useCallback(async (forceLive = false) => {
     if (!session?.user?.id) return;
     const userId = session.user.id;
     
-    // Quick load from cache for instant UI
+    // Quick load from cache for instant UI (unless forceLive is requested)
     let loadedFromCache = false;
-    try {
-      const cachedItems = await cacheManager.getLibraryItems();
-      if (cachedItems && cachedItems.length > 0) {
-        setAllItems(cachedItems);
-        const hasGoogleItems = cachedItems.some(i => i.source === 'gdrive' || i.source === 'gmail' || i.source === 'gcalendar');
-        if (hasGoogleItems) setNeedsDriveAuth(false);
-        loadedFromCache = true;
-        setLoading(false);
+    if (!forceLive) {
+      try {
+        const cachedItems = await cacheManager.getLibraryItems();
+        if (cachedItems && cachedItems.length > 0) {
+          setAllItems(cachedItems);
+          const hasGoogleItems = cachedItems.some(i => i.source === 'gdrive' || i.source === 'gmail' || i.source === 'gcalendar');
+          if (hasGoogleItems) setNeedsDriveAuth(false);
+          loadedFromCache = true;
+          setLoading(false);
+        }
+      } catch (cacheErr) {
+        console.warn('[Library] Cache load error:', cacheErr);
       }
-    } catch (cacheErr) {
-      console.warn('[Library] Cache load error:', cacheErr);
     }
     
     if (!loadedFromCache) {
@@ -531,7 +869,7 @@ export default function Library({ session, onBack, switchChat }) {
     }
 
     try {
-      const deduped = await fetchUserLibraryItems(userId);
+      const deduped = await fetchUserLibraryItems(userId, { forceLiveGoogle: forceLive });
       setAllItems(deduped);
       const hasGoogleItems = deduped.some(i => i.source === 'gdrive' || i.source === 'gmail' || i.source === 'gcalendar');
       if (hasGoogleItems) {
@@ -560,6 +898,23 @@ export default function Library({ session, onBack, switchChat }) {
       setTimeout(() => handleSyncDrive(), 1500);
     }
   }, [location?.state?.triggerSync]);
+
+  // Auto-sync when switching to gcalendar or gmail if empty
+  useEffect(() => {
+    if (session?.user?.id && !isSyncing) {
+      if (topTab === 'gcalendar') {
+        const calCount = allItems.filter(isCalendarItem).length;
+        if (calCount === 0) {
+          handleSyncDrive();
+        }
+      } else if (topTab === 'gmail') {
+        const mailCount = allItems.filter(isGmailItem).length;
+        if (mailCount === 0) {
+          handleSyncDrive();
+        }
+      }
+    }
+  }, [topTab]);
 
   // Filter Items by Top Drive Tab (ceova, gdrive, dropbox, gmail, gcalendar, ai)
   const driveItems = allItems.filter(it => {
@@ -796,6 +1151,31 @@ export default function Library({ session, onBack, switchChat }) {
           {topTab === 'ceova' && (
              <button onClick={handleClearCeovaDrive} style={{ background: 'var(--glass)', color: '#ef4444', border: '1px solid #ef444455', padding: '8px 12px', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>Clear CEOVA Drive</button>
           )}
+
+          {/* Add Event Button for Google Calendar */}
+          {topTab === 'gcalendar' && (
+            <button
+              className="lib-btn"
+              onClick={() => setShowAddEventModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '13px',
+                padding: '7px 14px',
+                borderRadius: '8px',
+                border: '1px solid rgba(56, 189, 248, 0.45)',
+                background: 'rgba(56, 189, 248, 0.15)',
+                color: '#38bdf8',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              <Plus size={15} />
+              <span>Add Event</span>
+            </button>
+          )}
+
           {/* Sync Google Services Button */}
           <button
             className="lib-btn"
@@ -885,6 +1265,27 @@ export default function Library({ session, onBack, switchChat }) {
               <span style={{ fontSize: '11px', opacity: 0.7 }}>({s.count})</span>
             </button>
           ))}
+          {topTab === 'gcalendar' && (
+            <button
+              onClick={() => setShowAddEventModal(true)}
+              style={{
+                marginLeft: '12px',
+                padding: '4px 12px',
+                borderRadius: '16px',
+                fontSize: '12px',
+                fontWeight: 600,
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                background: 'rgba(56, 189, 248, 0.15)',
+                color: '#38bdf8',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <Plus size={13} /> Add Event
+            </button>
+          )}
           {syncNotice && (
             <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#6ee7b7' }}>{syncNotice}</span>
           )}
@@ -935,25 +1336,48 @@ export default function Library({ session, onBack, switchChat }) {
                 : 'Upload files or chat with CEOVA to add files here.'}
             </p>
             {(topTab === 'gmail' || topTab === 'gcalendar' || topTab === 'gdrive') && (
-              <button 
-                className="lib-btn" 
-                onClick={handleSyncDrive} 
-                style={{ 
-                  background: '#34d399', 
-                  color: '#000', 
-                  fontWeight: 600, 
-                  padding: '9px 18px', 
-                  borderRadius: '10px', 
-                  border: 'none', 
-                  cursor: 'pointer', 
-                  display: 'inline-flex', 
-                  alignItems: 'center', 
-                  gap: '6px',
-                  fontSize: '13px'
-                }}
-              >
-                <ExternalLink size={14} /> Connect / Sync {topTab === 'gmail' ? 'Google Mail' : topTab === 'gcalendar' ? 'Google Calendar' : 'Google Drive'}
-              </button>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                {topTab === 'gcalendar' && (
+                  <button 
+                    className="lib-btn" 
+                    onClick={() => setShowAddEventModal(true)}
+                    style={{ 
+                      background: '#38bdf8', 
+                      color: '#000', 
+                      fontWeight: 600, 
+                      padding: '9px 18px', 
+                      borderRadius: '10px', 
+                      border: 'none', 
+                      cursor: 'pointer', 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: '6px',
+                      fontSize: '13px'
+                    }}
+                  >
+                    <Plus size={15} /> Add Event
+                  </button>
+                )}
+                <button 
+                  className="lib-btn" 
+                  onClick={handleSyncDrive} 
+                  style={{ 
+                    background: topTab === 'gcalendar' ? 'rgba(56, 189, 248, 0.15)' : '#34d399', 
+                    color: topTab === 'gcalendar' ? '#38bdf8' : '#000', 
+                    border: topTab === 'gcalendar' ? '1px solid rgba(56, 189, 248, 0.3)' : 'none',
+                    fontWeight: 600, 
+                    padding: '9px 18px', 
+                    borderRadius: '10px', 
+                    cursor: 'pointer', 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    gap: '6px',
+                    fontSize: '13px'
+                  }}
+                >
+                  <ExternalLink size={14} /> Connect / Sync {topTab === 'gmail' ? 'Google Mail' : topTab === 'gcalendar' ? 'Google Calendar' : 'Google Drive'}
+                </button>
+              </div>
             )}
           </div>
         ) : (
@@ -1214,6 +1638,14 @@ export default function Library({ session, onBack, switchChat }) {
           </div>
         </div>
       )}
+
+      {/* ── Add Calendar Event Modal ── */}
+      <AddEventModal
+        isOpen={showAddEventModal}
+        onClose={() => setShowAddEventModal(false)}
+        onEventCreated={handleEventCreated}
+        userId={session?.user?.id}
+      />
     </div>
   );
 }
