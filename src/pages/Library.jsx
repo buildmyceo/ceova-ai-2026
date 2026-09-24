@@ -5,7 +5,7 @@ import {
   X, Search, Image, FileText, File, Code2, Music, Video,
   Download, ExternalLink, Calendar as CalendarIcon, MessageSquare, Filter,
   Grid3X3, List, ChevronLeft, Sparkles, User, Loader2,
-  ZoomIn, Copy, Check, Brain, Paperclip, SortDesc, Zap, MoreVertical,
+  ZoomIn, ZoomOut, Copy, Check, Brain, Paperclip, SortDesc, Zap, MoreVertical,
   HardDrive, Cloud, RefreshCw, Eye, AlertCircle, Mail, Inbox, Send, Bookmark, MapPin, Users, Video as VideoCam,
   Plus, Clock
 } from 'lucide-react';
@@ -24,6 +24,7 @@ import {
   isCalendarItem,
   isCeovaItem
 } from '../services/libraryFetchEngine';
+import { useDriveThumbnail, getDriveImageBlob, extractDriveId } from '../services/driveThumbnailCache';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const MIME_ICON = (type = '', name = '') => {
@@ -63,18 +64,165 @@ const fmtSize = (bytes) => {
 const truncate = (str, n) => (str && str.length > n ? str.slice(0, n) + '…' : str);
 
 // ─── Image Lightbox ───────────────────────────────────────────────────────────
-function Lightbox({ src, caption, onClose }) {
+function Lightbox({ item, src, caption, onClose }) {
+  const driveId = extractDriveId(item);
+  const isDriveItem = !!driveId || item?.source === 'gdrive';
+
+  // Check if passed src is an actual image URL or an HTML webpage URL (like drive.google.com/file/.../view)
+  const isHtmlPageUrl = src && typeof src === 'string' && (src.includes('drive.google.com/file/') || src.includes('/view') || src.includes('google.com/document/'));
+  const initialValidSrc = (src && !isHtmlPageUrl) ? src : null;
+
+  const [displaySrc, setDisplaySrc] = useState(initialValidSrc);
+  const [loading, setLoading] = useState(!initialValidSrc && isDriveItem);
+  const [loadError, setLoadError] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
+
   useEffect(() => {
-    const handler = (e) => e.key === 'Escape' && onClose();
+    const handler = (e) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === '+' || e.key === '=') setZoomLevel(z => Math.min(Number((z + 0.5).toFixed(1)), 3.5));
+      if (e.key === '-') setZoomLevel(z => Math.max(Number((z - 0.5).toFixed(1)), 0.5));
+      if (e.key === '0') setZoomLevel(1);
+    };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
+  useEffect(() => {
+    if (initialValidSrc) {
+      setDisplaySrc(initialValidSrc);
+      setLoading(false);
+      setLoadError(false);
+      return;
+    }
+
+    if (driveId) {
+      setLoading(true);
+      setLoadError(false);
+      getDriveImageBlob(driveId)
+        .then(blobUrl => {
+          if (blobUrl) {
+            setDisplaySrc(blobUrl);
+            setLoadError(false);
+          } else {
+            setLoadError(true);
+          }
+        })
+        .catch(() => setLoadError(true))
+        .finally(() => setLoading(false));
+    } else if (src && !isHtmlPageUrl) {
+      setDisplaySrc(src);
+      setLoading(false);
+    } else {
+      setLoadError(true);
+      setLoading(false);
+    }
+  }, [driveId, initialValidSrc, isHtmlPageUrl, src]);
+
+  const zoomIn = () => setZoomLevel(z => Math.min(Number((z + 0.5).toFixed(1)), 3.5));
+  const zoomOut = () => setZoomLevel(z => Math.max(Number((z - 0.5).toFixed(1)), 0.5));
+  const resetZoom = () => setZoomLevel(1);
+
+  const driveViewLink = item?.web_view_link || (driveId ? `https://drive.google.com/file/d/${driveId}/view` : (isHtmlPageUrl ? src : null));
+  const downloadLink = displaySrc || item?.web_download_link || item?.url;
+
   return (
     <div className="lib-lightbox" onClick={onClose}>
-      <button className="lib-lightbox-close" onClick={onClose}><X size={22} /></button>
+      <div className="lib-lightbox-top-bar" onClick={e => e.stopPropagation()}>
+        <div className="lib-lightbox-title-wrap">
+          <span className="lib-lightbox-name">{caption || item?.name || 'Image Preview'}</span>
+          {item?.size && <span className="lib-lightbox-meta">{fmtSize(item.size)}</span>}
+        </div>
+
+        <div className="lib-lightbox-actions">
+          {/* Zoom controls */}
+          <div className="lib-lightbox-zoom-group">
+            <button className="lib-lightbox-btn" onClick={zoomOut} title="Zoom out (-)" disabled={zoomLevel <= 0.5}>
+              <ZoomOut size={16} />
+            </button>
+            <button className="lib-lightbox-btn-text" onClick={resetZoom} title="Reset zoom (0)">
+              {Math.round(zoomLevel * 100)}%
+            </button>
+            <button className="lib-lightbox-btn" onClick={zoomIn} title="Zoom in (+)" disabled={zoomLevel >= 3.5}>
+              <ZoomIn size={16} />
+            </button>
+          </div>
+
+          {/* Open in Google Drive if applicable */}
+          {driveViewLink && (
+            <a
+              href={driveViewLink}
+              target="_blank"
+              rel="noreferrer"
+              className="lib-lightbox-link-btn"
+              title="Open original in Google Drive"
+            >
+              <ExternalLink size={15} />
+              <span>Drive</span>
+            </a>
+          )}
+
+          {/* Download button */}
+          {downloadLink && (
+            <a
+              href={downloadLink}
+              download={caption || item?.name || 'download'}
+              className="lib-lightbox-link-btn"
+              title="Download image"
+            >
+              <Download size={15} />
+            </a>
+          )}
+
+          {/* Close button */}
+          <button className="lib-lightbox-close" onClick={onClose} title="Close (Esc)">
+            <X size={20} />
+          </button>
+        </div>
+      </div>
+
       <div className="lib-lightbox-body" onClick={e => e.stopPropagation()}>
-        <img src={src} alt={caption} className="lib-lightbox-img" />
+        {loading ? (
+          <div className="lib-lightbox-status">
+            <Loader2 size={36} className="lib-spinner-anim" />
+            <span>Loading image from Google Drive...</span>
+          </div>
+        ) : loadError || !displaySrc ? (
+          <div className="lib-lightbox-status lib-lightbox-err">
+            <AlertCircle size={36} color="#f87171" />
+            <p>Unable to display direct image preview</p>
+            {driveViewLink && (
+              <a
+                href={driveViewLink}
+                target="_blank"
+                rel="noreferrer"
+                className="lib-lightbox-fallback-btn"
+              >
+                <ExternalLink size={16} /> Open in Google Drive
+              </a>
+            )}
+          </div>
+        ) : (
+          <div 
+            className="lib-lightbox-img-container"
+            style={{ overflow: zoomLevel > 1 ? 'auto' : 'hidden' }}
+          >
+            <img
+              src={displaySrc}
+              alt={caption}
+              className="lib-lightbox-img"
+              style={{
+                transform: `scale(${zoomLevel})`,
+                cursor: zoomLevel === 1 ? 'zoom-in' : 'zoom-out',
+                transition: 'transform 0.15s ease-out'
+              }}
+              onClick={() => {
+                if (zoomLevel === 1) zoomIn();
+                else resetZoom();
+              }}
+            />
+          </div>
+        )}
         {caption && <p className="lib-lightbox-caption">{caption}</p>}
       </div>
     </div>
@@ -250,16 +398,13 @@ function ItemMenu({ item, onPreview, onDownload, onVisit, onSummarize, onOCR, on
 // ─── Single card (image) ──────────────────────────────────────────────────────
 export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDelete }) {
   const [loaded, setLoaded] = useState(false);
-  const [err, setErr] = useState(false);
+  const [imgErr, setImgErr] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
 
-  const driveId = item.drive_id || (item.id && !String(item.id).includes('-') ? item.id : null);
-  const baseSrc = driveId 
-    ? (item.thumbnail_url || `https://lh3.googleusercontent.com/d/${driveId}=s400`)
-    : (item.thumbnail_url || item.url);
+  const { src: driveSrc, loading: driveLoading, error: driveErr, driveId } = useDriveThumbnail(item);
 
-  let primarySrc = baseSrc;
-  if (!useFallback && primarySrc) {
+  let primarySrc = driveSrc || item.thumbnail_url || item.url;
+  if (!useFallback && primarySrc && typeof primarySrc === 'string') {
     if (primarySrc.includes('/storage/v1/object/public/')) {
       primarySrc = primarySrc.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + (primarySrc.includes('?') ? '&' : '?') + 'width=400&resize=contain';
     } else if (primarySrc.includes('/storage/v1/object/sign/')) {
@@ -267,43 +412,79 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDel
     }
   }
 
+  const isFailed = (imgErr || driveErr) && !driveLoading;
+
+  const handleCardClick = () => {
+    const itemWithSrc = {
+      ...item,
+      resolvedSrc: primarySrc || driveSrc
+    };
+    if (onClick) onClick(itemWithSrc);
+  };
+
+  const handlePreview = (it) => {
+    const itemWithSrc = {
+      ...it,
+      resolvedSrc: primarySrc || driveSrc
+    };
+    if (onPreview) onPreview(itemWithSrc);
+  };
+
   return (
-    <div className="lib-card lib-card-image" onClick={() => onClick(item)}>
+    <div className="lib-card lib-card-image" onClick={handleCardClick}>
       <div className="lib-card-img-wrap">
-        {!loaded && !err && <div className="lib-img-skeleton"><div className="lib-skeleton-shimmer" /></div>}
-        {!err && (
+        {(!loaded || driveLoading) && !isFailed && (
+          <div className="lib-img-skeleton"><div className="lib-skeleton-shimmer" /></div>
+        )}
+        {!isFailed && primarySrc && (
           <img
             src={primarySrc}
             alt={item.name}
             loading="lazy"
-            className={`lib-card-img ${loaded ? 'loaded' : ''}`}
-            onLoad={() => setLoaded(true)}
-            onError={(e) => {
-              if (!useFallback && baseSrc && (baseSrc.includes('/storage/v1/object/public/') || baseSrc.includes('/storage/v1/object/sign/'))) {
+            className={`lib-card-img ${loaded && !driveLoading ? 'loaded' : ''}`}
+            onLoad={() => {
+              setLoaded(true);
+              setImgErr(false);
+            }}
+            onError={async (e) => {
+              if (!useFallback && primarySrc && typeof primarySrc === 'string' && (primarySrc.includes('/storage/v1/object/public/') || primarySrc.includes('/storage/v1/object/sign/'))) {
                 setUseFallback(true);
                 return;
               }
-              if (driveId && !e.target.dataset.fallback1) {
-                e.target.dataset.fallback1 = 'true';
-                e.target.src = `https://drive.google.com/thumbnail?id=${driveId}&sz=w400`;
-                return;
-              }
-              if (driveId && !e.target.dataset.fallback2) {
-                e.target.dataset.fallback2 = 'true';
-                e.target.src = `https://drive.google.com/uc?export=view&id=${driveId}`;
-                return;
+              // If it's a Drive item and error fired on initial thumbnail, try fetching authenticated blob
+              if (driveId && typeof primarySrc === 'string' && !primarySrc.startsWith('blob:')) {
+                try {
+                  const blobUrl = await getDriveImageBlob(driveId);
+                  if (blobUrl) {
+                    e.target.src = blobUrl;
+                    setLoaded(true);
+                    setImgErr(false);
+                    return;
+                  }
+                } catch (err) {}
               }
               setLoaded(true);
-              setErr(true);
+              setImgErr(true);
             }}
             referrerPolicy="no-referrer"
           />
         )}
-        {err && <div className="lib-img-err"><Image size={28} /><span>Preview unavailable</span></div>}
+        {isFailed && (
+          <div className="lib-img-err">
+            <Image size={28} />
+            <span>Preview unavailable</span>
+          </div>
+        )}
         <div className="lib-card-overlay">
           <ZoomIn size={18} />
         </div>
-        <ItemMenu item={item} onPreview={onPreview} onDownload={onDownload} onVisit={onVisit} onDelete={onDelete} />
+        <ItemMenu 
+          item={item} 
+          onPreview={() => handlePreview(item)} 
+          onDownload={onDownload} 
+          onVisit={onVisit} 
+          onDelete={onDelete} 
+        />
       </div>
       <div className="lib-card-meta">
         <span className="lib-card-name">{truncate(item.name, 24)}</span>
@@ -320,7 +501,6 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDel
           <Cloud size={10} /> Drive
         </div>
       )}
-
     </div>
   );
 }
@@ -329,14 +509,22 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDel
 export function FileCard({ item, onClick, onPreview, onDownload, onVisit, onSummarize, onOCR, onDelete }) {
   const { icon: Icon, color, label } = MIME_ICON(item.mime_type || '', item.name);
 
+  const handleCardClick = (e) => {
+    // If inside a dropdown, button or link, don't trigger card preview
+    if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.lib-menu-wrap')) {
+      return;
+    }
+    if (onClick) {
+      onClick(item);
+    } else if (onPreview) {
+      onPreview(item);
+    } else if (item.web_view_link || item.url) {
+      window.open(item.web_view_link || item.url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
-    <div className="lib-card lib-card-file" onClick={(e) => {
-      if (onClick) {
-        // Only trigger onClick if it's the picker doing it. 
-        // We prevent default so buttons inside don't fire this.
-        onClick(item);
-      }
-    }} style={{ cursor: onClick ? 'pointer' : 'default' }}>
+    <div className="lib-card lib-card-file" onClick={handleCardClick} style={{ cursor: 'pointer' }}>
       <div className="lib-file-icon" style={{ background: `${color}18`, borderColor: `${color}30` }}>
         <Icon size={28} color={color} />
       </div>
@@ -1434,8 +1622,8 @@ export default function Library({ session, onBack, switchChat }) {
                       key={item.id}
                       item={item}
                       onDelete={handleDelete}
-                      onClick={it => setLightbox({ src: it.url || it.web_view_link, caption: it.name })}
-                      onPreview={it => setLightbox({ src: it.url || it.web_view_link, caption: it.name })}
+                      onClick={it => setLightbox({ item: it, src: it.resolvedSrc || it.blobUrl || it.url, caption: it.name })}
+                      onPreview={it => setLightbox({ item: it, src: it.resolvedSrc || it.blobUrl || it.url, caption: it.name })}
                       onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                     />
@@ -1551,6 +1739,7 @@ export default function Library({ session, onBack, switchChat }) {
       {/* ── Lightbox ── */}
       {lightbox && (
         <Lightbox
+          item={lightbox.item}
           src={lightbox.src}
           caption={lightbox.caption}
           onClose={() => setLightbox(null)}

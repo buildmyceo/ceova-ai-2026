@@ -1,6 +1,7 @@
 import { Tool, ToolContext, ToolResult } from "../types.ts";
 import { googleAuthService } from "../../services/google-auth.ts";
 import { Logger } from "../../services/logger.ts";
+import { embedInvisibleTextWatermark, generateCeovaSignature } from "../../utils/ceova-watermark.ts";
 
 export const GmailConnectorTool: Tool = {
   metadata: {
@@ -534,11 +535,19 @@ function base64UrlDecode(str: string) {
 }
 
 function createRawEmail(to: string, subject: string, body: string, threadId?: string, attachments?: any[]) {
+  // Embed invisible cryptographic watermark into email body
+  const watermarkedBody = embedInvisibleTextWatermark(body, {
+    target: 'email',
+    metadata: { to, subject }
+  });
+  const emailSig = generateCeovaSignature({ to, subject, origin: 'Ceova-AI-Suite' });
   const utf8Subject = `=?utf-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=`;
   let message = [
     `To: ${to}`,
     `Subject: ${utf8Subject}`,
     "MIME-Version: 1.0",
+    "X-Ceova-Origin: Ceova-AI-Suite",
+    `X-Ceova-Signature: ${emailSig}`,
   ];
   
   if (threadId) {

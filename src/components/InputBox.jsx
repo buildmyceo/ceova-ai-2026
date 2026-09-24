@@ -13,6 +13,7 @@ import {
     isCalendarItem,
     isCeovaItem
 } from '../services/libraryFetchEngine';
+import { useDriveThumbnail } from '../services/driveThumbnailCache';
 import ExtensionsModal from './ExtensionsModal';
 import './LibraryPickerModal.css';
 
@@ -40,9 +41,10 @@ const fmtSize = (bytes) => {
 };
 
 function PickerImageCard({ item, onClick }) {
-    const [err, setErr] = useState(false);
-    const driveId = item.drive_id || (item.id && !String(item.id).includes('-') ? item.id : null);
-    const src = err ? null : (item.thumbnail_url || item.url || (driveId ? `https://lh3.googleusercontent.com/d/${driveId}=s400` : null));
+    const { src, loading, error } = useDriveThumbnail(item);
+    const [imgErr, setImgErr] = useState(false);
+
+    const hasFailed = error || imgErr;
 
     return (
         <div 
@@ -51,14 +53,18 @@ function PickerImageCard({ item, onClick }) {
             title={`Click to attach ${item.name}`}
         >
             <div className="lib-picker-img-wrap">
-                {src && !err ? (
+                {src && !hasFailed ? (
                     <img
                         src={src}
                         alt={item.name}
                         className="lib-picker-img"
                         loading="lazy"
-                        onError={() => setErr(true)}
+                        onError={() => setImgErr(true)}
                     />
+                ) : loading ? (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.03)' }}>
+                        <div className="lib-skeleton-shimmer" style={{ width: '100%', height: '100%' }} />
+                    </div>
                 ) : (
                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717a' }}>
                         <ImageIcon size={28} />

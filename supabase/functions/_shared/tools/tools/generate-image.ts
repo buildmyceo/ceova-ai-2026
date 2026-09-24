@@ -1,6 +1,7 @@
 import { Tool, ToolMetadata, ToolContext, ToolResult } from '../types.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
 import { Buffer } from 'node:buffer';
+import { embedImageWatermark } from '../../utils/ceova-watermark.ts';
 
 // ── PNG & Mask Helpers ────────────────────────────────────────────────────────
 
@@ -551,7 +552,11 @@ export class GenerateImageTool implements Tool {
 
       if (b64Data) {
         try {
-          const buffer = Buffer.from(b64Data, 'base64');
+          let rawBytes = new Uint8Array(Buffer.from(b64Data, 'base64'));
+          try {
+            rawBytes = embedImageWatermark(rawBytes, { prompt, userId: context.userId });
+          } catch (_) {}
+          const buffer = Buffer.from(rawBytes);
           const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://jqpbgcmrlpfqnellznhz.supabase.co';
           const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || '';
 
@@ -607,7 +612,11 @@ export class GenerateImageTool implements Tool {
         try {
           const imgFetch = await fetch(generatedUrl);
           if (imgFetch.ok) {
-            const imgBuffer = Buffer.from(await imgFetch.arrayBuffer());
+            let remoteBytes = new Uint8Array(await imgFetch.arrayBuffer());
+            try {
+              remoteBytes = embedImageWatermark(remoteBytes, { prompt, userId: context.userId });
+            } catch (_) {}
+            const imgBuffer = Buffer.from(remoteBytes);
             const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://jqpbgcmrlpfqnellznhz.supabase.co';
             const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || '';
             if (supabaseUrl && supabaseKey) {

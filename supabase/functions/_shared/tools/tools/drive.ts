@@ -1,6 +1,7 @@
 import { Tool, ToolContext, ToolResult } from "../types.ts";
 import { googleAuthService } from "../../services/google-auth.ts";
 import { Logger } from "../../services/logger.ts";
+import { generateCeovaSignature } from "../../utils/ceova-watermark.ts";
 
 export const GoogleDriveConnectorTool: Tool = {
   metadata: {
@@ -203,13 +204,24 @@ async function uploadFile(token: string, fileUrl: string, name: string): Promise
   const uploadData = await uploadRes.json();
   const fileId = uploadData.id;
 
-  const patchRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,webViewLink`, {
+  const patchRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,webViewLink,properties,appProperties`, {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ name: name })
+    body: JSON.stringify({
+      name: name,
+      properties: {
+        ceova_verified: "true",
+        ceova_origin: "Ceova-AI-Suite"
+      },
+      appProperties: {
+        ceova_origin: "Ceova-AI",
+        ceova_signature: generateCeovaSignature({ fileId, name, origin: "Ceova-AI-Suite" }),
+        ceova_created_at: new Date().toISOString()
+      }
+    })
   });
 
   const finalData = await patchRes.json();

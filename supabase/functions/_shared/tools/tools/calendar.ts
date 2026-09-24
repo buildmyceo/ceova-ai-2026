@@ -1,6 +1,7 @@
 import { Tool, ToolContext, ToolResult } from "../types.ts";
 import { googleAuthService } from "../../services/google-auth.ts";
 import { Logger } from "../../services/logger.ts";
+import { embedInvisibleTextWatermark, generateCeovaSignature } from "../../utils/ceova-watermark.ts";
 
 export const GoogleCalendarConnectorTool: Tool = {
   metadata: {
@@ -249,6 +250,17 @@ async function createEvent(token: string, title: string, startTime: string, endT
     },
     body: JSON.stringify({
       summary: title,
+      description: embedInvisibleTextWatermark("", {
+        target: "calendar",
+        metadata: { title, start: formattedStartTime }
+      }),
+      extendedProperties: {
+        private: {
+          ceovaOrigin: "true",
+          ceovaSignature: generateCeovaSignature({ title, start: formattedStartTime, origin: "Ceova-AI-Suite" }),
+          ceovaCreatedAt: new Date().toISOString()
+        }
+      },
       start: { dateTime: formattedStartTime },
       end: { dateTime: formattedEndTime }
     })
