@@ -156,7 +156,13 @@ export function isQuestionOrInquiry(message: string): boolean {
     /\b(?:explain\s+(?:how|why|what|the))\b/i,
     /\b(?:what\s+is\s+the\s+difference|difference\s+between)\b/i,
     /\b(?:cost|pricing|price)\s+of\b/i,
-    /\bhow\s+much\s+(?:does|is|did)\b/i
+    /\bhow\s+much\s+(?:does|is|did)\b/i,
+    /\b(?:what|which)\s+(?:mail|email|message|action|file|code|text|response)\b/i,
+    /\b(?:what|which)\s+(?:did\s+you|have\s+you|had\s+you)\b/i,
+    /\b(?:did\s+you|have\s+you|had\s+you)\s+(?:send|sent|sended|write|reply|draft)\b/i,
+    /\b(?:what\s+(?:did\s+you|was|had\s+you)\s+(?:send|sent|sended))\b/i,
+    /\bwhat\s+did\s+you\s+(?:do|write|reply)\b/i,
+    /\bshow\s+(?:me\s+)?(?:the\s+)?(?:mail|email|draft|message)\b/i
   ];
   if (metaPatterns.some(p => p.test(trimmed))) {
     return true;
@@ -307,6 +313,11 @@ export function routeIntent(
     // If the message is an inquiry/question about how tools work or what model is used,
     // do not load action tools unless the user explicitly requested an action.
     if (isQuestion && ['image_gen', 'image_process', 'tools', 'files'].includes(cap.id)) {
+      continue;
+    }
+
+    // If the message is a question about what was sent, drafted, or past email actions, don't load gmail tools
+    if (isQuestion && cap.id === 'gmail' && /\b(?:what|which|show|did\s+you|have\s+you|had\s+you)\b/i.test(lowerMessage) && !/\b(?:search|inbox|find|unread)\b/i.test(lowerMessage)) {
       continue;
     }
 

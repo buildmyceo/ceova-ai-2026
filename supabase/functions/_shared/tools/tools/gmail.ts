@@ -144,15 +144,45 @@ export const GmailConnectorTool: Tool = {
       }
 
       // MANDATORY TWO-WAY DRAFTING POLICY:
-      // If the action is send_email or reply_email, verify if the user has explicitly confirmed sending.
-      // If this is an initial instruction to compose/reply (e.g. "reply by saying...", "write an email to...", "send an email saying..."),
-      // redirect to draft_email so the user can review in chat and Gmail first.
       const userMsg = (context.message || "").toLowerCase().trim();
-      const isComposingOrNewRequest = /\b(?:saying|tell\s+them|write|compose|draft|replay|reply\s+by|reply\s+to|send\s+an\s+email\s+to|send\s+a\s+mail\s+to|send\s+email\s+to)\b/i.test(userMsg);
+      const isQuestionAboutEmail = /\b(?:what|which|show|tell\s+me|did\s+you|have\s+you|had\s+you)\b/i.test(userMsg) || userMsg.endsWith("?");
+
+      // If user is asking an informational question about what was sent or drafted, NEVER send an email!
+      if (isQuestionAboutEmail && (action === "send_email" || action === "reply_email" || action === "draft_email")) {
+        let detailsFound = "";
+        if (Array.isArray(context.history)) {
+          for (let i = context.history.length - 1; i >= 0; i--) {
+            const content = context.history[i]?.content || "";
+            if (content.includes("Reply successfully sent") || content.includes("Email successfully sent") || content.includes("Draft Created in Gmail") || content.includes("Message Preview")) {
+              detailsFound = content;
+              break;
+            }
+          }
+        }
+        if (detailsFound) {
+          return {
+            success: true,
+            data: {
+              text: `Here are the details from our conversation:\n\n${detailsFound}`
+            }
+          };
+        } else {
+          return {
+            success: true,
+            data: {
+              text: `No emails have been sent or drafted in this session yet. Let me know if you would like me to prepare a draft!`
+            }
+          };
+        }
+      }
+
+      // Check if user has explicitly confirmed sending
       const isExplicitSendConfirmation = /^(?:yes|send|send\s*it|send\s*now|send\s*the\s*email|send\s*the\s*mail|send\s*the\s*reply|send\s*reply|proceed|looks\s*good|confirm|approved|approve|go\s*ahead|please\s*send|ok\s*send|okay\s*send)(?:[\s!,.]|$)/i.test(userMsg);
       const isForcedSend = args.force_send === true || args.confirmed === true;
 
-      if ((action === "send_email" || action === "reply_email") && !isForcedSend && !isExplicitSendConfirmation && isComposingOrNewRequest) {
+      // If action is send_email or reply_email, but the user has NOT explicitly confirmed sending:
+      // ALWAYS intercept to draft_email so the user can review in chat and Gmail first!
+      if ((action === "send_email" || action === "reply_email") && !isForcedSend && !isExplicitSendConfirmation) {
         Logger.INFO(`Two-way draft policy: intercepting ${action} to draft_email for user review first.`);
         action = "draft_email";
       }
