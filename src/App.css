@@ -1022,60 +1022,216 @@ body {
     background: linear-gradient(to top, var(--bg-main) 60%, transparent);
 }
 
-.plus-dropdown-menu {
-    position: absolute;
-    bottom: calc(100% + 12px);
-    left: -4px;
-    background: #212121;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
-    padding: 8px 6px;
+.input-box-positioner {
+    position: relative;
+    width: 100%;
+    max-width: 800px;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(0,0,0,0.2);
-    z-index: 2000;
-    min-width: 220px;
+    align-items: center;
+    pointer-events: auto;
 }
 
-.plus-dropdown-menu button {
-    background: transparent;
-    border: none;
-    color: var(--text-main);
-    padding: 12px 14px;
-    text-align: left;
-    border-radius: 10px;
-    cursor: pointer;
-    font-size: 1rem;
+.attachment-sliding-tab {
+    position: absolute;
+    left: 0;
+    right: 0;
+    width: 100%;
+    z-index: 10;
+    pointer-events: auto;
+    background: rgba(26, 26, 28, 0.78);
+    backdrop-filter: blur(28px) saturate(190%);
+    -webkit-backdrop-filter: blur(28px) saturate(190%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 22px;
+    padding: 10px;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+    box-sizing: border-box;
+}
+
+.attachment-sliding-tab.slide-down {
+    top: calc(100% + 10px);
+}
+
+.attachment-sliding-tab.slide-up {
+    bottom: calc(100% + 10px);
+}
+
+.sliding-tab-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.sliding-tab-tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.sliding-tab-card {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 14px;
+    color: var(--text-main, #ffffff);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    outline: none;
+    user-select: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.sliding-tab-card:hover {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.16);
+    transform: translateY(-1px);
+}
+
+.sliding-tab-card:active {
+    transform: translateY(0);
+}
+
+.sliding-tab-card-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #e4e4e7;
+    flex-shrink: 0;
     transition: background 0.2s;
 }
 
-.plus-dropdown-menu button:hover {
+.sliding-tab-card:hover .sliding-tab-card-icon {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+.sliding-tab-card-content {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.sliding-tab-card-title {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-main, #ffffff);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sliding-tab-card-desc {
+    font-size: 11px;
+    color: var(--text-muted, #9ca3af);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+}
+
+.sliding-tab-submenu {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+.sliding-tab-submenu-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 4px 6px 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 2px;
+}
+
+.sliding-tab-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted, #9ca3af);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.sliding-tab-back-btn:hover {
+    color: #ffffff;
     background: rgba(255, 255, 255, 0.08);
 }
 
-.input-wrapper {
-    width: 100%;
-    max-width: 800px;
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 20px;
-    padding: 16px;
-    position: relative;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-    transition: all 0.3s;
+.sliding-tab-submenu-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted, #9ca3af);
 }
 
-.input-wrapper:focus-within {
-    border-color: rgba(255, 255, 255, 0.15);
-    background: #181818;
+.sliding-tab-edit-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted, #9ca3af);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+    transition: all 0.2s;
 }
 
-.window-vibrant .input-container {
-    background: linear-gradient(to top, rgba(0,0,0,0.2) 60%, transparent) !important;
+.sliding-tab-edit-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.sliding-tab-disconnect {
+    font-size: 11px;
+    padding: 4px 8px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    border-radius: 6px;
+    margin-left: auto;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.sliding-tab-disconnect:hover {
+    background: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+}
+
+@media (max-width: 640px) {
+    .sliding-tab-grid {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+    
+    .sliding-tab-card {
+        padding: 8px 12px;
+    }
+
+    .sliding-tab-card-icon {
+        width: 32px;
+        height: 32px;
+    }
 }
 
 .input-wrapper {
@@ -1089,6 +1245,8 @@ body {
     box-shadow: 0 4px 20px rgba(0,0,0,0.5);
     border: 1px solid rgba(255,255,255,0.1);
     transition: all 0.3s;
+    position: relative;
+    z-index: 20;
 }
 
 .input-wrapper.dragging {

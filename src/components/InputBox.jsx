@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical, Sparkles, Search, Image as ImageIcon } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthProvider';
 import { cacheManager } from '../services/CacheManager';
@@ -183,6 +183,21 @@ export default function InputBox({
             }
         }).catch(() => {});
     }, []);
+
+    const inputBoxPositionerRef = useRef(null);
+
+    useEffect(() => {
+        if (!isPlusOpen) return;
+        const handleClickOutside = (e) => {
+            if (inputBoxPositionerRef.current && !inputBoxPositionerRef.current.contains(e.target)) {
+                setIsPlusOpen(false);
+                setIsConnectorsSubmenuOpen(false);
+                setIsToolsSubmenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isPlusOpen]);
 
     useEffect(() => {
         const checkGmailConnection = async () => {
@@ -496,8 +511,315 @@ export default function InputBox({
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.3 }}
         >
-            <div 
-                className={`input-wrapper ${isDragging ? 'dragging' : ''}`}
+            <div className="input-box-positioner" ref={inputBoxPositionerRef}>
+                <AnimatePresence>
+                    {isPlusOpen && (
+                        <motion.div 
+                            className={`attachment-sliding-tab ${isHome ? 'slide-down' : 'slide-up'}`}
+                            initial={isHome 
+                                ? { y: -50, opacity: 0, scale: 0.98 } 
+                                : { y: 50, opacity: 0, scale: 0.98 }
+                            }
+                            animate={{ y: 0, opacity: 1, scale: 1 }}
+                            exit={isHome 
+                                ? { y: -50, opacity: 0, scale: 0.98 } 
+                                : { y: 50, opacity: 0, scale: 0.98 }
+                            }
+                            transition={{ type: "spring", stiffness: 360, damping: 28 }}
+                        >
+                            {!isToolsSubmenuOpen && !isConnectorsSubmenuOpen && (
+                                <div className="sliding-tab-grid">
+                                    <button 
+                                        type="button"
+                                        className="sliding-tab-card"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsConnectorsSubmenuOpen(true);
+                                        }}
+                                    >
+                                        <div className="sliding-tab-card-icon">
+                                            <Link size={18} />
+                                        </div>
+                                        <div className="sliding-tab-card-content">
+                                            <span className="sliding-tab-card-title">Connectors</span>
+                                            <span className="sliding-tab-card-desc">Gmail, Drive & apps</span>
+                                        </div>
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        className="sliding-tab-card"
+                                        onClick={() => { 
+                                            setIsPlusOpen(false); 
+                                            fileInputRef.current?.click(); 
+                                        }}
+                                    >
+                                        <div className="sliding-tab-card-icon">
+                                            <Plus size={18} />
+                                        </div>
+                                        <div className="sliding-tab-card-content">
+                                            <span className="sliding-tab-card-title">Upload files</span>
+                                            <span className="sliding-tab-card-desc">Images, docs & PDFs</span>
+                                        </div>
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        className="sliding-tab-card"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsPlusOpen(false);
+                                            openLibraryPicker();
+                                        }}
+                                    >
+                                        <div className="sliding-tab-card-icon">
+                                            <BookOpen size={18} />
+                                        </div>
+                                        <div className="sliding-tab-card-content">
+                                            <span className="sliding-tab-card-title">Select from Library</span>
+                                            <span className="sliding-tab-card-desc">History & saved files</span>
+                                        </div>
+                                    </button>
+                                </div>
+                            )}
+
+                            {isConnectorsSubmenuOpen && (
+                                <div className="sliding-tab-submenu">
+                                    <div className="sliding-tab-submenu-header">
+                                        <button 
+                                            type="button"
+                                            className="sliding-tab-back-btn"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setIsConnectorsSubmenuOpen(false);
+                                            }}
+                                        >
+                                            <ChevronLeft size={16} /> Back
+                                        </button>
+                                        <span className="sliding-tab-submenu-title">Connectors</span>
+                                        {isGmailConnected && (
+                                            <button 
+                                                type="button"
+                                                className="sliding-tab-edit-btn"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setIsEditingConnectors(!isEditingConnectors);
+                                                }}
+                                                title="Edit Connectors"
+                                            >
+                                                <Edit2 size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="sliding-tab-grid">
+                                        <button
+                                            type="button"
+                                            className="sliding-tab-card"
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                setIsPlusOpen(false);
+                                                setIsConnectorsSubmenuOpen(false);
+                                                try {
+                                                    localStorage.setItem('oauth_provider', 'google');
+                                                    const { error } = await supabase.auth.signInWithOAuth({
+                                                        provider: 'google',
+                                                        options: {
+                                                            redirectTo: `${window.location.origin}/auth/callback`,
+                                                            scopes: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive',
+                                                            queryParams: {
+                                                                access_type: 'offline',
+                                                                prompt: 'consent'
+                                                            }
+                                                        }
+                                                    });
+                                                    if (error) throw error;
+                                                } catch (err) {
+                                                    console.error("Failed to connect Gmail:", err);
+                                                    alert("Failed to connect Gmail: " + err.message);
+                                                }
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon">
+                                                <img src="/gmail.png" alt="Gmail" style={{ width: 18, height: 18, objectFit: 'contain' }} />
+                                            </div>
+                                            <div className="sliding-tab-card-content">
+                                                <span className="sliding-tab-card-title">{isGmailConnected ? "Gmail" : "Connect Gmail"}</span>
+                                                <span className="sliding-tab-card-desc">{isGmailConnected ? "Connected" : "Google Mail"}</span>
+                                            </div>
+                                            {isGmailConnected && isEditingConnectors && (
+                                                <div 
+                                                    className="sliding-tab-disconnect"
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation();
+                                                        if (window.confirm("Are you sure you want to disconnect all Google tools?")) {
+                                                            const { data: { user } } = await supabase.auth.getUser();
+                                                            if (user) {
+                                                                await supabase.from('user_google_tokens').delete().eq('user_id', user.id);
+                                                                setIsGmailConnected(false);
+                                                                setIsEditingConnectors(false);
+                                                            }
+                                                        }
+                                                    }}
+                                                >
+                                                    Disconnect
+                                                </div>
+                                            )}
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            className="sliding-tab-card"
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                setIsPlusOpen(false);
+                                                setIsConnectorsSubmenuOpen(false);
+                                                try {
+                                                    localStorage.setItem('oauth_provider', 'google');
+                                                    const { error } = await supabase.auth.signInWithOAuth({
+                                                        provider: 'google',
+                                                        options: {
+                                                            redirectTo: `${window.location.origin}/auth/callback`,
+                                                            scopes: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive',
+                                                            queryParams: {
+                                                                access_type: 'offline',
+                                                                prompt: 'consent'
+                                                            }
+                                                        }
+                                                    });
+                                                    if (error) throw error;
+                                                } catch (err) {
+                                                    console.error("Failed to connect Drive:", err);
+                                                    alert("Failed to connect Drive: " + err.message);
+                                                }
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon">
+                                                <img src="/drive.png" alt="Google Drive" style={{ width: 18, height: 18, objectFit: 'contain' }} />
+                                            </div>
+                                            <div className="sliding-tab-card-content">
+                                                <span className="sliding-tab-card-title">{isGmailConnected ? "Google Drive" : "Connect Drive"}</span>
+                                                <span className="sliding-tab-card-desc">{isGmailConnected ? "Connected" : "Google Cloud"}</span>
+                                            </div>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            className="sliding-tab-card"
+                                            onClick={() => {
+                                                setIsPlusOpen(false);
+                                                setIsConnectorsSubmenuOpen(false);
+                                                setExtensionsModalTab('connectors');
+                                                setIsExtensionsModalOpen(true);
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon">
+                                                <LayoutGrid size={18} />
+                                            </div>
+                                            <div className="sliding-tab-card-content">
+                                                <span className="sliding-tab-card-title">More Connectors</span>
+                                                <span className="sliding-tab-card-desc">Integrations library</span>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isToolsSubmenuOpen && (
+                                <div className="sliding-tab-submenu">
+                                    <div className="sliding-tab-submenu-header">
+                                        <span className="sliding-tab-submenu-title">Quick Actions</span>
+                                    </div>
+                                    <div className="sliding-tab-tools-grid">
+                                        <button
+                                            type="button"
+                                            className="sliding-tab-card"
+                                            onClick={() => {
+                                                setIsPlusOpen(false);
+                                                setIsToolsSubmenuOpen(false);
+                                                setInput(prev => prev + (prev.trim() ? " " : "") + "/generate_image ");
+                                                textareaRef.current?.focus();
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon"><Sparkles size={16} /></div>
+                                            <div className="sliding-tab-card-content">
+                                                <span className="sliding-tab-card-title">Generate Image</span>
+                                                <span className="sliding-tab-card-desc">AI image tool</span>
+                                            </div>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="sliding-tab-card"
+                                            onClick={() => {
+                                                setIsPlusOpen(false);
+                                                setIsToolsSubmenuOpen(false);
+                                                setInput(prev => prev + (prev.trim() ? " " : "") + "/background_remover ");
+                                                textareaRef.current?.focus();
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon"><Scissors size={16} /></div>
+                                            <div className="sliding-tab-card-content">
+                                                <span className="sliding-tab-card-title">Remove Background</span>
+                                                <span className="sliding-tab-card-desc">Cutout tool</span>
+                                            </div>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="sliding-tab-card"
+                                            onClick={() => {
+                                                setIsPlusOpen(false);
+                                                setIsToolsSubmenuOpen(false);
+                                                setInput(prev => prev + (prev.trim() ? " " : "") + "/qr_barcode ");
+                                                textareaRef.current?.focus();
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon"><Scan size={16} /></div>
+                                            <div className="sliding-tab-card-content">
+                                                <span className="sliding-tab-card-title">QR & Barcode</span>
+                                                <span className="sliding-tab-card-desc">Generator & scanner</span>
+                                            </div>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="sliding-tab-card"
+                                            onClick={() => {
+                                                setIsPlusOpen(false);
+                                                setIsToolsSubmenuOpen(false);
+                                                setInput(prev => prev + (prev.trim() ? " " : "") + "/invoice_generator ");
+                                                textareaRef.current?.focus();
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon"><Receipt size={16} /></div>
+                                            <div className="sliding-tab-card-content">
+                                                <span className="sliding-tab-card-title">Invoice Generator</span>
+                                                <span className="sliding-tab-card-desc">Billing tool</span>
+                                            </div>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="sliding-tab-card"
+                                            onClick={() => {
+                                                setIsPlusOpen(false);
+                                                setIsToolsSubmenuOpen(false);
+                                                setExtensionsModalTab('tools');
+                                                setIsExtensionsModalOpen(true);
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon"><LayoutGrid size={16} /></div>
+                                            <div className="sliding-tab-card-content">
+                                                <span className="sliding-tab-card-title">More Tools...</span>
+                                                <span className="sliding-tab-card-desc">Extensions directory</span>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                <div 
+                    className={`input-wrapper ${isDragging ? 'dragging' : ''}`}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
@@ -533,263 +855,20 @@ export default function InputBox({
 
                 <div className="input-main-row">
                     <div className="toolbar-left" style={{ gap: '8px' }}>
-                        <div style={{ position: 'relative' }}>
-                            <button 
-                                className={`toolbar-btn ${isPlusOpen ? 'active' : ''}`} 
-                                onClick={() => {
-                                    setIsPlusOpen(!isPlusOpen);
-                                    if (isPlusOpen) {
-                                        setIsToolsSubmenuOpen(false);
-                                        setIsConnectorsSubmenuOpen(false);
-                                    }
-                                }} 
-                                title="Add attachment"
-                            >
-                                <Plus size={18} />
-                            </button>
-
-                                {isPlusOpen && !isToolsSubmenuOpen && !isConnectorsSubmenuOpen && (
-                                <div className="plus-dropdown-menu">
-
-                                    <button onClick={(e) => {
-                                            e.stopPropagation();
-                                            setIsConnectorsSubmenuOpen(true);
-                                        }}>
-                                            <Link size={18} /> Connectors
-                                        </button>
-                                    <button onClick={() => { 
-                                            setIsPlusOpen(false); 
-                                            fileInputRef.current?.click(); 
-                                        }}>
-                                            <Plus size={18} /> Upload files
-                                        </button>
-                                    <button onClick={(e) => {
-                                            e.stopPropagation();
-                                            setIsPlusOpen(false);
-                                            openLibraryPicker();
-                                        }}>
-                                            <BookOpen size={18} /> Select from Library
-                                        </button>
-
-                                </div>
-                            )}
-                            {isPlusOpen && isToolsSubmenuOpen && (
-                                <div className="plus-dropdown-menu">
-
-                                    <button onClick={() => {
-                                        setIsPlusOpen(false);
-                                        setIsToolsSubmenuOpen(false);
-                                        setInput(prev => prev + (prev.trim() ? " " : "") + "/generate_image ");
-                                        textareaRef.current?.focus();
-                                    }}>
-                                        <Sparkles size={18} /> Generate Image
-                                    </button>
-                                    <button onClick={() => {
-                                        setIsPlusOpen(false);
-                                        setIsToolsSubmenuOpen(false);
-                                        setInput(prev => prev + (prev.trim() ? " " : "") + "/background_remover ");
-                                        textareaRef.current?.focus();
-                                    }}>
-                                        <Scissors size={18} /> Background Remover
-                                    </button>
-                                    <button onClick={() => {
-                                        setIsPlusOpen(false);
-                                        setIsToolsSubmenuOpen(false);
-                                        setInput(prev => prev + (prev.trim() ? " " : "") + "/qr_barcode ");
-                                        textareaRef.current?.focus();
-                                    }}>
-                                        <Scan size={18} /> QR & Barcode
-                                    </button>
-                                    <button onClick={() => {
-                                        setIsPlusOpen(false);
-                                        setIsToolsSubmenuOpen(false);
-                                        setInput(prev => prev + (prev.trim() ? " " : "") + "/invoice_generator ");
-                                        textareaRef.current?.focus();
-                                    }}>
-                                        <Receipt size={18} /> Invoice Generator
-                                    </button>
-                                    <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
-                                    <button onClick={() => {
-                                        setIsPlusOpen(false);
-                                        setIsToolsSubmenuOpen(false);
-                                        setExtensionsModalTab('tools');
-                                        setIsExtensionsModalOpen(true);
-                                    }} style={{ color: '#a1a1aa' }}>
-                                        <LayoutGrid size={18} /> More Tools...
-                                    </button>
-                                </div>
-                            )}
-                            {isPlusOpen && isConnectorsSubmenuOpen && (
-                                <div className="plus-dropdown-menu">
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                                        <button onClick={(e) => {
-                                            e.stopPropagation();
-                                            setIsConnectorsSubmenuOpen(false);
-                                        }} style={{ opacity: 0.7, padding: '4px 8px' }}>
-                                            <ChevronLeft size={18} /> Back
-                                        </button>
-                                        {isGmailConnected && (
-                                            <button 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setIsEditingConnectors(!isEditingConnectors);
-                                                }}
-                                                style={{ padding: '4px 8px', opacity: 0.7 }}
-                                                title="Edit Connectors"
-                                            >
-                                                <Edit2 size={18} />
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
-                                    <button onClick={async (e) => {
-                                        e.stopPropagation();
-                                        setIsPlusOpen(false);
-                                        setIsConnectorsSubmenuOpen(false);
-                                        try {
-                                            localStorage.setItem('oauth_provider', 'google');
-                                            const { error } = await supabase.auth.signInWithOAuth({
-                                                provider: 'google',
-                                                options: {
-                                                    redirectTo: `${window.location.origin}/auth/callback`,
-                                                    scopes: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive',
-                                                    queryParams: {
-                                                        access_type: 'offline',
-                                                        prompt: 'consent'
-                                                    }
-                                                }
-                                            });
-                                            if (error) throw error;
-                                        } catch (err) {
-                                            console.error("Failed to connect Gmail:", err);
-                                            alert("Failed to connect Gmail: " + err.message);
-                                        }
-                                    }} style={{ cursor: 'pointer' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', justifyContent: 'space-between' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                                                <img src="/gmail.png" alt="Gmail" style={{ width: 18, height: 18, objectFit: 'contain' }} /> 
-                                                <span>{isGmailConnected ? "Gmail" : "Connect Gmail"}</span>
-                                            </div>
-                                            {isGmailConnected && isEditingConnectors && (
-                                                <div 
-                                                    style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
-                                                    onClick={async (e) => {
-                                                        e.stopPropagation();
-                                                        if (window.confirm("Are you sure you want to disconnect all Google tools?")) {
-                                                            const { data: { user } } = await supabase.auth.getUser();
-                                                            if (user) {
-                                                                await supabase.from('user_google_tokens').delete().eq('user_id', user.id);
-                                                                setIsGmailConnected(false);
-                                                                setIsEditingConnectors(false);
-                                                            }
-                                                        }
-                                                    }}
-                                                >
-                                                    <div style={{
-                                                        width: '28px',
-                                                        height: '16px',
-                                                        borderRadius: '8px',
-                                                        background: '#10a37f',
-                                                        position: 'relative',
-                                                        transition: 'all 0.2s',
-                                                        flexShrink: 0
-                                                    }}>
-                                                        <div style={{
-                                                            width: '12px',
-                                                            height: '12px',
-                                                            borderRadius: '50%',
-                                                            background: 'white',
-                                                            position: 'absolute',
-                                                            top: '2px',
-                                                            left: '14px',
-                                                            transition: 'all 0.2s'
-                                                        }} />
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </button>
-
-                                    <button onClick={async (e) => {
-                                        e.stopPropagation();
-                                        setIsPlusOpen(false);
-                                        setIsConnectorsSubmenuOpen(false);
-                                        try {
-                                            localStorage.setItem('oauth_provider', 'google');
-                                            const { error } = await supabase.auth.signInWithOAuth({
-                                                provider: 'google',
-                                                options: {
-                                                    redirectTo: `${window.location.origin}/auth/callback`,
-                                                    scopes: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive',
-                                                    queryParams: {
-                                                        access_type: 'offline',
-                                                        prompt: 'consent'
-                                                    }
-                                                }
-                                            });
-                                            if (error) throw error;
-                                        } catch (err) {
-                                            console.error("Failed to connect Drive:", err);
-                                            alert("Failed to connect Drive: " + err.message);
-                                        }
-                                    }} style={{ cursor: 'pointer' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', justifyContent: 'space-between' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                                                <img src="/drive.png" alt="Google Drive" style={{ width: 18, height: 18, objectFit: 'contain' }} /> 
-                                                <span>{isGmailConnected ? "Google Drive" : "Connect Drive"}</span>
-                                            </div>
-                                            {isGmailConnected && isEditingConnectors && (
-                                                <div 
-                                                    style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
-                                                    onClick={async (e) => {
-                                                        e.stopPropagation();
-                                                        if (window.confirm("Are you sure you want to disconnect all Google tools?")) {
-                                                            const { data: { user } } = await supabase.auth.getUser();
-                                                            if (user) {
-                                                                await supabase.from('user_google_tokens').delete().eq('user_id', user.id);
-                                                                setIsGmailConnected(false);
-                                                                setIsEditingConnectors(false);
-                                                            }
-                                                        }
-                                                    }}
-                                                >
-                                                    <div style={{
-                                                        width: '28px',
-                                                        height: '16px',
-                                                        borderRadius: '8px',
-                                                        background: '#10a37f',
-                                                        position: 'relative',
-                                                        transition: 'all 0.2s',
-                                                        flexShrink: 0
-                                                    }}>
-                                                        <div style={{
-                                                            width: '12px',
-                                                            height: '12px',
-                                                            borderRadius: '50%',
-                                                            background: 'white',
-                                                            position: 'absolute',
-                                                            top: '2px',
-                                                            left: '14px',
-                                                            transition: 'all 0.2s'
-                                                        }} />
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </button>
-
-                                    <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
-                                    <button onClick={() => {
-                                        setIsPlusOpen(false);
-                                        setIsConnectorsSubmenuOpen(false);
-                                        setExtensionsModalTab('connectors');
-                                        setIsExtensionsModalOpen(true);
-                                    }} style={{ color: '#a1a1aa' }}>
-                                        <LayoutGrid size={18} /> More Connectors...
-                                    </button>
-                                </div>
-                            )}
-                        </div>
+                        <button 
+                            type="button"
+                            className={`toolbar-btn ${isPlusOpen ? 'active' : ''}`} 
+                            onClick={() => {
+                                setIsPlusOpen(!isPlusOpen);
+                                if (isPlusOpen) {
+                                    setIsToolsSubmenuOpen(false);
+                                    setIsConnectorsSubmenuOpen(false);
+                                }
+                            }} 
+                            title="Add attachment"
+                        >
+                            <Plus size={18} />
+                        </button>
                         
                         <input 
                             type="file" 
@@ -838,6 +917,7 @@ export default function InputBox({
                     </div>
                 </div>
             </div>
+        </div>
             
             <ExtensionsModal 
                 isOpen={isExtensionsModalOpen} 
