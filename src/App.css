@@ -1178,6 +1178,46 @@ body {
     background: #2a60c0;
 }
 
+.think-mode-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 9999px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted, #9ca3af);
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+    white-space: nowrap;
+    outline: none;
+}
+
+.think-mode-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.think-mode-btn.active {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(59, 130, 246, 0.35);
+    color: #3b82f6;
+}
+
+.think-mode-btn.active:hover {
+    background: rgba(59, 130, 246, 0.28);
+    border-color: rgba(59, 130, 246, 0.5);
+    color: #60a5fa;
+}
+
+.think-mode-btn .think-mode-icon {
+    flex-shrink: 0;
+}
+
 .home-empty-state-wrapper {
     width: 100%;
     max-width: 800px;
