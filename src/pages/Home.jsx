@@ -1613,10 +1613,21 @@ export default function Home({ session }) {
                 )}
             </AnimatePresence>
             
+            {/* Mobile backdrop overlay */}
+            <div 
+                className={`sidebar-overlay ${isSidebarOpen ? 'active' : ''}`}
+                onClick={() => setIsSidebarOpen(false)}
+            />
+
             <motion.div
                 initial={false}
-                animate={{ width: isSidebarOpen ? 320 : 68 }}
-                transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+                animate={{ width: isSidebarOpen ? 268 : 64 }}
+                transition={{ 
+                    type: "spring", 
+                    stiffness: 380, 
+                    damping: 32, 
+                    mass: 0.8 
+                }}
                 onAnimationStart={() => setIsSidebarAnimating(true)}
                 onAnimationComplete={() => setIsSidebarAnimating(false)}
                 className="sidebar-wrapper"
