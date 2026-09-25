@@ -8,13 +8,29 @@ import {
     Settings2, Bell, LayoutGrid, Database, Archive, Shield,
     ArrowLeft, RotateCcw, Trash2, Download, UserMinus, Plus, Edit2, Save, Zap,
     Power, Check, Calendar, HardDrive, Scissors, Scan, Eye, Key, Palette, Film, Minimize2, RefreshCw, Receipt, Megaphone, BookOpen, Terminal, FolderOpen, Code,
-    Smartphone, User
+    Smartphone, User, Cookie
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import UsageSection from './UsageSection';
 import { useTheme } from '../contexts/ThemeContext';
 import GoogleConnectModal from './GoogleConnectModal';
 import TelegramConnectModal from './TelegramConnectModal';
+
+const legalDocuments = [
+    { id: 'privacy-policy', title: 'Privacy Policy', icon: Shield },
+    { id: 'terms-conditions', title: 'Terms & Conditions', icon: FileText },
+    { id: 'refund-cancellation', title: 'Refund & Cancellation', icon: RotateCcw },
+    { id: 'cookie-policy', title: 'Cookie Policy', icon: Cookie },
+    { id: 'acceptable-use', title: 'Acceptable Use Policy', icon: Check },
+    { id: 'ai-usage-disclaimer', title: 'AI Usage & Disclaimer', icon: Sparkles },
+    { id: 'data-retention', title: 'Data Retention', icon: Database },
+    { id: 'security-policy', title: 'Security Policy', icon: Lock },
+    { id: 'copyright-ip', title: 'Copyright & IP', icon: BookOpen },
+    { id: 'third-party-services', title: 'Third-Party Services', icon: AppWindow },
+    { id: 'childrens-privacy', title: "Children's Privacy", icon: Eye },
+    { id: 'community-guidelines', title: 'Community Guidelines', icon: Megaphone },
+    { id: 'contact-support', title: 'Contact & Support', icon: Mail }
+];
 
 export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, session, onOpenPhoneModal, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange }) {
     const { themePref, setThemePref } = useTheme();
@@ -649,17 +665,31 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
 
                             {view === 'about' && (
                                 <div className="about-view">
-                                    <div style={{ textAlign: 'center', padding: '30px 0' }}>
-                                        <h3 style={{ marginTop: '16px', fontSize: '20px', fontWeight: '600' }}>CEOVA AI</h3>
-                                        <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>Version 1.2.6 (Production)</p>
+                                    <div style={{ textAlign: 'center', padding: '20px 0 16px' }}>
+                                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: '#ffffff', letterSpacing: '-0.01em' }}>CEOVA AI</h3>
+                                        <p style={{ color: '#71717a', fontSize: '12px', marginTop: '4px' }}>Version 1.2.6 (Production)</p>
                                     </div>
 
                                     <h4 className="section-label">Legal Center</h4>
                                     <div className="settings-section">
-                                        <div className="settings-row clickable" onClick={() => { navigate('/legal/privacy-policy'); handleClose(); }}>
-                                            <div className="row-left"><Shield size={18} /> <span>Legal Documents & Policies</span></div>
-                                            <ChevronRight size={14} className="chevron" />
-                                        </div>
+                                        {legalDocuments.map((doc) => {
+                                            const IconComponent = doc.icon;
+                                            return (
+                                                <div 
+                                                    key={doc.id}
+                                                    className="settings-row clickable" 
+                                                    onClick={() => { navigate(`/legal/${doc.id}`); handleClose(); }}
+                                                >
+                                                    <div className="row-left">
+                                                        <div className="settings-icon-squircle">
+                                                            <IconComponent size={16} />
+                                                        </div>
+                                                        <span>{doc.title}</span>
+                                                    </div>
+                                                    <ChevronRight size={14} className="chevron" />
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
