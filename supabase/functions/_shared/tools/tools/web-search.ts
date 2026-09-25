@@ -137,12 +137,15 @@ export class WebSearchTool implements Tool {
     const results = await performWebSearch(query, numResults);
 
     if (results.length === 0) {
+      const emptyMsg = `No web results found for "${query}".`;
       return {
         success: true,
         data: {
           query,
           results: [],
-          summary: `No web results found for "${query}".`
+          summary: emptyMsg,
+          text: emptyMsg,
+          summaryMarkdown: emptyMsg
         }
       };
     }
@@ -157,7 +160,9 @@ export class WebSearchTool implements Tool {
         query,
         count: results.length,
         results,
-        summary: formattedSummary
+        summary: formattedSummary,
+        text: formattedSummary,
+        summaryMarkdown: formattedSummary
       }
     };
   }
