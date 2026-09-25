@@ -1,5 +1,4 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, ChevronRight, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical, Sparkles, Search, Image as ImageIcon, Wrench } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../services/supabase';
@@ -172,10 +171,14 @@ export default function InputBox({
 
     const textareaRef = useRef(null);
     const fileInputRef = useRef(null);
+    const imageInputRef = useRef(null);
+    const docInputRef = useRef(null);
     const [isEmojiOpen, setIsEmojiOpen] = useState(false);
     const [isPlusOpen, setIsPlusOpen] = useState(false);
     const [isToolsSubmenuOpen, setIsToolsSubmenuOpen] = useState(false);
     const [isConnectorsSubmenuOpen, setIsConnectorsSubmenuOpen] = useState(false);
+    const [isUploadSubmenuOpen, setIsUploadSubmenuOpen] = useState(false);
+    const [isLibrarySubmenuOpen, setIsLibrarySubmenuOpen] = useState(false);
     const [isGoogleConnected, setIsGoogleConnected] = useState(false);
     const [isTelegramConnected, setIsTelegramConnected] = useState(false);
     const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
@@ -186,7 +189,6 @@ export default function InputBox({
     const [isListening, setIsListening] = useState(false);
     const [isGmailConnected, setIsGmailConnected] = useState(false);
     const [isThinking, setIsThinking] = useState(false);
-    const [isLibraryPickerOpen, setIsLibraryPickerOpen] = useState(false);
     const [libraryTab, setLibraryTab] = useState('ceova');
     const [libraryItems, setLibraryItems] = useState([]);
     const [libraryLoading, setLibraryLoading] = useState(false);
@@ -211,6 +213,8 @@ export default function InputBox({
                 setIsPlusOpen(false);
                 setIsConnectorsSubmenuOpen(false);
                 setIsToolsSubmenuOpen(false);
+                setIsUploadSubmenuOpen(false);
+                setIsLibrarySubmenuOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -316,19 +320,22 @@ export default function InputBox({
 
     // Close on escape key
     useEffect(() => {
-        if (!isLibraryPickerOpen) return;
+        if (!isPlusOpen) return;
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
-                setIsLibraryPickerOpen(false);
+                setIsPlusOpen(false);
+                setIsConnectorsSubmenuOpen(false);
+                setIsToolsSubmenuOpen(false);
+                setIsUploadSubmenuOpen(false);
+                setIsLibrarySubmenuOpen(false);
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isLibraryPickerOpen]);
+    }, [isPlusOpen]);
 
     // Fetch library items using unified engine
     const openLibraryPicker = async () => {
-        setIsLibraryPickerOpen(true);
         setLibrarySearch('');
 
         // Step 1: Immediate cache retrieval for instant UI
@@ -449,7 +456,8 @@ export default function InputBox({
             size: item.size || 0,
         };
         setFiles(prev => [...prev, pseudoFile]);
-        setIsLibraryPickerOpen(false);
+        setIsPlusOpen(false);
+        setIsLibrarySubmenuOpen(false);
     };
 
     useEffect(() => {
@@ -469,7 +477,7 @@ export default function InputBox({
             setIsToolsSubmenuOpen(true);
         } else if (!val.includes('/')) {
             setIsToolsSubmenuOpen(false);
-            if (isPlusOpen && !isConnectorsSubmenuOpen && !isEmojiOpen) {
+            if (isPlusOpen && !isConnectorsSubmenuOpen && !isUploadSubmenuOpen && !isLibrarySubmenuOpen && !isEmojiOpen) {
                 setIsPlusOpen(false);
             }
         }
@@ -487,6 +495,8 @@ export default function InputBox({
         setIsPlusOpen(false);
         setIsToolsSubmenuOpen(false);
         setIsConnectorsSubmenuOpen(false);
+        setIsUploadSubmenuOpen(false);
+        setIsLibrarySubmenuOpen(false);
         setIsEmojiOpen(false);
         handleSend(files, null, false, isThinking);
         // Revoke preview URLs before clearing
@@ -509,6 +519,8 @@ export default function InputBox({
         });
         setFiles(prev => [...prev, ...newFiles]);
         if (fileInputRef.current) fileInputRef.current.value = "";
+        if (imageInputRef.current) imageInputRef.current.value = "";
+        if (docInputRef.current) docInputRef.current.value = "";
     };
 
     const removeFile = (e, index) => {
@@ -627,7 +639,7 @@ export default function InputBox({
                             }
                             transition={{ type: "spring", stiffness: 360, damping: 28 }}
                         >
-                            {!isToolsSubmenuOpen && !isConnectorsSubmenuOpen && (
+                            {!isToolsSubmenuOpen && !isConnectorsSubmenuOpen && !isUploadSubmenuOpen && !isLibrarySubmenuOpen && (
                                 <div className="sliding-tab-grid">
                                     <button 
                                         type="button"
@@ -642,16 +654,16 @@ export default function InputBox({
                                         </div>
                                         <div className="sliding-tab-card-content">
                                             <span className="sliding-tab-card-title">Connectors</span>
-                                            <span className="sliding-tab-card-desc">Gmail, Drive & apps</span>
+                                            <span className="sliding-tab-card-desc">Google, Telegram & Tools</span>
                                         </div>
                                     </button>
 
                                     <button 
                                         type="button"
                                         className="sliding-tab-card"
-                                        onClick={() => { 
-                                            setIsPlusOpen(false); 
-                                            fileInputRef.current?.click(); 
+                                        onClick={(e) => { 
+                                            e.stopPropagation();
+                                            setIsUploadSubmenuOpen(true);
                                         }}
                                     >
                                         <div className="sliding-tab-card-icon">
@@ -668,8 +680,8 @@ export default function InputBox({
                                         className="sliding-tab-card"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            setIsPlusOpen(false);
                                             openLibraryPicker();
+                                            setIsLibrarySubmenuOpen(true);
                                         }}
                                     >
                                         <div className="sliding-tab-card-icon">
@@ -858,6 +870,238 @@ export default function InputBox({
                                     </div>
                                 </div>
                             )}
+
+                            {isUploadSubmenuOpen && (
+                                <div className="sliding-tab-submenu">
+                                    <div className="sliding-tab-submenu-header">
+                                        <button 
+                                            type="button"
+                                            className="sliding-tab-back-btn"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setIsUploadSubmenuOpen(false);
+                                            }}
+                                        >
+                                            <ChevronLeft size={16} /> Back
+                                        </button>
+                                        <span className="sliding-tab-submenu-title">Upload Files</span>
+                                        <div style={{ width: 48 }} />
+                                    </div>
+
+                                    <div className="sliding-tab-upload-grid">
+                                        {/* 1. All Files / Device */}
+                                        <button
+                                            type="button"
+                                            className="sliding-tab-card"
+                                            onClick={() => {
+                                                setIsPlusOpen(false);
+                                                setIsUploadSubmenuOpen(false);
+                                                fileInputRef.current?.click();
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon">
+                                                <Paperclip size={18} />
+                                            </div>
+                                            <div className="sliding-tab-card-content">
+                                                <span className="sliding-tab-card-title">All Files</span>
+                                                <span className="sliding-tab-card-desc">Images, docs & PDFs</span>
+                                            </div>
+                                        </button>
+
+                                        {/* 2. Photos & Images */}
+                                        <button
+                                            type="button"
+                                            className="sliding-tab-card"
+                                            onClick={() => {
+                                                setIsPlusOpen(false);
+                                                setIsUploadSubmenuOpen(false);
+                                                imageInputRef.current?.click();
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon">
+                                                <ImageIcon size={18} />
+                                            </div>
+                                            <div className="sliding-tab-card-content">
+                                                <span className="sliding-tab-card-title">Photos & Images</span>
+                                                <span className="sliding-tab-card-desc">PNG, JPG, WebP, GIF</span>
+                                            </div>
+                                        </button>
+
+                                        {/* 3. Documents & PDFs */}
+                                        <button
+                                            type="button"
+                                            className="sliding-tab-card"
+                                            onClick={() => {
+                                                setIsPlusOpen(false);
+                                                setIsUploadSubmenuOpen(false);
+                                                docInputRef.current?.click();
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon">
+                                                <FileText size={18} />
+                                            </div>
+                                            <div className="sliding-tab-card-content">
+                                                <span className="sliding-tab-card-title">Documents & PDFs</span>
+                                                <span className="sliding-tab-card-desc">PDF, Word, TXT, Excel</span>
+                                            </div>
+                                        </button>
+
+                                        {/* 4. Local Folder */}
+                                        <button
+                                            type="button"
+                                            className={`sliding-tab-card ${localDirectoryHandle ? 'is-connected' : ''}`}
+                                            onClick={() => {
+                                                setIsUploadSubmenuOpen(false);
+                                                handleConnectFolder();
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon">
+                                                <Folder size={18} />
+                                            </div>
+                                            <div className="sliding-tab-card-content">
+                                                <div className="sliding-tab-title-line">
+                                                    <span className="sliding-tab-card-title">Connect Folder</span>
+                                                    {localDirectoryHandle && <span className="sliding-tab-status-dot" title="Connected" />}
+                                                </div>
+                                                <span className="sliding-tab-card-desc">
+                                                    {localDirectoryHandle 
+                                                        ? (typeof localDirectoryHandle === 'string' ? localDirectoryHandle.split(/[/\\\\]/).pop() : localDirectoryHandle.name || 'Folder Linked')
+                                                        : "Sync project workspace"}
+                                                </span>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isLibrarySubmenuOpen && (
+                                <div className="sliding-tab-submenu sliding-tab-lib-submenu">
+                                    <div className="sliding-tab-submenu-header">
+                                        <button 
+                                            type="button"
+                                            className="sliding-tab-back-btn"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setIsLibrarySubmenuOpen(false);
+                                            }}
+                                        >
+                                            <ChevronLeft size={16} /> Back
+                                        </button>
+                                        <div className="sliding-tab-title-line">
+                                            <span className="sliding-tab-submenu-title">Select from Library</span>
+                                            <span className="sliding-tab-lib-count-badge">{libraryCounts.total} items</span>
+                                        </div>
+                                        {onOpenLibrary ? (
+                                            <button
+                                                type="button"
+                                                className="sliding-tab-lib-link-btn"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setIsPlusOpen(false);
+                                                    setIsLibrarySubmenuOpen(false);
+                                                    onOpenLibrary();
+                                                }}
+                                                title="Open Full Library Page"
+                                            >
+                                                Full Library ↗
+                                            </button>
+                                        ) : <div style={{ width: 48 }} />}
+                                    </div>
+
+                                    {/* Search & Tabs Controls */}
+                                    <div className="sliding-tab-lib-toolbar">
+                                        <div className="sliding-tab-lib-search-box">
+                                            <Search size={13} className="sliding-tab-lib-search-icon" />
+                                            <input
+                                                className="sliding-tab-lib-search-input"
+                                                placeholder={`Search in ${libraryTabs.find(t => t.id === libraryTab)?.label || 'library'}...`}
+                                                value={librarySearch}
+                                                onChange={e => setLibrarySearch(e.target.value)}
+                                            />
+                                            {librarySearch && (
+                                                <button 
+                                                    type="button"
+                                                    className="sliding-tab-lib-search-clear" 
+                                                    onClick={() => setLibrarySearch('')}
+                                                    title="Clear search"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="sliding-tab-lib-tabs-row">
+                                            {libraryTabs.map(tab => (
+                                                <button
+                                                    key={tab.id}
+                                                    type="button"
+                                                    className={`sliding-tab-lib-tab ${libraryTab === tab.id ? 'active' : ''}`}
+                                                    onClick={() => setLibraryTab(tab.id)}
+                                                >
+                                                    <span>{tab.label}</span>
+                                                    <span className="sliding-tab-lib-tab-num">{tab.count}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Scrollable Viewport */}
+                                    <div className="sliding-tab-lib-viewport">
+                                        {libraryLoading ? (
+                                            <div className="sliding-tab-lib-loading">
+                                                <div className="lib-picker-spinner" />
+                                                <span>Loading library items...</span>
+                                            </div>
+                                        ) : filteredLibraryItems.length === 0 ? (
+                                            <div className="sliding-tab-lib-empty">
+                                                <div className="sliding-tab-lib-empty-icon">
+                                                    {libraryTab === 'gcalendar' ? <CalendarIcon size={20} /> :
+                                                     libraryTab === 'gmail' ? <Mail size={20} /> :
+                                                     libraryTab === 'ai' ? <Sparkles size={20} /> :
+                                                     libraryTab === 'gdrive' ? <Cloud size={20} /> :
+                                                     <Folder size={20} />}
+                                                </div>
+                                                <span className="sliding-tab-lib-empty-title">
+                                                    {librarySearch ? "No matching files" : "No files in this category"}
+                                                </span>
+                                                <span className="sliding-tab-lib-empty-sub">
+                                                    {librarySearch ? "Try searching for a different keyword." : "Items will appear here once saved or synced."}
+                                                </span>
+                                            </div>
+                                        ) : (() => {
+                                            const images = filteredLibraryItems.filter(it => it.kind === 'image' || it.mime_type?.startsWith('image/'));
+                                            const others = filteredLibraryItems.filter(it => !(it.kind === 'image' || it.mime_type?.startsWith('image/')));
+
+                                            return (
+                                                <div className="sliding-tab-lib-items-list">
+                                                    {images.length > 0 && (
+                                                        <div className="lib-picker-grid-images">
+                                                            {images.map(item => (
+                                                                <PickerImageCard
+                                                                    key={item.id}
+                                                                    item={item}
+                                                                    onClick={attachLibraryItem}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {others.length > 0 && (
+                                                        <div className="lib-picker-grid-files">
+                                                            {others.map(item => (
+                                                                <PickerRowCard
+                                                                    key={item.id}
+                                                                    item={item}
+                                                                    onClick={attachLibraryItem}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                </div>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -903,11 +1147,13 @@ export default function InputBox({
                             type="button"
                             className={`toolbar-btn ${isPlusOpen ? 'active' : ''}`} 
                             onClick={() => {
-                                setIsPlusOpen(!isPlusOpen);
-                                if (isPlusOpen) {
+                                setIsPlusOpen(prev => {
                                     setIsToolsSubmenuOpen(false);
                                     setIsConnectorsSubmenuOpen(false);
-                                }
+                                    setIsUploadSubmenuOpen(false);
+                                    setIsLibrarySubmenuOpen(false);
+                                    return !prev;
+                                });
                             }} 
                             title="Add attachment"
                         >
@@ -919,7 +1165,23 @@ export default function InputBox({
                             ref={fileInputRef} 
                             style={{ display: 'none' }} 
                             onChange={(e) => onFilesSelected(Array.from(e.target.files))}
-                            accept="image/*,.pdf,.txt"
+                            accept="*/*"
+                            multiple
+                        />
+                        <input 
+                            type="file" 
+                            ref={imageInputRef} 
+                            style={{ display: 'none' }} 
+                            onChange={(e) => onFilesSelected(Array.from(e.target.files))}
+                            accept="image/*"
+                            multiple
+                        />
+                        <input 
+                            type="file" 
+                            ref={docInputRef} 
+                            style={{ display: 'none' }} 
+                            onChange={(e) => onFilesSelected(Array.from(e.target.files))}
+                            accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.pptx,.ppt,.json,.md"
                             multiple
                         />
                     </div>
@@ -985,169 +1247,6 @@ export default function InputBox({
                     checkGoogleAndTelegramStatus();
                 }}
             />
-
-            {/* ── High-End Glassmorphic Library Picker Modal ─────────────────────────── */}
-            {isLibraryPickerOpen && typeof document !== 'undefined' && createPortal(
-                <div
-                    className="lib-picker-overlay"
-                    onClick={() => setIsLibraryPickerOpen(false)}
-                >
-                    <div
-                        className="lib-picker-modal"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        {/* Header */}
-                        <div className="lib-picker-header">
-                            <div className="lib-picker-icon-badge">
-                                <BookOpen size={17} />
-                            </div>
-                            <div className="lib-picker-title-group">
-                                <h3 className="lib-picker-title">Select from Library</h3>
-                                <span className="lib-picker-total-badge">
-                                    {libraryCounts.total} items
-                                </span>
-                            </div>
-                            <button
-                                className="lib-picker-close-btn"
-                                onClick={() => setIsLibraryPickerOpen(false)}
-                                title="Close (Esc)"
-                            >
-                                <X size={17} />
-                            </button>
-                        </div>
-
-                        {/* Search Bar */}
-                        <div className="lib-picker-search-wrap">
-                            <div className="lib-picker-search-inner">
-                                <Search size={14} className="lib-picker-search-icon" />
-                                <input
-                                    autoFocus
-                                    className="lib-picker-search-input"
-                                    placeholder={`Search in ${libraryTabs.find(t => t.id === libraryTab)?.label || 'library'}...`}
-                                    value={librarySearch}
-                                    onChange={e => setLibrarySearch(e.target.value)}
-                                />
-                                {librarySearch && (
-                                    <button 
-                                        className="lib-picker-search-clear" 
-                                        onClick={() => setLibrarySearch('')}
-                                        title="Clear search"
-                                    >
-                                        <X size={13} />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Minimalist Pill Tabs */}
-                        <div className="lib-picker-tabs-bar">
-                            {libraryTabs.map(tab => (
-                                <button
-                                    key={tab.id}
-                                    className={`lib-picker-pill-tab ${libraryTab === tab.id ? 'active' : ''}`}
-                                    onClick={() => setLibraryTab(tab.id)}
-                                >
-                                    <span>{tab.label}</span>
-                                    <span className="lib-picker-tab-count">{tab.count}</span>
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* Items Viewport */}
-                        <div className="lib-picker-viewport">
-                            {libraryLoading ? (
-                                <div className="lib-picker-loading">
-                                    <div className="lib-picker-spinner" />
-                                    <span>Loading library items...</span>
-                                </div>
-                            ) : (() => {
-                                if (filteredLibraryItems.length === 0) {
-                                    const emptyInfo = {
-                                        ceova: {
-                                            title: "No CEOVA files found",
-                                            desc: librarySearch ? "No files match your search query." : "Upload files or drop attachments in chat to store them in your CEOVA Drive."
-                                        },
-                                        gdrive: {
-                                            title: "No Google Drive files",
-                                            desc: librarySearch ? "No drive files match your search query." : "Connect Google in Connectors menu to access your files here."
-                                        },
-                                        gmail: {
-                                            title: "No Gmail messages",
-                                            desc: librarySearch ? "No emails match your search query." : "Connect your Google account to browse and attach email threads."
-                                        },
-                                        gcalendar: {
-                                            title: "No calendar events",
-                                            desc: librarySearch ? "No events match your search query." : "Sync Google Calendar to attach meetings and schedules."
-                                        },
-                                        ai: {
-                                            title: "No AI generated files",
-                                            desc: librarySearch ? "No AI files match your search query." : "Ask Ceova to generate images, charts or documents to see them here."
-                                        }
-                                    }[libraryTab] || { title: "No items found", desc: "No matching items found." };
-
-                                    return (
-                                        <div className="lib-picker-empty">
-                                            <div className="lib-picker-empty-icon">
-                                                {libraryTab === 'gcalendar' ? <CalendarIcon size={24} /> :
-                                                 libraryTab === 'gmail' ? <Mail size={24} /> :
-                                                 libraryTab === 'ai' ? <Sparkles size={24} /> :
-                                                 libraryTab === 'gdrive' ? <Cloud size={24} /> :
-                                                 <Folder size={24} />}
-                                            </div>
-                                            <h4 className="lib-picker-empty-title">{emptyInfo.title}</h4>
-                                            <p className="lib-picker-empty-desc">{emptyInfo.desc}</p>
-                                        </div>
-                                    );
-                                }
-
-                                const images = filteredLibraryItems.filter(it => it.kind === 'image' || it.mime_type?.startsWith('image/'));
-                                const others = filteredLibraryItems.filter(it => !(it.kind === 'image' || it.mime_type?.startsWith('image/')));
-
-                                return (
-                                    <>
-                                        {images.length > 0 && (
-                                            <div className="lib-picker-grid-images">
-                                                {images.map(item => (
-                                                    <PickerImageCard
-                                                        key={item.id}
-                                                        item={item}
-                                                        onClick={attachLibraryItem}
-                                                    />
-                                                ))}
-                                            </div>
-                                        )}
-                                        {others.length > 0 && (
-                                            <div className="lib-picker-grid-files">
-                                                {others.map(item => (
-                                                    <PickerRowCard
-                                                        key={item.id}
-                                                        item={item}
-                                                        onClick={attachLibraryItem}
-                                                    />
-                                                ))}
-                                            </div>
-                                        )}
-                                    </>
-                                );
-                            })()}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="lib-picker-footer">
-                            <span className="lib-picker-footer-tip">
-                                💡 Click any file to attach it to your message
-                            </span>
-                            <button
-                                className="lib-picker-footer-close"
-                                onClick={() => setIsLibraryPickerOpen(false)}
-                            >
-                                Done
-                            </button>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
         </motion.div>
     );
 }
