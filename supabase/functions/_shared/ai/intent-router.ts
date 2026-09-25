@@ -308,8 +308,16 @@ export function routeIntent(
     }
   }
 
-  // ── Web search explicit toggle or thinking deep research ─────────────────────
-  if (isWebSearch || (isThinking && !isShortConfirmation && lowerMessage.length > 5)) {
+  // ── Web search: autonomous AI decision & inquiry detection ──────────────────
+  // The user no longer needs to manually toggle search; the AI autonomously chooses.
+  const isSearchOrResearchInquiry = 
+    isWebSearch ||
+    (isThinking && !isShortConfirmation && lowerMessage.length > 5) ||
+    /^(?:please\s+)?(?:do\s+(?:a\s+)?)?(?:research|reserch|search|find|look\s*up|google|check)\b/i.test(lowerMessage) ||
+    /\b(?:web\s*search|deep\s*research|latest|news|today|current|recent|price|stock|weather|release\s*date|update|version|paper|study|studies|documentation|docs|api|fact|facts|statistics|stats|history\s+of|biography|who\s+is|what\s+is|where\s+is|when\s+was|how\s+does|how\s+to|why\s+does|compare|vs|versus)\b/i.test(lowerMessage) ||
+    (isQuestion && !isShortConfirmation && lowerMessage.length > 10);
+
+  if (isSearchOrResearchInquiry) {
     const webSearchCap = CAPABILITIES.find(c => c.id === "web_search");
     if (webSearchCap && !matchedCapabilities.includes(webSearchCap)) {
       matchedCapabilities.push(webSearchCap);

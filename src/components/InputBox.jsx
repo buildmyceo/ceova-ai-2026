@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, ChevronRight, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical, Sparkles, Search, Image as ImageIcon, Wrench } from 'lucide-react';
+import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, ChevronRight, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical, Sparkles, Search, Image as ImageIcon, Wrench } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthProvider';
@@ -184,7 +184,6 @@ export default function InputBox({
     const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
     const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
     const [isEditingConnectors, setIsEditingConnectors] = useState(false);
-    const [isWebSearchActive, setIsWebSearchActive] = useState(false);
     const [files, setFiles] = useState([]);
     const [isListening, setIsListening] = useState(false);
     const [isGmailConnected, setIsGmailConnected] = useState(false);
@@ -498,7 +497,7 @@ export default function InputBox({
         setIsUploadSubmenuOpen(false);
         setIsLibrarySubmenuOpen(false);
         setIsEmojiOpen(false);
-        handleSend(files, null, false, isThinking, isWebSearchActive);
+        handleSend(files, null, false, isThinking, false);
         // Revoke preview URLs before clearing
         files.forEach(f => {
             if (f.url && f.url.startsWith('blob:')) URL.revokeObjectURL(f.url);
@@ -1197,16 +1196,6 @@ export default function InputBox({
                     />
 
                     <div className="toolbar-right">
-                        <button
-                            type="button"
-                            className={`search-mode-btn ${isWebSearchActive ? 'active' : ''}`}
-                            onClick={() => setIsWebSearchActive(!isWebSearchActive)}
-                            title={isWebSearchActive ? "Web search enabled" : "Search the web"}
-                        >
-                            <Globe size={16} strokeWidth={2} className="search-mode-icon" />
-                            <span className="search-mode-label">Search</span>
-                        </button>
-
                         <button
                             type="button"
                             className={`think-mode-btn ${isThinking ? 'active' : ''}`}
