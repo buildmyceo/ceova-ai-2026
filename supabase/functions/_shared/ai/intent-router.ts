@@ -316,6 +316,21 @@ export function routeIntent(
     }
   }
 
+  // ── Provenance & Watermark Verification ─────────────────────────────────────
+  const isProvenanceIntent = 
+    /\b(?:watermark|water\s*mark|watermarks|provenance|authentic|authenticity)\b/i.test(lowerMessage) ||
+    /\b(?:which|what|is\s+this|are\s+these|did\s+you|who)\b.*\b(?:ceova|genrat\w+|generat\w+|creat\w+|made)\b/i.test(lowerMessage) ||
+    /\b(?:generated|genrated|created|made)\s+by\s+ceova\b/i.test(lowerMessage) ||
+    /\bwhich\s+(?:image|picture|photo|file|one)\s+is\s+(?:genrated|generated|made|created)\b/i.test(lowerMessage) ||
+    (hasImage && /\b(?:ceova|watermark|water\s*mark|provenance)\b/i.test(lowerMessage));
+
+  if (isProvenanceIntent) {
+    const provCap = CAPABILITIES.find(c => c.id === "provenance");
+    if (provCap && !matchedCapabilities.includes(provCap)) {
+      matchedCapabilities.push(provCap);
+    }
+  }
+
   // ── Keyword matching across all capabilities ─────────────────────────────────
   for (const cap of CAPABILITIES) {
     if (matchedCapabilities.includes(cap)) continue; // already added
