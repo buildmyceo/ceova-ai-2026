@@ -25,6 +25,7 @@ import {
   isCeovaItem
 } from '../services/libraryFetchEngine';
 import { useDriveThumbnail, getDriveImageBlob, extractDriveId } from '../services/driveThumbnailCache';
+import { resolveSupabaseImage } from '../services/supabaseStorageHelper';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const MIME_ICON = (type = '', name = '') => {
@@ -89,18 +90,14 @@ function Lightbox({ item, src, caption, onClose }) {
   }, [onClose]);
 
   useEffect(() => {
-    if (initialValidSrc) {
-      setDisplaySrc(initialValidSrc);
-      setLoading(false);
-      setLoadError(false);
-      return;
-    }
+    let isMounted = true;
 
     if (driveId) {
       setLoading(true);
       setLoadError(false);
       getDriveImageBlob(driveId)
         .then(blobUrl => {
+          if (!isMounted) return;
           if (blobUrl) {
             setDisplaySrc(blobUrl);
             setLoadError(false);
@@ -108,16 +105,48 @@ function Lightbox({ item, src, caption, onClose }) {
             setLoadError(true);
           }
         })
-        .catch(() => setLoadError(true))
-        .finally(() => setLoading(false));
-    } else if (src && !isHtmlPageUrl) {
-      setDisplaySrc(src);
+        .catch(() => { if (isMounted) setLoadError(true); })
+        .finally(() => { if (isMounted) setLoading(false); });
+      return;
+    }
+
+    const currentSrc = initialValidSrc || src || item?.url;
+    const isSupabase = typeof currentSrc === 'string' && (
+      currentSrc.includes('/storage/v1/') || !!item?.path
+    );
+
+    if (isSupabase) {
+      setLoading(true);
+      resolveSupabaseImage(currentSrc, item)
+        .then(resolved => {
+          if (!isMounted) return;
+          if (resolved) {
+            setDisplaySrc(resolved);
+            setLoadError(false);
+          } else {
+            setDisplaySrc(currentSrc);
+          }
+        })
+        .catch(() => {
+          if (isMounted) setDisplaySrc(currentSrc);
+        })
+        .finally(() => {
+          if (isMounted) setLoading(false);
+        });
+      return;
+    }
+
+    if (currentSrc && !isHtmlPageUrl) {
+      setDisplaySrc(currentSrc);
       setLoading(false);
+      setLoadError(false);
     } else {
       setLoadError(true);
       setLoading(false);
     }
-  }, [driveId, initialValidSrc, isHtmlPageUrl, src]);
+
+    return () => { isMounted = false; };
+  }, [driveId, initialValidSrc, isHtmlPageUrl, src, item]);
 
   const zoomIn = () => setZoomLevel(z => Math.min(Number((z + 0.5).toFixed(1)), 3.5));
   const zoomOut = () => setZoomLevel(z => Math.max(Number((z - 0.5).toFixed(1)), 0.5));
@@ -399,25 +428,39 @@ function ItemMenu({ item, onPreview, onDownload, onVisit, onSummarize, onOCR, on
 export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDelete }) {
   const [loaded, setLoaded] = useState(false);
   const [imgErr, setImgErr] = useState(false);
-  const [useFallback, setUseFallback] = useState(false);
+  const [activeSrc, setActiveSrc] = useState(() => item?.thumbnail_url || item?.url || null);
 
   const { src: driveSrc, loading: driveLoading, error: driveErr, driveId } = useDriveThumbnail(item);
 
-  let primarySrc = driveSrc || item.thumbnail_url || item.url;
-  if (!useFallback && primarySrc && typeof primarySrc === 'string') {
-    if (primarySrc.includes('/storage/v1/object/public/')) {
-      primarySrc = primarySrc.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + (primarySrc.includes('?') ? '&' : '?') + 'width=400&resize=contain';
-    } else if (primarySrc.includes('/storage/v1/object/sign/')) {
-      primarySrc = primarySrc.replace('/storage/v1/object/sign/', '/storage/v1/render/image/sign/') + (primarySrc.includes('?') ? '&' : '?') + 'width=400&resize=contain';
-    }
-  }
+  useEffect(() => {
+    let isMounted = true;
+    const initial = driveSrc || item?.thumbnail_url || item?.url || item?.web_view_link;
 
-  const isFailed = (imgErr || driveErr) && !driveLoading;
+    const isSupabase = typeof initial === 'string' && (
+      initial.includes('/storage/v1/') || !!item?.path
+    );
+
+    if (isSupabase) {
+      resolveSupabaseImage(initial, item).then(resolved => {
+        if (isMounted && resolved) {
+          setActiveSrc(resolved);
+          setImgErr(false);
+        }
+      });
+    } else if (initial) {
+      setActiveSrc(initial);
+      setImgErr(false);
+    }
+
+    return () => { isMounted = false; };
+  }, [driveSrc, item?.thumbnail_url, item?.url, item?.web_view_link, item?.path]);
+
+  const isFailed = imgErr || (driveErr && !driveLoading && !activeSrc);
 
   const handleCardClick = () => {
     const itemWithSrc = {
       ...item,
-      resolvedSrc: primarySrc || driveSrc
+      resolvedSrc: activeSrc || driveSrc || item.url
     };
     if (onClick) onClick(itemWithSrc);
   };
@@ -425,7 +468,7 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDel
   const handlePreview = (it) => {
     const itemWithSrc = {
       ...it,
-      resolvedSrc: primarySrc || driveSrc
+      resolvedSrc: activeSrc || driveSrc || it.url
     };
     if (onPreview) onPreview(itemWithSrc);
   };
@@ -436,9 +479,9 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDel
         {(!loaded || driveLoading) && !isFailed && (
           <div className="lib-img-skeleton"><div className="lib-skeleton-shimmer" /></div>
         )}
-        {!isFailed && primarySrc && (
+        {!isFailed && activeSrc && (
           <img
-            src={primarySrc}
+            src={activeSrc}
             alt={item.name}
             loading="lazy"
             className={`lib-card-img ${loaded && !driveLoading ? 'loaded' : ''}`}
@@ -446,23 +489,37 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDel
               setLoaded(true);
               setImgErr(false);
             }}
-            onError={async (e) => {
-              if (!useFallback && primarySrc && typeof primarySrc === 'string' && (primarySrc.includes('/storage/v1/object/public/') || primarySrc.includes('/storage/v1/object/sign/'))) {
-                setUseFallback(true);
-                return;
-              }
-              // If it's a Drive item and error fired on initial thumbnail, try fetching authenticated blob
-              if (driveId && typeof primarySrc === 'string' && !primarySrc.startsWith('blob:')) {
+            onError={async () => {
+              // 1. Try Supabase authenticated Blob resolution
+              try {
+                const blobUrl = await resolveSupabaseImage(activeSrc, item);
+                if (blobUrl && blobUrl !== activeSrc) {
+                  setActiveSrc(blobUrl);
+                  setImgErr(false);
+                  setLoaded(true);
+                  return;
+                }
+              } catch (err) {}
+
+              // 2. If it's a Drive item, try fetching authenticated blob
+              if (driveId && typeof activeSrc === 'string' && !activeSrc.startsWith('blob:')) {
                 try {
                   const blobUrl = await getDriveImageBlob(driveId);
                   if (blobUrl) {
-                    e.target.src = blobUrl;
+                    setActiveSrc(blobUrl);
                     setLoaded(true);
                     setImgErr(false);
                     return;
                   }
                 } catch (err) {}
               }
+
+              // 3. Fallback to raw URL if activeSrc was modified
+              if (item.url && activeSrc !== item.url) {
+                setActiveSrc(item.url);
+                return;
+              }
+
               setLoaded(true);
               setImgErr(true);
             }}
@@ -1648,8 +1705,16 @@ export default function Library({ session, onBack, switchChat }) {
                       key={item.id}
                       item={item}
                       onDelete={handleDelete}
-                      onPreview={it => window.open(it.web_view_link || it.url, '_blank')}
-                      onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
+                      onPreview={async it => {
+                        const targetUrl = it.web_view_link || it.url;
+                        const resolved = await resolveSupabaseImage(targetUrl, it);
+                        window.open(resolved || targetUrl, '_blank', 'noopener,noreferrer');
+                      }}
+                      onDownload={async it => {
+                        const targetUrl = it.web_download_link || it.url;
+                        const resolved = await resolveSupabaseImage(targetUrl, it);
+                        window.open(resolved || targetUrl, '_blank', 'noopener,noreferrer');
+                      }}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                       onSummarize={handleSummarize}
                       onOCR={handleOCR}

@@ -95,6 +95,9 @@ export async function fetchUserLibraryItems(userId, options = {}) {
                         chat_title: chatTitle,
                         source: isUser ? 'user' : 'ai',
                         content: null,
+                        path: att.path || null,
+                        public_url: att.public_url || null,
+                        data: att.data || null,
                     });
                 });
 

@@ -38,17 +38,23 @@ function processQueue() {
 export function extractDriveId(item) {
   if (!item) return null;
   if (typeof item === 'string') {
-    return item.split('?')[0].split('&')[0].split('#')[0];
+    if (item.includes('drive.google.com') || item.includes('googleusercontent.com')) {
+      const match = item.match(/[-\w]{25,}/);
+      return match ? match[0] : null;
+    }
+    // Only return if it's a raw drive ID string without slashes/dots
+    if (!item.includes('/') && !item.includes('.') && item.length >= 25 && item.length <= 50) {
+      return item.split('?')[0].split('&')[0];
+    }
+    return null;
   }
   if (item.drive_id) {
     return String(item.drive_id).split('?')[0].split('&')[0];
   }
   if (item.source === 'gdrive' && item.id) {
-    return String(item.id).split('?')[0].split('&')[0];
-  }
-  // Drive file IDs are alphanumeric and usually ~28-44 chars without dashes (unlike UUIDs)
-  if (item.id && !String(item.id).includes('-') && String(item.id).length >= 15) {
-    return String(item.id).split('?')[0].split('&')[0];
+    if (!String(item.id).startsWith('att-')) {
+      return String(item.id).split('?')[0].split('&')[0];
+    }
   }
   return null;
 }
@@ -131,17 +137,16 @@ export async function getDriveImageBlob(driveId, userId = null) {
  * React hook to get a reliable image source for Google Drive or regular items
  */
 export function useDriveThumbnail(item, fallbackSrc = null) {
-  const driveId = extractDriveId(item);
-  const isDriveItem = !!driveId || item?.source === 'gdrive';
+  const isDriveItem = item?.source === 'gdrive' || !!item?.drive_id;
+  const driveId = isDriveItem ? extractDriveId(item) : null;
 
   // Compute non-drive default src
   const nonDriveSrc = item?.thumbnail_url || item?.url || fallbackSrc;
 
   const [src, setSrc] = useState(() => {
-    if (!isDriveItem) return nonDriveSrc;
+    if (!isDriveItem || !driveId) return nonDriveSrc;
     if (driveId && blobCache.has(driveId)) return blobCache.get(driveId);
-    // If we have an existing thumbnail_url that isn't a known failing pattern, can try as initial
-    return item?.thumbnail_url || null;
+    return item?.thumbnail_url || nonDriveSrc;
   });
 
   const [loading, setLoading] = useState(() => {
