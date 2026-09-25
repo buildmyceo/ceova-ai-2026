@@ -1293,9 +1293,9 @@ body {
 }
 
 .toolbar-btn {
-    color: var(--text-muted);
+    color: var(--text-muted, #9ca3af);
     background: transparent;
-    border: none;
+    border: 1px solid transparent;
     cursor: pointer;
     width: 32px;
     height: 32px;
@@ -1304,12 +1304,30 @@ body {
     justify-content: center;
     padding: 0;
     border-radius: 50%;
-    transition: all 0.2s;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    outline: none;
 }
 
 .toolbar-btn:hover, .task-btn:hover {
-    background: var(--glass);
-    color: white;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+.toolbar-btn:active {
+    transform: scale(0.92);
+}
+
+.toolbar-btn.active {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    transform: rotate(45deg);
+}
+
+.toolbar-btn.active:hover {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.26);
 }
 
 .send-action-btn {
@@ -1319,21 +1337,46 @@ body {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.35);
     cursor: not-allowed;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    outline: none;
+    padding: 0;
+    box-sizing: border-box;
 }
 
 .send-action-btn.active {
-    background: #3373E8;
-    color: #ffffff;
+    background: #ffffff;
+    border: 1px solid #ffffff;
+    color: #000000;
     cursor: pointer;
+    box-shadow: 0 2px 10px rgba(255, 255, 255, 0.2);
 }
 
 .send-action-btn.active:hover {
-    background: #2a60c0;
+    background: #ececec;
+    border-color: #ececec;
+    color: #000000;
+    transform: scale(1.05);
+    box-shadow: 0 4px 14px rgba(255, 255, 255, 0.3);
+}
+
+.send-action-btn.active:active {
+    transform: scale(0.95);
+}
+
+.send-action-btn.stop-btn {
+    background: #ffffff;
+    border: 1px solid #ffffff;
+    color: #000000;
+}
+
+.send-action-btn.stop-btn:hover {
+    background: #ececec;
+    border-color: #ececec;
+    color: #000000;
 }
 
 .think-mode-btn {

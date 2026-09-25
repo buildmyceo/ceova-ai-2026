@@ -903,7 +903,7 @@ export default function InputBox({
 
                         {isLoading ? (
                             <button className="send-action-btn active stop-btn" onClick={handleStop} title="Stop generation">
-                                <Square size={14} fill="currentColor" />
+                                <Square size={12} fill="currentColor" />
                             </button>
                         ) : (
                             <button 
@@ -911,7 +911,7 @@ export default function InputBox({
                                 onClick={onSendClick}
                                 disabled={!(input.trim() || files.length > 0)}
                             >
-                                <ArrowUp size={20} strokeWidth={2.5} />
+                                <ArrowUp size={18} strokeWidth={2.5} />
                             </button>
                         )}
                     </div>
