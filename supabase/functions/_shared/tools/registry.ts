@@ -20,6 +20,7 @@ import { InvoiceGeneratorTool } from './tools/invoice-generator.ts';
 import { MediaConverterTool } from './tools/media-converter.ts';
 import { RunTerminalCommandTool } from './tools/run-terminal-command.ts';
 import { VerifyCeovaProvenanceTool } from './tools/verify-provenance.ts';
+import { WebSearchTool } from './tools/web-search.ts';
 import { cloudDevelopmentTools } from './cloud-tools.ts';
 
 class ToolRegistry {
@@ -47,6 +48,7 @@ class ToolRegistry {
     this.registerTool(new MediaConverterTool());
     this.registerTool(new RunTerminalCommandTool());
     this.registerTool(new VerifyCeovaProvenanceTool());
+    this.registerTool(new WebSearchTool());
 
     // Register all Cloud Development & Hosting Tools
     for (const tool of cloudDevelopmentTools) {

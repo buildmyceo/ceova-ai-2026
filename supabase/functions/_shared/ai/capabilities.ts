@@ -136,6 +136,17 @@ export const CAPABILITIES: Capability[] = [
     toolIds: ["qr_barcode", "invoice_generator", "color_toolkit", "password_hash"],
     memoryCategories: [],
   },
+  {
+    id: "web_search",
+    description: "Search the live web and internet for current information, latest news, scientific research, articles, studies, documentation, and live facts. Use this to perform deep research and find live information.",
+    keywords: [
+      "search", "web search", "google", "browse", "look up", "find online", "research", "reserch",
+      "latest", "news", "today", "current", "who is", "what is", "papers", "studies", "article",
+      "fact check", "recent", "real time", "deep research", "literature"
+    ],
+    toolIds: ["web_search"],
+    memoryCategories: ["research", "information"],
+  },
 ];
 
 /**

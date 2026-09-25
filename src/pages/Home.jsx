@@ -322,7 +322,7 @@ export default function Home({ session }) {
         fetchChats();
     }, [session?.user?.id]);
 
-    const handleSend = async (files = [], overrideText = null, isHidden = false, isThinking = false) => {
+    const handleSend = async (files = [], overrideText = null, isHidden = false, isThinking = false, isWebSearch = false) => {
         const textToUse = overrideText !== null ? overrideText : input;
         if (!textToUse.trim() && files.length === 0) return;
         if (isLoading) return;
@@ -714,7 +714,9 @@ export default function Home({ session }) {
             let aiRawText = "";
             let autoFollowUpText = null;
             let currentCloudProject = null;
-            let activeToolStatus = files.length > 0 ? "Uploading files..." : "Thinking...";
+            let activeToolStatus = files.length > 0 
+                ? "Uploading files..." 
+                : (isWebSearch ? "Searching the web..." : (isThinking ? "Thinking deeply..." : "Thinking..."));
 
             // Cloud fetch directly to super-endpoint
                 const reqBody = {
@@ -725,6 +727,7 @@ export default function Home({ session }) {
                     is_temporary: isTemporary,
                     has_local_folder: !!localDirectoryHandleRef.current,
                     is_thinking: isThinking,
+                    is_web_search: isWebSearch,
                     user_context: {
                         date: new Date().toLocaleDateString(),
                         time: new Date().toLocaleTimeString(),

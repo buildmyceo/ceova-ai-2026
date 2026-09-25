@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { Edit2, RotateCcw, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Download, Image as ImageIcon, ArrowRight, Loader, Sparkles, HardDrive, Folder, Code } from 'lucide-react';
+import { Edit2, RotateCcw, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Download, Image as ImageIcon, ArrowRight, Loader, Sparkles, HardDrive, Folder, Code, Brain, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import imageCompression from 'browser-image-compression';
 import { PDFDocument } from 'pdf-lib';
@@ -195,6 +195,68 @@ function renderHtml(text) {
   return `<div style="margin:0;">${processed}</div>`;
 }
 
+// ── Thought Process Component (ChatGPT / DeepSeek style) ───────────────────
+function ThoughtProcess({ thought, isThinking }) {
+  const [isExpanded, setIsExpanded] = useState(isThinking);
+  const [elapsedSeconds, setElapsedSeconds] = useState(1);
+  const timerRef = useRef(null);
+  const hasFinishedRef = useRef(false);
+
+  useEffect(() => {
+    if (isThinking) {
+      setIsExpanded(true);
+      const start = Date.now();
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds(Math.max(1, Math.round((Date.now() - start) / 1000)));
+      }, 1000);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (!hasFinishedRef.current) {
+        hasFinishedRef.current = true;
+        setIsExpanded(false);
+      }
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isThinking]);
+
+  if (!thought && !isThinking) return null;
+
+  return (
+    <div className={`thought-process-card ${isThinking ? 'is-thinking' : 'is-complete'}`}>
+      <button 
+        type="button" 
+        className="thought-process-toggle"
+        onClick={() => setIsExpanded(prev => !prev)}
+        title={isExpanded ? "Collapse thought process" : "Expand thought process"}
+      >
+        <div className="thought-process-label">
+          <Brain size={15} className={`thought-brain-icon ${isThinking ? 'pulsing' : ''}`} />
+          <span className="thought-status-text">
+            {isThinking 
+              ? `Thinking (${elapsedSeconds}s)...` 
+              : `Thought for ${elapsedSeconds} second${elapsedSeconds === 1 ? '' : 's'}`
+            }
+          </span>
+        </div>
+        <span className={`thought-chevron ${isExpanded ? 'open' : ''}`}>▾</span>
+      </button>
+
+      {isExpanded && (
+        <div className="thought-process-content">
+          <div className="thought-process-inner">
+            {thought || 'Analyzing query, researching domain concepts, and structuring detailed reasoning...'}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TypewriterRenderer({ text, isTyping, onZoom }) {
   const [displayed, setDisplayed] = useState(isTyping ? '' : text);
   const rafRef = React.useRef(null);
@@ -209,7 +271,7 @@ function TypewriterRenderer({ text, isTyping, onZoom }) {
 
     // Use requestAnimationFrame instead of setTimeout for smoother rendering
     // and to respect the browser's rendering budget (60fps)
-    const FRAME_INTERVAL_MS = 32; // ~30fps max — fast enough to feel live, cheap enough for mobile
+    const FRAME_INTERVAL_MS = 24;
 
     const animate = (timestamp) => {
       if (timestamp - lastUpdateRef.current >= FRAME_INTERVAL_MS) {
@@ -230,7 +292,32 @@ function TypewriterRenderer({ text, isTyping, onZoom }) {
     };
   }, [text, isTyping, displayed]);
 
-  return <MarkdownRenderer text={displayed + (isTyping ? ' ▋' : '')} onZoom={onZoom} />;
+  // Extract <think>...</think> block if present
+  const fullText = displayed;
+  const thinkMatch = fullText.match(/<think>([\s\S]*?)(?:<\/think>|$)/i);
+  const hasThink = !!thinkMatch;
+  const thoughtText = hasThink ? thinkMatch[1].trim() : '';
+  const isThoughtStillOpen = hasThink && !/<\/think>/i.test(fullText);
+  const mainContent = hasThink 
+    ? fullText.replace(/<think>[\s\S]*?(?:<\/think>|$)/i, '').trim()
+    : fullText;
+
+  return (
+    <div className="message-content-wrapper">
+      {hasThink && (
+        <ThoughtProcess 
+          thought={thoughtText} 
+          isThinking={isThoughtStillOpen && isTyping} 
+        />
+      )}
+      {(mainContent || (!hasThink && isTyping)) && (
+        <MarkdownRenderer 
+          text={mainContent + (isTyping && !isThoughtStillOpen ? ' ▋' : '')} 
+          onZoom={onZoom} 
+        />
+      )}
+    </div>
+  );
 }
 
 function formatBytes(bytes) {

@@ -498,7 +498,7 @@ export default function InputBox({
         setIsUploadSubmenuOpen(false);
         setIsLibrarySubmenuOpen(false);
         setIsEmojiOpen(false);
-        handleSend(files, null, false, isThinking);
+        handleSend(files, null, false, isThinking, isWebSearchActive);
         // Revoke preview URLs before clearing
         files.forEach(f => {
             if (f.url && f.url.startsWith('blob:')) URL.revokeObjectURL(f.url);
@@ -1197,6 +1197,16 @@ export default function InputBox({
                     />
 
                     <div className="toolbar-right">
+                        <button
+                            type="button"
+                            className={`search-mode-btn ${isWebSearchActive ? 'active' : ''}`}
+                            onClick={() => setIsWebSearchActive(!isWebSearchActive)}
+                            title={isWebSearchActive ? "Web search enabled" : "Search the web"}
+                        >
+                            <Globe size={16} strokeWidth={2} className="search-mode-icon" />
+                            <span className="search-mode-label">Search</span>
+                        </button>
+
                         <button
                             type="button"
                             className={`think-mode-btn ${isThinking ? 'active' : ''}`}

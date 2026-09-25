@@ -187,7 +187,9 @@ export function routeIntent(
   hasDocument: boolean = false,
   hasLocalFolder: boolean = true,
   history: any[] = [],
-  hasCloudProject: boolean = false
+  hasCloudProject: boolean = false,
+  isThinking: boolean = false,
+  isWebSearch: boolean = false
 ): IntentRouterResult {
   const lowerMessage = (message || '').toLowerCase().trim();
   const isQuestion = isQuestionOrInquiry(lowerMessage);
@@ -206,7 +208,7 @@ export function routeIntent(
   const lowerContext = contextText.toLowerCase().trim();
 
   // ── Casual chat check — load nothing (saves 4,000+ tokens on greetings) ────
-  if (!hasImage && !hasDocument && CASUAL_PATTERNS.some(p => p.test(lowerMessage))) {
+  if (!hasImage && !hasDocument && !isThinking && !isWebSearch && CASUAL_PATTERNS.some(p => p.test(lowerMessage))) {
     return {
       toolIds: [],
       toolSchemas: [],
@@ -306,6 +308,14 @@ export function routeIntent(
     }
   }
 
+  // ── Web search explicit toggle or thinking deep research ─────────────────────
+  if (isWebSearch || (isThinking && !isShortConfirmation && lowerMessage.length > 5)) {
+    const webSearchCap = CAPABILITIES.find(c => c.id === "web_search");
+    if (webSearchCap && !matchedCapabilities.includes(webSearchCap)) {
+      matchedCapabilities.push(webSearchCap);
+    }
+  }
+
   // ── Keyword matching across all capabilities ─────────────────────────────────
   for (const cap of CAPABILITIES) {
     if (matchedCapabilities.includes(cap)) continue; // already added
@@ -336,9 +346,9 @@ export function routeIntent(
       toolIds: [],
       toolSchemas: [],
       memoryCategories: [],
-      isComplexTask: false,
-      isCasualChat: !hasImage && !hasDocument,
-      taskScope,
+      isComplexTask: isThinking,
+      isCasualChat: !hasImage && !hasDocument && !isThinking && !isWebSearch,
+      taskScope: isThinking ? 'complex' : taskScope,
     };
   }
 
