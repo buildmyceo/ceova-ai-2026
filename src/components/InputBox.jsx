@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical, Sparkles, Search, Image as ImageIcon } from 'lucide-react';
+import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, ChevronRight, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, Globe, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical, Sparkles, Search, Image as ImageIcon, Wrench } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthProvider';
@@ -14,8 +14,24 @@ import {
     isCeovaItem
 } from '../services/libraryFetchEngine';
 import { useDriveThumbnail } from '../services/driveThumbnailCache';
-import ExtensionsModal from './ExtensionsModal';
+import GoogleConnectModal from './GoogleConnectModal';
+import TelegramConnectModal from './TelegramConnectModal';
+import { connectGoogleDrive } from '../services/gdriveSyncEngine';
 import './LibraryPickerModal.css';
+
+const ALL_TOOLS = [
+    { title: "Generate Image", desc: "AI image generator", command: "/generate_image", icon: Sparkles },
+    { title: "Background Remover", desc: "Cutout & remove BG", command: "/background_remover", icon: Scissors },
+    { title: "QR & Barcode", desc: "Generator & scanner", command: "/qr_barcode", icon: Scan },
+    { title: "Invoice Generator", desc: "Create PDF invoices", command: "/invoice_generator", icon: Receipt },
+    { title: "Image Analysis", desc: "OCR & extract text", command: "/image_analysis", icon: Eye },
+    { title: "PDF Toolkit", desc: "Merge, split & edit", command: "/pdf_toolkit", icon: FileText },
+    { title: "Password & Hash", desc: "Secure passwords", command: "/password_hash", icon: Key },
+    { title: "Color Toolkit", desc: "Palettes & extractor", command: "/color_toolkit", icon: Palette },
+    { title: "Media Converter", desc: "Audio & video convert", command: "/media_converter", icon: Film },
+    { title: "Reduce File Size", desc: "Compress media & files", command: "/file_size_reduction", icon: Minimize2 },
+    { title: "File Converter", desc: "Convert file formats", command: "/file_converter", icon: RefreshCw },
+];
 
 const COMMON_EMOJIS = [
     "😊", "😂", "🥰", "😎", "🤔", "😅", "🔥", "✨", 
@@ -160,8 +176,10 @@ export default function InputBox({
     const [isPlusOpen, setIsPlusOpen] = useState(false);
     const [isToolsSubmenuOpen, setIsToolsSubmenuOpen] = useState(false);
     const [isConnectorsSubmenuOpen, setIsConnectorsSubmenuOpen] = useState(false);
-    const [isExtensionsModalOpen, setIsExtensionsModalOpen] = useState(false);
-    const [extensionsModalTab, setExtensionsModalTab] = useState('tools');
+    const [isGoogleConnected, setIsGoogleConnected] = useState(false);
+    const [isTelegramConnected, setIsTelegramConnected] = useState(false);
+    const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
+    const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
     const [isEditingConnectors, setIsEditingConnectors] = useState(false);
     const [isWebSearchActive, setIsWebSearchActive] = useState(false);
     const [files, setFiles] = useState([]);
@@ -199,20 +217,102 @@ export default function InputBox({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isPlusOpen]);
 
+    const checkGoogleAndTelegramStatus = async () => {
+        const uid = effectiveSession?.user?.id || authUser?.id;
+        if (!uid) return;
+
+        try {
+            // 1. Check Google Status
+            let hasGoogle = false;
+            const cachedGoogleToken = typeof window !== 'undefined' ? localStorage.getItem('google_provider_token') : null;
+            const isDisconnected = typeof window !== 'undefined' ? localStorage.getItem('google_disconnected') === 'true' : false;
+
+            if (cachedGoogleToken && !isDisconnected) {
+                hasGoogle = true;
+            } else if (effectiveSession?.provider_token && !isDisconnected) {
+                hasGoogle = true;
+            } else {
+                const { data: googleTokenData } = await supabase
+                    .from('user_google_tokens')
+                    .select('access_token')
+                    .eq('user_id', uid)
+                    .maybeSingle();
+                if (googleTokenData?.access_token && !isDisconnected) {
+                    hasGoogle = true;
+                }
+            }
+            setIsGoogleConnected(hasGoogle);
+            setIsGmailConnected(hasGoogle);
+
+            // 2. Check Telegram Status
+            const { data: tgData } = await supabase
+                .from('user_telegram')
+                .select('connected')
+                .eq('user_id', uid)
+                .eq('connected', true)
+                .maybeSingle();
+
+            setIsTelegramConnected(Boolean(tgData?.connected));
+        } catch (err) {
+            console.error('[InputBox] Error checking connection statuses:', err);
+        }
+    };
+
     useEffect(() => {
-        const checkGmailConnection = async () => {
+        checkGoogleAndTelegramStatus();
+    }, [effectiveSession?.user?.id, authUser?.id]);
+
+    const handleGoogleConnect = async () => {
+        try {
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('google_disconnected');
+            }
+            await connectGoogleDrive();
+        } catch (err) {
+            console.error("Failed to connect Google account:", err);
+            alert("Could not start Google sign in: " + err.message);
+        }
+    };
+
+    const handleGoogleDisconnect = async (e) => {
+        if (e) e.stopPropagation();
+        if (!window.confirm("Are you sure you want to disconnect Google Services? This will remove synced files, emails, and events.")) return;
+        try {
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('google_provider_token');
+                localStorage.setItem('google_disconnected', 'true');
+            }
             const uid = effectiveSession?.user?.id || authUser?.id;
             if (uid) {
-                const { data } = await supabase
-                    .from('user_google_tokens')
-                    .select('*')
-                    .eq('user_id', uid)
-                    .single();
-                if (data) setIsGmailConnected(true);
+                await supabase.from('user_google_tokens').delete().eq('user_id', uid);
+                await supabase.from('gmail_emails').delete().eq('user_id', uid);
+                await supabase.from('calendar_events').delete().eq('user_id', uid);
+                await supabase.from('files').delete().eq('user_id', uid).eq('storage_source', 'gdrive');
             }
-        };
-        checkGmailConnection();
-    }, [effectiveSession?.user?.id, authUser?.id]);
+            setIsGoogleConnected(false);
+            setIsGmailConnected(false);
+            setIsEditingConnectors(false);
+        } catch (err) {
+            console.error("Failed to disconnect Google:", err);
+            alert("Failed to disconnect Google: " + err.message);
+        }
+    };
+
+    const handleTelegramDisconnect = async (e) => {
+        if (e) e.stopPropagation();
+        if (!window.confirm("Are you sure you want to disconnect Telegram from CEOVA?")) return;
+        try {
+            const uid = effectiveSession?.user?.id || authUser?.id;
+            if (uid) {
+                await supabase.from('user_telegram').delete().eq('user_id', uid);
+            }
+            setIsTelegramConnected(false);
+            setIsEditingConnectors(false);
+        } catch (err) {
+            console.error("Failed to disconnect Telegram:", err);
+            alert("Failed to disconnect Telegram: " + err.message);
+        }
+    };
 
     // Close on escape key
     useEffect(() => {
@@ -597,129 +697,116 @@ export default function InputBox({
                                             <ChevronLeft size={16} /> Back
                                         </button>
                                         <span className="sliding-tab-submenu-title">Connectors</span>
-                                        {isGmailConnected && (
+                                        {(isGoogleConnected || isTelegramConnected) && (
                                             <button 
                                                 type="button"
-                                                className="sliding-tab-edit-btn"
+                                                className={`sliding-tab-edit-btn ${isEditingConnectors ? 'active' : ''}`}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setIsEditingConnectors(!isEditingConnectors);
                                                 }}
-                                                title="Edit Connectors"
+                                                title={isEditingConnectors ? "Done Editing" : "Edit Connectors"}
                                             >
-                                                <Edit2 size={16} />
+                                                <Edit2 size={15} />
                                             </button>
                                         )}
                                     </div>
 
                                     <div className="sliding-tab-grid">
+                                        {/* Option 1: Google */}
                                         <button
                                             type="button"
-                                            className="sliding-tab-card"
-                                            onClick={async (e) => {
+                                            className={`sliding-tab-card ${isGoogleConnected ? 'is-connected' : ''}`}
+                                            onClick={(e) => {
                                                 e.stopPropagation();
-                                                setIsPlusOpen(false);
-                                                setIsConnectorsSubmenuOpen(false);
-                                                try {
-                                                    localStorage.setItem('oauth_provider', 'google');
-                                                    const { error } = await supabase.auth.signInWithOAuth({
-                                                        provider: 'google',
-                                                        options: {
-                                                            redirectTo: `${window.location.origin}/auth/callback`,
-                                                            scopes: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive',
-                                                            queryParams: {
-                                                                access_type: 'offline',
-                                                                prompt: 'consent'
-                                                            }
-                                                        }
-                                                    });
-                                                    if (error) throw error;
-                                                } catch (err) {
-                                                    console.error("Failed to connect Gmail:", err);
-                                                    alert("Failed to connect Gmail: " + err.message);
+                                                if (isEditingConnectors && isGoogleConnected) {
+                                                    handleGoogleDisconnect(e);
+                                                    return;
                                                 }
+                                                setIsGoogleModalOpen(true);
                                             }}
                                         >
                                             <div className="sliding-tab-card-icon">
-                                                <img src="/gmail.png" alt="Gmail" style={{ width: 18, height: 18, objectFit: 'contain' }} />
+                                                <img src="/google-logo.png" alt="Google" style={{ width: 18, height: 18, objectFit: 'contain' }} />
                                             </div>
                                             <div className="sliding-tab-card-content">
-                                                <span className="sliding-tab-card-title">{isGmailConnected ? "Gmail" : "Connect Gmail"}</span>
-                                                <span className="sliding-tab-card-desc">{isGmailConnected ? "Connected" : "Google Mail"}</span>
+                                                <div className="sliding-tab-title-line">
+                                                    <span className="sliding-tab-card-title">Google</span>
+                                                    {isGoogleConnected && <span className="sliding-tab-status-dot" title="Connected" />}
+                                                </div>
+                                                <span className="sliding-tab-card-desc">
+                                                    {isGoogleConnected ? "Connected • Gmail & Drive" : "Gmail, Drive & Calendar"}
+                                                </span>
                                             </div>
-                                            {isGmailConnected && isEditingConnectors && (
-                                                <div 
+                                            {isGoogleConnected && isEditingConnectors && (
+                                                <span 
                                                     className="sliding-tab-disconnect"
-                                                    onClick={async (e) => {
+                                                    onClick={(e) => {
                                                         e.stopPropagation();
-                                                        if (window.confirm("Are you sure you want to disconnect all Google tools?")) {
-                                                            const { data: { user } } = await supabase.auth.getUser();
-                                                            if (user) {
-                                                                await supabase.from('user_google_tokens').delete().eq('user_id', user.id);
-                                                                setIsGmailConnected(false);
-                                                                setIsEditingConnectors(false);
-                                                            }
-                                                        }
+                                                        handleGoogleDisconnect(e);
                                                     }}
                                                 >
                                                     Disconnect
-                                                </div>
+                                                </span>
                                             )}
                                         </button>
 
+                                        {/* Option 2: Telegram */}
                                         <button
                                             type="button"
-                                            className="sliding-tab-card"
-                                            onClick={async (e) => {
+                                            className={`sliding-tab-card ${isTelegramConnected ? 'is-connected' : ''}`}
+                                            onClick={(e) => {
                                                 e.stopPropagation();
-                                                setIsPlusOpen(false);
-                                                setIsConnectorsSubmenuOpen(false);
-                                                try {
-                                                    localStorage.setItem('oauth_provider', 'google');
-                                                    const { error } = await supabase.auth.signInWithOAuth({
-                                                        provider: 'google',
-                                                        options: {
-                                                            redirectTo: `${window.location.origin}/auth/callback`,
-                                                            scopes: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive',
-                                                            queryParams: {
-                                                                access_type: 'offline',
-                                                                prompt: 'consent'
-                                                            }
-                                                        }
-                                                    });
-                                                    if (error) throw error;
-                                                } catch (err) {
-                                                    console.error("Failed to connect Drive:", err);
-                                                    alert("Failed to connect Drive: " + err.message);
+                                                if (isEditingConnectors && isTelegramConnected) {
+                                                    handleTelegramDisconnect(e);
+                                                    return;
                                                 }
+                                                setIsTelegramModalOpen(true);
                                             }}
                                         >
                                             <div className="sliding-tab-card-icon">
-                                                <img src="/drive.png" alt="Google Drive" style={{ width: 18, height: 18, objectFit: 'contain' }} />
+                                                <img src="/telegram.png" alt="Telegram" style={{ width: 18, height: 18, objectFit: 'contain' }} />
                                             </div>
                                             <div className="sliding-tab-card-content">
-                                                <span className="sliding-tab-card-title">{isGmailConnected ? "Google Drive" : "Connect Drive"}</span>
-                                                <span className="sliding-tab-card-desc">{isGmailConnected ? "Connected" : "Google Cloud"}</span>
+                                                <div className="sliding-tab-title-line">
+                                                    <span className="sliding-tab-card-title">Telegram</span>
+                                                    {isTelegramConnected && <span className="sliding-tab-status-dot" title="Connected" />}
+                                                </div>
+                                                <span className="sliding-tab-card-desc">
+                                                    {isTelegramConnected ? "Connected • Bot active" : "Connect Telegram bot"}
+                                                </span>
                                             </div>
+                                            {isTelegramConnected && isEditingConnectors && (
+                                                <span 
+                                                    className="sliding-tab-disconnect"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleTelegramDisconnect(e);
+                                                    }}
+                                                >
+                                                    Disconnect
+                                                </span>
+                                            )}
                                         </button>
 
+                                        {/* Option 3: Tools */}
                                         <button
                                             type="button"
                                             className="sliding-tab-card"
-                                            onClick={() => {
-                                                setIsPlusOpen(false);
+                                            onClick={(e) => {
+                                                e.stopPropagation();
                                                 setIsConnectorsSubmenuOpen(false);
-                                                setExtensionsModalTab('connectors');
-                                                setIsExtensionsModalOpen(true);
+                                                setIsToolsSubmenuOpen(true);
                                             }}
                                         >
                                             <div className="sliding-tab-card-icon">
-                                                <LayoutGrid size={18} />
+                                                <Wrench size={17} />
                                             </div>
                                             <div className="sliding-tab-card-content">
-                                                <span className="sliding-tab-card-title">More Connectors</span>
-                                                <span className="sliding-tab-card-desc">Integrations library</span>
+                                                <span className="sliding-tab-card-title">Tools</span>
+                                                <span className="sliding-tab-card-desc">11 AI utilities & tools</span>
                                             </div>
+                                            <ChevronRight size={15} style={{ color: '#71717a', marginLeft: 'auto', flexShrink: 0 }} />
                                         </button>
                                     </div>
                                 </div>
@@ -728,89 +815,46 @@ export default function InputBox({
                             {isToolsSubmenuOpen && (
                                 <div className="sliding-tab-submenu">
                                     <div className="sliding-tab-submenu-header">
-                                        <span className="sliding-tab-submenu-title">Quick Actions</span>
+                                        <button 
+                                            type="button"
+                                            className="sliding-tab-back-btn"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setIsToolsSubmenuOpen(false);
+                                                setIsConnectorsSubmenuOpen(true);
+                                            }}
+                                        >
+                                            <ChevronLeft size={16} /> Back
+                                        </button>
+                                        <span className="sliding-tab-submenu-title">Tools</span>
+                                        <div style={{ width: 48 }} />
                                     </div>
                                     <div className="sliding-tab-tools-grid">
-                                        <button
-                                            type="button"
-                                            className="sliding-tab-card"
-                                            onClick={() => {
-                                                setIsPlusOpen(false);
-                                                setIsToolsSubmenuOpen(false);
-                                                setInput(prev => prev + (prev.trim() ? " " : "") + "/generate_image ");
-                                                textareaRef.current?.focus();
-                                            }}
-                                        >
-                                            <div className="sliding-tab-card-icon"><Sparkles size={16} /></div>
-                                            <div className="sliding-tab-card-content">
-                                                <span className="sliding-tab-card-title">Generate Image</span>
-                                                <span className="sliding-tab-card-desc">AI image tool</span>
-                                            </div>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="sliding-tab-card"
-                                            onClick={() => {
-                                                setIsPlusOpen(false);
-                                                setIsToolsSubmenuOpen(false);
-                                                setInput(prev => prev + (prev.trim() ? " " : "") + "/background_remover ");
-                                                textareaRef.current?.focus();
-                                            }}
-                                        >
-                                            <div className="sliding-tab-card-icon"><Scissors size={16} /></div>
-                                            <div className="sliding-tab-card-content">
-                                                <span className="sliding-tab-card-title">Remove Background</span>
-                                                <span className="sliding-tab-card-desc">Cutout tool</span>
-                                            </div>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="sliding-tab-card"
-                                            onClick={() => {
-                                                setIsPlusOpen(false);
-                                                setIsToolsSubmenuOpen(false);
-                                                setInput(prev => prev + (prev.trim() ? " " : "") + "/qr_barcode ");
-                                                textareaRef.current?.focus();
-                                            }}
-                                        >
-                                            <div className="sliding-tab-card-icon"><Scan size={16} /></div>
-                                            <div className="sliding-tab-card-content">
-                                                <span className="sliding-tab-card-title">QR & Barcode</span>
-                                                <span className="sliding-tab-card-desc">Generator & scanner</span>
-                                            </div>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="sliding-tab-card"
-                                            onClick={() => {
-                                                setIsPlusOpen(false);
-                                                setIsToolsSubmenuOpen(false);
-                                                setInput(prev => prev + (prev.trim() ? " " : "") + "/invoice_generator ");
-                                                textareaRef.current?.focus();
-                                            }}
-                                        >
-                                            <div className="sliding-tab-card-icon"><Receipt size={16} /></div>
-                                            <div className="sliding-tab-card-content">
-                                                <span className="sliding-tab-card-title">Invoice Generator</span>
-                                                <span className="sliding-tab-card-desc">Billing tool</span>
-                                            </div>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="sliding-tab-card"
-                                            onClick={() => {
-                                                setIsPlusOpen(false);
-                                                setIsToolsSubmenuOpen(false);
-                                                setExtensionsModalTab('tools');
-                                                setIsExtensionsModalOpen(true);
-                                            }}
-                                        >
-                                            <div className="sliding-tab-card-icon"><LayoutGrid size={16} /></div>
-                                            <div className="sliding-tab-card-content">
-                                                <span className="sliding-tab-card-title">More Tools...</span>
-                                                <span className="sliding-tab-card-desc">Extensions directory</span>
-                                            </div>
-                                        </button>
+                                        {ALL_TOOLS.map((tool) => {
+                                            const IconComponent = tool.icon;
+                                            return (
+                                                <button
+                                                    key={tool.command}
+                                                    type="button"
+                                                    className="sliding-tab-card sliding-tab-tool-card"
+                                                    onClick={() => {
+                                                        setIsPlusOpen(false);
+                                                        setIsToolsSubmenuOpen(false);
+                                                        setIsConnectorsSubmenuOpen(false);
+                                                        setInput(prev => prev + (prev.trim() ? " " : "") + tool.command + " ");
+                                                        textareaRef.current?.focus();
+                                                    }}
+                                                >
+                                                    <div className="sliding-tab-card-icon">
+                                                        <IconComponent size={16} />
+                                                    </div>
+                                                    <div className="sliding-tab-card-content">
+                                                        <span className="sliding-tab-card-title">{tool.title}</span>
+                                                        <span className="sliding-tab-card-desc">{tool.desc}</span>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
@@ -919,13 +963,26 @@ export default function InputBox({
             </div>
         </div>
             
-            <ExtensionsModal 
-                isOpen={isExtensionsModalOpen} 
-                onClose={() => setIsExtensionsModalOpen(false)} 
-                initialTab={extensionsModalTab}
-                onSelectTool={(command) => {
-                    setInput(prev => prev + (prev.trim() ? " " : "") + command + " ");
-                    textareaRef.current?.focus();
+            <GoogleConnectModal 
+                isOpen={isGoogleModalOpen} 
+                onClose={() => {
+                    setIsGoogleModalOpen(false);
+                    checkGoogleAndTelegramStatus();
+                }} 
+                onProceed={() => {
+                    setIsGoogleModalOpen(false);
+                    handleGoogleConnect();
+                }} 
+            />
+
+            <TelegramConnectModal 
+                isOpen={isTelegramModalOpen} 
+                onClose={() => {
+                    setIsTelegramModalOpen(false);
+                    checkGoogleAndTelegramStatus();
+                }}
+                onStatusChange={() => {
+                    checkGoogleAndTelegramStatus();
                 }}
             />
 
