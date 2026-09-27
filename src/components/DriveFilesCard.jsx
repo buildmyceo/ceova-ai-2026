@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExternalLink, Eye, Download, FileText, Image as ImageIcon, Film, Music, FileSpreadsheet, Presentation, HardDrive, Check, Copy } from 'lucide-react';
+import { ExternalLink, Eye, Download, FileText, HardDrive, Check, Copy } from 'lucide-react';
 import { getDriveFileMeta } from './DriveFilePreviewModal';
 
 function formatFileSize(bytes) {
@@ -16,12 +16,12 @@ function DriveFileCardItem({ file, onPreview }) {
 
   const fileId = file.id || file.drive_id;
   const meta = getDriveFileMeta(file.mimeType || file.mime_type, file.name);
-  const Icon = meta.icon;
+  const Icon = meta.icon || FileText;
 
   const webViewLink = file.webViewLink || file.web_view_link || (fileId ? `https://drive.google.com/file/d/${fileId}/view` : '#');
   const webContentLink = file.webContentLink || file.web_content_link || (fileId ? `https://drive.google.com/uc?export=download&id=${fileId}` : null);
   
-  // Use high-resolution Google Drive thumbnail endpoint
+  // High-resolution Google Drive thumbnail endpoint
   const thumbnailSrc = file.thumbnailLink || (fileId ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w600` : null);
 
   const handleCopyId = (e) => {
@@ -36,26 +36,23 @@ function DriveFileCardItem({ file, onPreview }) {
     <div
       onClick={() => onPreview && onPreview(file)}
       style={{
-        background: 'rgba(255, 255, 255, 0.04)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '14px',
+        backgroundColor: '#141417',
+        border: '1px solid #27272a',
+        borderRadius: '12px',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
         cursor: 'pointer',
-        transition: 'all 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
-        boxShadow: '0 4px 18px rgba(0, 0, 0, 0.25)',
+        transition: 'border-color 0.15s ease, transform 0.15s ease',
         position: 'relative'
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.22)';
-        e.currentTarget.style.transform = 'translateY(-2px)';
-        e.currentTarget.style.boxShadow = '0 8px 26px rgba(0, 0, 0, 0.45)';
+        e.currentTarget.style.borderColor = '#3f3f46';
+        e.currentTarget.style.transform = 'translateY(-1px)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+        e.currentTarget.style.borderColor = '#27272a';
         e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = '0 4px 18px rgba(0, 0, 0, 0.25)';
       }}
     >
       {/* Thumbnail / Visual Preview Box */}
@@ -63,13 +60,13 @@ function DriveFileCardItem({ file, onPreview }) {
         style={{
           width: '100%',
           height: '135px',
-          background: 'radial-gradient(ellipse at center, rgba(35, 38, 48, 0.9) 0%, rgba(18, 19, 24, 0.95) 100%)',
+          backgroundColor: '#000000',
           position: 'relative',
           overflow: 'hidden',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.06)'
+          borderBottom: '1px solid #27272a'
         }}
       >
         {thumbnailSrc && !thumbError ? (
@@ -82,8 +79,7 @@ function DriveFileCardItem({ file, onPreview }) {
               width: '100%',
               height: '100%',
               objectFit: meta.type === 'image' ? 'cover' : 'contain',
-              padding: meta.type === 'image' ? 0 : '10px',
-              transition: 'transform 0.3s ease'
+              padding: meta.type === 'image' ? 0 : '10px'
             }}
           />
         ) : (
@@ -98,20 +94,20 @@ function DriveFileCardItem({ file, onPreview }) {
           >
             <div
               style={{
-                width: '46px',
-                height: '46px',
-                borderRadius: '12px',
-                background: `${meta.color}1A`,
-                border: `1px solid ${meta.color}40`,
+                width: '42px',
+                height: '42px',
+                borderRadius: '8px',
+                backgroundColor: '#18181b',
+                border: '1px solid #27272a',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: meta.color
+                color: '#ffffff'
               }}
             >
-              <Icon size={24} />
+              <Icon size={20} color="#ffffff" />
             </div>
-            <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.45)', fontWeight: 500 }}>
+            <span style={{ fontSize: '11px', color: '#71717a', fontWeight: 500 }}>
               {meta.label}
             </span>
           </div>
@@ -122,14 +118,12 @@ function DriveFileCardItem({ file, onPreview }) {
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.55)',
-            backdropFilter: 'blur(3px)',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
             opacity: 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '8px',
-            transition: 'opacity 0.2s ease'
+            transition: 'opacity 0.15s ease'
           }}
           onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
           onMouseLeave={(e) => { e.currentTarget.style.opacity = '0'; }}
@@ -140,20 +134,20 @@ function DriveFileCardItem({ file, onPreview }) {
               alignItems: 'center',
               gap: '6px',
               padding: '6px 14px',
-              borderRadius: '20px',
-              background: 'rgba(255, 255, 255, 0.95)',
-              color: '#0b0c10',
+              borderRadius: '6px',
+              backgroundColor: '#ffffff',
+              color: '#000000',
               fontWeight: 600,
-              fontSize: '12px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
+              fontSize: '11px',
+              border: '1px solid #ffffff'
             }}
           >
-            <Eye size={14} />
-            <span>Interactive Preview</span>
+            <Eye size={13} color="#000000" />
+            <span>Preview</span>
           </div>
         </div>
 
-        {/* Top-Right Badge: Google Drive / Type */}
+        {/* Top-Right Badge: Solid Monochrome Type Pill */}
         <div
           style={{
             position: 'absolute',
@@ -161,33 +155,26 @@ function DriveFileCardItem({ file, onPreview }) {
             right: '8px',
             display: 'flex',
             alignItems: 'center',
-            gap: '4px',
-            background: 'rgba(10, 10, 14, 0.75)',
-            backdropFilter: 'blur(6px)',
+            gap: '5px',
+            backgroundColor: '#0c0c0e',
+            border: '1px solid #27272a',
             padding: '3px 8px',
             borderRadius: '6px',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
             fontSize: '10px',
             fontWeight: 600,
-            color: meta.color
+            color: '#f4f4f5'
           }}
         >
-          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: meta.color }} />
-          {meta.label}
+          <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#ffffff' }} />
+          <span>{meta.label}</span>
         </div>
       </div>
 
       {/* Card Body */}
       <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-          <div
-            style={{
-              marginTop: '2px',
-              color: meta.color,
-              flexShrink: 0
-            }}
-          >
-            <Icon size={16} />
+          <div style={{ marginTop: '2px', color: '#a1a1aa', flexShrink: 0 }}>
+            <Icon size={15} color="#a1a1aa" />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h4
@@ -196,7 +183,7 @@ function DriveFileCardItem({ file, onPreview }) {
                 margin: 0,
                 fontSize: '13px',
                 fontWeight: 600,
-                color: '#fff',
+                color: '#ffffff',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis'
@@ -209,9 +196,9 @@ function DriveFileCardItem({ file, onPreview }) {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                marginTop: '3px',
+                marginTop: '4px',
                 fontSize: '11px',
-                color: 'rgba(255, 255, 255, 0.45)'
+                color: '#71717a'
               }}
             >
               {formatFileSize(file.size) && (
@@ -229,15 +216,22 @@ function DriveFileCardItem({ file, onPreview }) {
                     background: 'transparent',
                     border: 'none',
                     padding: 0,
-                    color: copied ? '#10b981' : 'rgba(255, 255, 255, 0.4)',
+                    color: copied ? '#ffffff' : '#71717a',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '2px',
-                    fontSize: '10px'
+                    gap: '3px',
+                    fontSize: '10px',
+                    transition: 'color 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!copied) e.currentTarget.style.color = '#a1a1aa';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!copied) e.currentTarget.style.color = '#71717a';
                   }}
                 >
-                  {copied ? <Check size={10} /> : <Copy size={10} />}
+                  {copied ? <Check size={10} color="#ffffff" /> : <Copy size={10} color="#71717a" />}
                   <span>{copied ? 'Copied' : `ID: ${fileId.slice(0, 6)}...`}</span>
                 </button>
               )}
@@ -252,8 +246,8 @@ function DriveFileCardItem({ file, onPreview }) {
             alignItems: 'center',
             gap: '6px',
             marginTop: 'auto',
-            paddingTop: '6px',
-            borderTop: '1px solid rgba(255, 255, 255, 0.05)'
+            paddingTop: '8px',
+            borderTop: '1px solid #27272a'
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -266,26 +260,26 @@ function DriveFileCardItem({ file, onPreview }) {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '6px',
-              padding: '6px 10px',
-              borderRadius: '8px',
-              background: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              color: '#fff',
+              padding: '7px 10px',
+              borderRadius: '7px',
+              backgroundColor: '#ffffff',
+              border: '1px solid #ffffff',
+              color: '#000000',
               fontSize: '12px',
-              fontWeight: 500,
+              fontWeight: 600,
               cursor: 'pointer',
-              transition: 'all 0.15s ease'
+              transition: 'background-color 0.15s ease'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+              e.currentTarget.style.backgroundColor = '#e4e4e7';
+              e.currentTarget.style.borderColor = '#e4e4e7';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+              e.currentTarget.style.backgroundColor = '#ffffff';
+              e.currentTarget.style.borderColor = '#ffffff';
             }}
           >
-            <Eye size={13} />
+            <Eye size={13} color="#000000" />
             <span>Preview</span>
           </button>
 
@@ -299,25 +293,27 @@ function DriveFileCardItem({ file, onPreview }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                width: '30px',
-                height: '30px',
-                borderRadius: '8px',
-                background: 'rgba(66, 133, 244, 0.15)',
-                border: '1px solid rgba(66, 133, 244, 0.3)',
-                color: '#8ab4f8',
+                width: '32px',
+                height: '32px',
+                borderRadius: '7px',
+                backgroundColor: '#1f1f23',
+                border: '1px solid #27272a',
+                color: '#f4f4f5',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(66, 133, 244, 0.28)';
-                e.currentTarget.style.borderColor = '#8ab4f8';
+                e.currentTarget.style.backgroundColor = '#27272a';
+                e.currentTarget.style.borderColor = '#3f3f46';
+                e.currentTarget.style.color = '#ffffff';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(66, 133, 244, 0.15)';
-                e.currentTarget.style.borderColor = 'rgba(66, 133, 244, 0.3)';
+                e.currentTarget.style.backgroundColor = '#1f1f23';
+                e.currentTarget.style.borderColor = '#27272a';
+                e.currentTarget.style.color = '#f4f4f5';
               }}
             >
-              <ExternalLink size={13} />
+              <ExternalLink size={13} color="#f4f4f5" />
             </a>
           )}
 
@@ -332,25 +328,27 @@ function DriveFileCardItem({ file, onPreview }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                width: '30px',
-                height: '30px',
-                borderRadius: '8px',
-                background: 'rgba(255, 255, 255, 0.06)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                color: 'rgba(255, 255, 255, 0.7)',
+                width: '32px',
+                height: '32px',
+                borderRadius: '7px',
+                backgroundColor: '#1f1f23',
+                border: '1px solid #27272a',
+                color: '#f4f4f5',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
-                e.currentTarget.style.color = '#fff';
+                e.currentTarget.style.backgroundColor = '#27272a';
+                e.currentTarget.style.borderColor = '#3f3f46';
+                e.currentTarget.style.color = '#ffffff';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.7)';
+                e.currentTarget.style.backgroundColor = '#1f1f23';
+                e.currentTarget.style.borderColor = '#27272a';
+                e.currentTarget.style.color = '#f4f4f5';
               }}
             >
-              <Download size={13} />
+              <Download size={13} color="#f4f4f5" />
             </a>
           )}
         </div>
@@ -366,12 +364,10 @@ export default function DriveFilesCard({ files = [], title = 'Google Drive Files
     <div
       style={{
         margin: '12px 0',
-        padding: '16px',
-        background: 'rgba(15, 17, 23, 0.85)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        borderRadius: '16px',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
-        backdropFilter: 'blur(12px)',
+        backgroundColor: '#0c0c0e',
+        border: '1px solid #27272a',
+        borderRadius: '14px',
+        overflow: 'hidden',
         width: '100%',
         maxWidth: '100%',
         boxSizing: 'border-box'
@@ -383,47 +379,46 @@ export default function DriveFilesCard({ files = [], title = 'Google Drive Files
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '14px',
-          paddingBottom: '10px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)'
+          padding: '11px 16px',
+          backgroundColor: '#141417',
+          borderBottom: '1px solid #27272a'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div
-            style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '8px',
-              background: 'rgba(66, 133, 244, 0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#8ab4f8'
-            }}
-          >
-            <HardDrive size={16} />
-          </div>
-          <span style={{ fontSize: '14px', fontWeight: 600, color: '#f3f4f6' }}>
+          <img
+            src="/drive.png"
+            alt="Google Drive"
+            style={{ width: '16px', height: '16px', objectFit: 'contain' }}
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+          <span style={{ fontSize: '12px', fontWeight: 600, color: '#f4f4f5', letterSpacing: '0.2px' }}>
             {title}
           </span>
-          <span
-            style={{
-              fontSize: '11px',
-              padding: '2px 8px',
-              borderRadius: '10px',
-              background: 'rgba(255, 255, 255, 0.08)',
-              color: 'rgba(255, 255, 255, 0.6)',
-              fontWeight: 500
-            }}
-          >
-            {files.length} {files.length === 1 ? 'item' : 'items'}
-          </span>
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '3px 9px',
+            borderRadius: '9999px',
+            backgroundColor: '#1f1f23',
+            border: '1px solid #3f3f46',
+            fontSize: '11px',
+            fontWeight: 500,
+            color: '#f4f4f5'
+          }}
+        >
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ffffff' }} />
+          <span>{files.length} {files.length === 1 ? 'item' : 'items'}</span>
         </div>
       </div>
 
       {/* Grid of Files */}
       <div
         style={{
+          padding: '14px',
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
           gap: '12px'

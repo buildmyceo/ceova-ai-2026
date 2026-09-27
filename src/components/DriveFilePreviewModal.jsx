@@ -86,43 +86,43 @@ export default function DriveFilePreviewModal({ file, isOpen, onClose }) {
             width: isFullScreen ? '100vw' : '94%',
             maxWidth: isFullScreen ? '100vw' : '1080px',
             height: isFullScreen ? '100vh' : '88vh',
-            background: 'rgba(18, 18, 22, 0.96)',
-            border: isFullScreen ? 'none' : '1px solid rgba(255, 255, 255, 0.12)',
-            borderRadius: isFullScreen ? '0' : '20px',
+            backgroundColor: '#0c0c0e',
+            border: isFullScreen ? 'none' : '1px solid #27272a',
+            borderRadius: isFullScreen ? '0' : '16px',
             display: 'flex',
             flexDirection: 'column',
-            boxShadow: '0 32px 80px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 24px 60px rgba(0, 0, 0, 0.8)',
             overflow: 'hidden'
           }}
         >
           {/* Modal Header */}
           <div style={{
-            padding: '14px 20px',
+            padding: '12px 18px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-            background: 'rgba(255, 255, 255, 0.02)',
+            borderBottom: '1px solid #27272a',
+            backgroundColor: '#141417',
             flexShrink: 0
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
               <div style={{
-                width: '34px',
-                height: '34px',
+                width: '32px',
+                height: '32px',
                 borderRadius: '8px',
-                background: `${meta.color}1c`,
-                border: `1px solid ${meta.color}35`,
+                backgroundColor: '#18181b',
+                border: '1px solid #27272a',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0
               }}>
-                <Icon size={18} color={meta.color} />
+                <Icon size={16} color="#ffffff" />
               </div>
               <div style={{ minWidth: 0 }}>
                 <h3 style={{
                   margin: 0,
-                  fontSize: '15px',
+                  fontSize: '14px',
                   fontWeight: 600,
                   color: '#ffffff',
                   whiteSpace: 'nowrap',
@@ -132,9 +132,9 @@ export default function DriveFilePreviewModal({ file, isOpen, onClose }) {
                 }} title={file.name}>
                   {file.name}
                 </h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', fontSize: '11.5px', color: 'rgba(255, 255, 255, 0.5)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', fontSize: '11px', color: '#71717a' }}>
                   <span style={{
-                    color: meta.color,
+                    color: '#a1a1aa',
                     fontWeight: 600,
                     textTransform: 'uppercase',
                     fontSize: '10px',
@@ -160,19 +160,19 @@ export default function DriveFilePreviewModal({ file, isOpen, onClose }) {
                     alignItems: 'center',
                     gap: '6px',
                     padding: '6px 12px',
-                    borderRadius: '8px',
-                    background: 'rgba(66, 133, 244, 0.15)',
-                    border: '1px solid rgba(66, 133, 244, 0.3)',
-                    color: '#60a5fa',
-                    fontSize: '12.5px',
-                    fontWeight: 500,
+                    borderRadius: '7px',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #ffffff',
+                    color: '#000000',
+                    fontSize: '12px',
+                    fontWeight: 600,
                     textDecoration: 'none',
-                    transition: 'all 0.15s ease'
+                    transition: 'background-color 0.15s ease'
                   }}
-                  onMouseOver={e => e.currentTarget.style.background = 'rgba(66, 133, 244, 0.25)'}
-                  onMouseOut={e => e.currentTarget.style.background = 'rgba(66, 133, 244, 0.15)'}
+                  onMouseOver={e => e.currentTarget.style.backgroundColor = '#e4e4e7'}
+                  onMouseOut={e => e.currentTarget.style.backgroundColor = '#ffffff'}
                 >
-                  <ExternalLink size={14} />
+                  <ExternalLink size={13} color="#000000" />
                   <span>Open in Drive</span>
                 </a>
               )}
@@ -181,44 +181,44 @@ export default function DriveFilePreviewModal({ file, isOpen, onClose }) {
                 type="button"
                 onClick={() => setIsFullScreen(!isFullScreen)}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  color: 'rgba(255, 255, 255, 0.7)',
+                  backgroundColor: '#1f1f23',
+                  border: '1px solid #27272a',
+                  color: '#a1a1aa',
                   cursor: 'pointer',
                   padding: '7px',
-                  borderRadius: '8px',
+                  borderRadius: '7px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   transition: 'all 0.15s ease'
                 }}
-                onMouseOver={e => e.currentTarget.style.color = '#ffffff'}
-                onMouseOut={e => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.7)'}
+                onMouseOver={e => { e.currentTarget.style.color = '#ffffff'; e.currentTarget.style.backgroundColor = '#27272a'; }}
+                onMouseOut={e => { e.currentTarget.style.color = '#a1a1aa'; e.currentTarget.style.backgroundColor = '#1f1f23'; }}
                 title={isFullScreen ? "Exit Fullscreen" : "Fullscreen"}
               >
-                {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                {isFullScreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
               </button>
 
               <button
                 type="button"
                 onClick={onClose}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  color: 'rgba(255, 255, 255, 0.7)',
+                  backgroundColor: '#1f1f23',
+                  border: '1px solid #27272a',
+                  color: '#a1a1aa',
                   cursor: 'pointer',
                   padding: '7px',
-                  borderRadius: '8px',
+                  borderRadius: '7px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   transition: 'all 0.15s ease'
                 }}
-                onMouseOver={e => e.currentTarget.style.color = '#ffffff'}
-                onMouseOut={e => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.7)'}
+                onMouseOver={e => { e.currentTarget.style.color = '#ffffff'; e.currentTarget.style.backgroundColor = '#27272a'; }}
+                onMouseOut={e => { e.currentTarget.style.color = '#a1a1aa'; e.currentTarget.style.backgroundColor = '#1f1f23'; }}
                 title="Close (Esc)"
               >
-                <X size={16} />
+                <X size={15} />
               </button>
             </div>
           </div>
@@ -268,7 +268,7 @@ export default function DriveFilePreviewModal({ file, isOpen, onClose }) {
               <div style={{ color: 'rgba(255, 255, 255, 0.5)', textAlign: 'center', padding: '32px' }}>
                 <p>Preview not available for this file.</p>
                 {webViewLink && (
-                  <a href={webViewLink} target="_blank" rel="noopener noreferrer" style={{ color: '#4285F4' }}>
+                  <a href={webViewLink} target="_blank" rel="noopener noreferrer" style={{ color: '#ffffff', textDecoration: 'underline' }}>
                     Open file in Google Drive
                   </a>
                 )}

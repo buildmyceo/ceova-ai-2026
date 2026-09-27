@@ -639,8 +639,13 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
       .trim();
 
     if (parsedDriveFiles.length > 0) {
-      // Strip raw repetitive text blocks since DriveFilesCard will render them cleanly
-      text = text.replace(/(?:^|\n)(?:[-*•]\s*)?(?:\*\*)?[^\n*`]+?(?:\*\*)?\s*\n\s*Type:\s*(?:Folder|File)[^\n]*\n\s*ID:\s*`?[a-zA-Z0-9_-]{20,}`?(?:[^\n]*\n\s*\[?View\]?(?:\(https?:\/\/[^\s)]+\))?)?/gi, '').trim();
+      // Strip raw repetitive text blocks and redundant header since DriveFilesCard renders them cleanly
+      text = text
+        .replace(/(?:^|\n)(?:[-*•]\s*)?(?:\*\*)?[^\n*`]+?(?:\*\*)?\s*\n\s*Type:\s*(?:Folder|File)[^\n]*\n\s*ID:\s*`?[a-zA-Z0-9_-]{20,}`?(?:[^\n]*\n\s*\[?View\]?(?:\(https?:\/\/[^\s)]+\))?)?/gi, '')
+        .replace(/(?:^|\n)\s*🔍?\s*\*\*?Search Results:?\*\*?\s*/gi, '')
+        .replace(/(?:^|\n)\s*📁?\s*\*\*?Recent Files:?\*\*?\s*/gi, '')
+        .replace(/(?:^|\n)\s*📁?\s*\*\*?Google Drive Files:?\*\*?\s*/gi, '')
+        .trim();
     }
 
     if (resolvedCalendarEvent) {
@@ -788,9 +793,9 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
               <CyclingStatus defaultStatus={displayText || "Processing..."} />
             ) : null}
 
-            {(displayText || !msg.isTyping) && (
-              <TypewriterRenderer text={displayText.replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
-            )}
+            {(displayText || (msg.isTyping && !parsedDriveFiles.length && !resolvedCalendarEvent)) ? (
+              <TypewriterRenderer text={(displayText || '').replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
+            ) : null}
 
             {parsedDriveFiles && parsedDriveFiles.length > 0 && (
               <DriveFilesCard
