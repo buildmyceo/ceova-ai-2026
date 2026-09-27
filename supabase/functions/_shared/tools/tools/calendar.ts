@@ -330,7 +330,28 @@ async function createEvent(token: string, title: string, startTime: string, endT
   let msg = "Event created successfully.";
   if (assumedDuration) msg += " (Note: End time was missing, defaulted to 1 hour duration).";
 
-  return { success: true, data: { text: `✅ ${msg}\n**Event:** ${data.summary || 'Busy'}\n[View on Google Calendar](${data.htmlLink})` } };
+  const eventPayload = {
+    type: "calendar_event",
+    id: data.id,
+    summary: data.summary || title,
+    title: data.summary || title,
+    start: formattedStartTime,
+    end: formattedEndTime,
+    htmlLink: data.htmlLink,
+    note: assumedDuration ? "End time was missing, defaulted to 1 hour duration." : undefined
+  };
+
+  const summaryText = `✅ ${msg}\n**Event:** ${data.summary || 'Busy'}\n[View on Google Calendar](${data.htmlLink})`;
+  const actionMeta = `<!-- ACTION_META:${JSON.stringify({ type: 'calendar_event', event: eventPayload })} -->`;
+  const tagBlock = `:::calendar_event ${JSON.stringify(eventPayload)} :::`;
+
+  return { 
+    success: true, 
+    data: { 
+      text: `${summaryText}\n\n${actionMeta}\n${tagBlock}`, 
+      event: eventPayload 
+    } 
+  };
 }
 
 async function updateEvent(token: string, eventId: string, title?: string, startTime?: string, endTime?: string): Promise<ToolResult> {

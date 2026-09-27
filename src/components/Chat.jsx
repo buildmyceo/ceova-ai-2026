@@ -15,6 +15,7 @@ import CloudProjectCard from './CloudProjectCard';
 import WebsitePreviewModal from './WebsitePreviewModal';
 import DriveFilesCard from './DriveFilesCard';
 import DriveFilePreviewModal from './DriveFilePreviewModal';
+import CalendarEventCard from './CalendarEventCard';
 async function forceDownloadImage(url, filename = 'ceova-image.png') {
   try {
     const res = await fetch(url, { mode: 'cors' });
@@ -519,6 +520,80 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
     return files;
   }, [isUser, rawText, actionMeta, driveFilesFromTag]);
 
+  // Check for calendar event tag :::calendar_event {...} :::
+  let calendarEventFromTag = null;
+  const calTagMatch = rawText.match(/:::calendar_event\s*(\{.*?\})\s*:::/s);
+  if (calTagMatch) {
+    try {
+      calendarEventFromTag = JSON.parse(calTagMatch[1]);
+      rawText = rawText.replace(calTagMatch[0], '').trim();
+    } catch(e) {}
+  }
+
+  // Parse Calendar event either from actionMeta, tag block, or raw text output
+  const resolvedCalendarEvent = useMemo(() => {
+    if (isUser || !rawText) return null;
+    if (actionMeta && actionMeta.type === 'calendar_event' && actionMeta.event) {
+      return actionMeta.event;
+    }
+    if (calendarEventFromTag) {
+      return calendarEventFromTag;
+    }
+
+    // Fallback: match text output like:
+    // ✅ Event created successfully.
+    // Event: Meeting with Harshit
+    // View on Google Calendar
+    const match = rawText.match(/(?:✅\s*)?Event created successfully[\s\S]*?(?:\*\*Event:\*\*|Event:)\s*([^\n\r\[]+)(?:[\s\S]*?(?:\[View on Google Calendar\]\((https?:\/\/[^\s)]+)\)|View on Google Calendar))?/i);
+    if (!match) return null;
+
+    const title = match[1].replace(/\*\*/g, '').trim();
+    const htmlLink = match[2] || 'https://calendar.google.com';
+
+    // Retrieve previous user prompt for time/date extraction
+    const userPrompt = messages && idx > 0
+      ? (messages.slice(0, idx).reverse().find(m => m.sender === 'user')?.text || '')
+      : '';
+
+    const combined = `${userPrompt} ${rawText}`;
+    let start = null;
+    let end = null;
+
+    const timeMatch = combined.match(/(?:from\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*(?:to|-)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i) ||
+                      combined.match(/\b(?:at|from)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i);
+
+    const isTomorrow = /\btomorrow\b/i.test(combined);
+    const baseDate = new Date();
+    if (isTomorrow) baseDate.setDate(baseDate.getDate() + 1);
+
+    if (timeMatch) {
+      const parseTime = (tStr, d) => {
+        const m = tStr.trim().match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+        if (!m) return null;
+        let h = parseInt(m[1], 10);
+        const min = m[2] ? parseInt(m[2], 10) : 0;
+        const meridiem = m[3].toLowerCase();
+        if (meridiem === 'pm' && h < 12) h += 12;
+        if (meridiem === 'am' && h === 12) h = 0;
+        const res = new Date(d);
+        res.setHours(h, min, 0, 0);
+        return res.toISOString();
+      };
+      start = parseTime(timeMatch[1], baseDate);
+      if (timeMatch[2]) {
+        end = parseTime(timeMatch[2], baseDate);
+      }
+    }
+
+    return {
+      title,
+      summary: title,
+      start: start || (isTomorrow ? baseDate.toISOString() : new Date().toISOString()),
+      end: end,
+      htmlLink
+    };
+  }, [isUser, rawText, actionMeta, calendarEventFromTag, messages, idx]);
+
   const resolvedCloudProject = useMemo(() => {
     if (msg.cloudProject) return msg.cloudProject;
     if (!isUser && rawText && typeof rawText === 'string') {
@@ -568,18 +643,23 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
       text = text.replace(/(?:^|\n)(?:[-*•]\s*)?(?:\*\*)?[^\n*`]+?(?:\*\*)?\s*\n\s*Type:\s*(?:Folder|File)[^\n]*\n\s*ID:\s*`?[a-zA-Z0-9_-]{20,}`?(?:[^\n]*\n\s*\[?View\]?(?:\(https?:\/\/[^\s)]+\))?)?/gi, '').trim();
     }
 
+    if (resolvedCalendarEvent) {
+      // Strip bare confirmation text since CalendarEventCard will render a rich UI card
+      text = text.replace(/(?:✅\s*)?Event created successfully[\s\S]*?(?:\*\*Event:\*\*|Event:)\s*[^\n\r\[]+(?:[\s\S]*?(?:\[View on Google Calendar\]\([^\s)]+\)|View on Google Calendar))?/gi, '').trim();
+    }
+
     if (resolvedCloudProject && (text.includes('https://ceova.online/') || text.includes('.ceova.online'))) {
       if (text.startsWith('🎉') || text.startsWith('✨') || text.includes('**Your website is live') || text.includes('Edge Network') || text.includes('Deploying')) {
         return '';
       }
     }
 
-    if (!text && rawText && !resolvedCloudProject && parsedDriveFiles.length === 0) {
+    if (!text && rawText && !resolvedCloudProject && parsedDriveFiles.length === 0 && !resolvedCalendarEvent) {
       return 'Action completed.';
     }
 
     return text;
-  }, [rawText, resolvedCloudProject, parsedDriveFiles]);
+  }, [rawText, resolvedCloudProject, parsedDriveFiles, resolvedCalendarEvent]);
 
   const isPlanMessage = useMemo(() => {
     if (isUser || !rawText || resolvedCloudProject) return false;
@@ -718,6 +798,10 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
                 title={actionMeta?.title || (rawText.includes('Search Results') ? 'Search Results' : 'Google Drive Files')}
                 onPreview={onPreviewDriveFile}
               />
+            )}
+
+            {resolvedCalendarEvent && (
+              <CalendarEventCard event={resolvedCalendarEvent} />
             )}
 
             {resolvedCloudProject && (
