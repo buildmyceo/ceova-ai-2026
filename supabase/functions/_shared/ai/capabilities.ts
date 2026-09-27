@@ -29,8 +29,8 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "calendar",
-    description: "Create, edit, delete and search Google Calendar events.",
-    keywords: ["calendar", "event", "meeting", "schedule", "appointment", "remind", "reminder", "book", "reschedule", "cancel", "invite", "agenda", "tomorrow", "next week"],
+    description: "Create, edit, delete and search Google Calendar events. When user asks to schedule, set, or book a meeting or event, calculate the start and end time from current time and immediately call create_event.",
+    keywords: ["calendar", "calender", "clender", "clende", "calander", "event", "meeting", "metting", "schedule", "schedul", "appointment", "apointment", "remind", "reminder", "book", "reschedule", "cancel", "invite", "agenda", "tomorrow", "next week", "set calendar", "set clender", "set calender", "google calendar"],
     toolIds: ["calendar_connector"],
     memoryCategories: ["calendar", "timezone", "work_schedule", "preferences"],
   },

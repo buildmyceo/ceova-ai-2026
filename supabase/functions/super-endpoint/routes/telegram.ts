@@ -415,16 +415,21 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
       return new Response("ok");
     }
 
-    const effectiveTitle = message?.forum_topic_created?.name || "Telegram Chat";
+    const { data: existingTgChat } = await supabase
+      .from("chats")
+      .select("id, title")
+      .eq("id", effectiveChatId)
+      .maybeSingle();
 
-    await supabase.from("chats").upsert(
-      {
+    if (!existingTgChat) {
+      await supabase.from("chats").insert({
         id: effectiveChatId,
         user_id: resolvedUserId,
-        title: effectiveTitle,
-      },
-      { onConflict: "id" }
-    );
+        title: message?.forum_topic_created?.name || (tgThreadId ? `Topic ${tgThreadId}` : "Telegram Chat"),
+      });
+    } else if (message?.forum_topic_created?.name && existingTgChat.title !== message.forum_topic_created.name) {
+      await supabase.from("chats").update({ title: message.forum_topic_created.name }).eq("id", effectiveChatId);
+    }
 
     if (isTopicCreated) {
       const topicName = message.forum_topic_created?.name || "New Topic";

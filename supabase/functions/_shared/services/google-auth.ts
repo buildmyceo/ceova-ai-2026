@@ -65,11 +65,11 @@ export class GoogleAuthService {
     }
 
     private async refreshAccessToken(refreshToken: string) {
-        const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
-        const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+        const clientId = Deno.env.get("GOOGLE_CLIENT_ID") || Deno.env.get("GMAIL_CLIENT_ID");
+        const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET") || Deno.env.get("GMAIL_CLIENT_SECRET");
 
         if (!clientId || !clientSecret) {
-            Logger.ERROR("Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET in environment variables.");
+            Logger.ERROR("Missing GOOGLE_CLIENT_ID/GMAIL_CLIENT_ID or GOOGLE_CLIENT_SECRET/GMAIL_CLIENT_SECRET in environment variables.");
             return null;
         }
 

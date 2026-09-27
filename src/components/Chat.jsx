@@ -13,6 +13,8 @@ import ClientInvoiceWidget from './ClientInvoiceWidget';
 import ClientMediaConverterWidget from './ClientMediaConverterWidget';
 import CloudProjectCard from './CloudProjectCard';
 import WebsitePreviewModal from './WebsitePreviewModal';
+import DriveFilesCard from './DriveFilesCard';
+import DriveFilePreviewModal from './DriveFilePreviewModal';
 async function forceDownloadImage(url, filename = 'ceova-image.png') {
   try {
     const res = await fetch(url, { mode: 'cors' });
@@ -462,7 +464,7 @@ function ClientCompressionWidget({ meta }) {
 }
 
 // ── MessageItem component ────────────────────────────────────────────────────
-function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onPreviewWebsite }) {
+function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onPreviewWebsite, onPreviewDriveFile }) {
   const [showActions, setShowActions] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [hasProceeded, setHasProceeded] = useState(false);
@@ -477,6 +479,45 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
       rawText = rawText.replace(metaMatch[0], '').trim();
     } catch(e) {}
   }
+
+  // Check for drive files tag :::drive_files [...] :::
+  let driveFilesFromTag = null;
+  const driveTagMatch = rawText.match(/:::drive_files\s*(\[.*?\])\s*:::/s);
+  if (driveTagMatch) {
+    try {
+      driveFilesFromTag = JSON.parse(driveTagMatch[1]);
+      rawText = rawText.replace(driveTagMatch[0], '').trim();
+    } catch(e) {}
+  }
+
+  // Parse Drive files either from metadata, tag block, or raw text output
+  const parsedDriveFiles = useMemo(() => {
+    if (isUser || !rawText) return [];
+    if (actionMeta && actionMeta.type === 'drive_files' && Array.isArray(actionMeta.files) && actionMeta.files.length > 0) {
+      return actionMeta.files;
+    }
+    if (driveFilesFromTag && Array.isArray(driveFilesFromTag) && driveFilesFromTag.length > 0) {
+      return driveFilesFromTag;
+    }
+    // Fallback: parse raw text with Type: File/Folder and ID: ...
+    const regex = /(?:^|\n)(?:[-*•]\s*)?(?:\*\*)?([^\n*`]+?)(?:\*\*)?\s*\n\s*Type:\s*(?:Folder|File)[^\n]*\n\s*ID:\s*`?([a-zA-Z0-9_-]{20,})`?(?:[^\n]*\n\s*\[?View\]?(?:\((https?:\/\/[^\s)]+)\))?)?/gi;
+    const files = [];
+    let m;
+    while ((m = regex.exec(rawText)) !== null) {
+      const name = m[1].replace(/^[🔍📁\s*-]+/, '').trim();
+      const id = m[2].trim();
+      const link = m[3] || `https://drive.google.com/file/d/${id}/view`;
+      if (name && id && !files.some(f => f.id === id)) {
+        files.push({
+          id,
+          name,
+          webViewLink: link,
+          thumbnailLink: `https://drive.google.com/thumbnail?id=${id}&sz=w600`
+        });
+      }
+    }
+    return files;
+  }, [isUser, rawText, actionMeta, driveFilesFromTag]);
 
   const resolvedCloudProject = useMemo(() => {
     if (msg.cloudProject) return msg.cloudProject;
@@ -522,18 +563,23 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
       .replace(/Tech Stack:[^\n]+/gi, '')
       .trim();
 
+    if (parsedDriveFiles.length > 0) {
+      // Strip raw repetitive text blocks since DriveFilesCard will render them cleanly
+      text = text.replace(/(?:^|\n)(?:[-*•]\s*)?(?:\*\*)?[^\n*`]+?(?:\*\*)?\s*\n\s*Type:\s*(?:Folder|File)[^\n]*\n\s*ID:\s*`?[a-zA-Z0-9_-]{20,}`?(?:[^\n]*\n\s*\[?View\]?(?:\(https?:\/\/[^\s)]+\))?)?/gi, '').trim();
+    }
+
     if (resolvedCloudProject && (text.includes('https://ceova.online/') || text.includes('.ceova.online'))) {
       if (text.startsWith('🎉') || text.startsWith('✨') || text.includes('**Your website is live') || text.includes('Edge Network') || text.includes('Deploying')) {
         return '';
       }
     }
 
-    if (!text && rawText && !resolvedCloudProject) {
+    if (!text && rawText && !resolvedCloudProject && parsedDriveFiles.length === 0) {
       return 'Action completed.';
     }
 
     return text;
-  }, [rawText, resolvedCloudProject]);
+  }, [rawText, resolvedCloudProject, parsedDriveFiles]);
 
   const isPlanMessage = useMemo(() => {
     if (isUser || !rawText || resolvedCloudProject) return false;
@@ -664,6 +710,14 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
 
             {(displayText || !msg.isTyping) && (
               <TypewriterRenderer text={displayText.replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
+            )}
+
+            {parsedDriveFiles && parsedDriveFiles.length > 0 && (
+              <DriveFilesCard
+                files={parsedDriveFiles}
+                title={actionMeta?.title || (rawText.includes('Search Results') ? 'Search Results' : 'Google Drive Files')}
+                onPreview={onPreviewDriveFile}
+              />
             )}
 
             {resolvedCloudProject && (
@@ -937,6 +991,7 @@ export default function Chat({ messages, onSuggestionClick, userEmail, onRegener
   const messagesEndRef = useRef(null);
   const [copiedId, setCopiedId] = React.useState(null);
   const [previewProject, setPreviewProject] = React.useState(null);
+  const [drivePreviewFile, setDrivePreviewFile] = React.useState(null);
 
   const handleCopy = (text, id) => {
     navigator.clipboard.writeText(text);
@@ -982,6 +1037,7 @@ export default function Chat({ messages, onSuggestionClick, userEmail, onRegener
                 setLocalDirectoryHandle={setLocalDirectoryHandle}
                 onFolderConnected={onFolderConnected}
                 onPreviewWebsite={setPreviewProject}
+                onPreviewDriveFile={setDrivePreviewFile}
               />
             );
           })}
@@ -993,6 +1049,14 @@ export default function Chat({ messages, onSuggestionClick, userEmail, onRegener
         <WebsitePreviewModal
           project={previewProject}
           onClose={() => setPreviewProject(null)}
+        />
+      )}
+
+      {drivePreviewFile && (
+        <DriveFilePreviewModal
+          file={drivePreviewFile}
+          isOpen={!!drivePreviewFile}
+          onClose={() => setDrivePreviewFile(null)}
         />
       )}
     </div>

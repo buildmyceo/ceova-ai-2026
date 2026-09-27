@@ -6,6 +6,7 @@ import Chat from '../components/Chat';
 import InputBox from '../components/InputBox';
 import SettingsModal from '../components/SettingsModalV2';
 import SearchModal from '../components/SearchModal';
+import TaskModal from '../components/TaskModal';
 import Library from './Library';
 import { cacheManager } from '../services/CacheManager';
 import { Search, MoreVertical, Menu, Share2, Check, Camera, BarChart3, Zap, Brain, Link, Send, Glasses, Edit, ChevronDown, Compass, Image, Globe, MessageCircleDashed, CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
@@ -87,6 +88,7 @@ export default function Home({ session }) {
     
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+    const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
     const [isLibraryOpen, setIsLibraryOpen] = useState(() => Boolean(location?.state?.openLibrary));
     const [shareCopied, setShareCopied] = useState(false);
     const [shareStatus, setShareStatus] = useState("");
@@ -718,6 +720,10 @@ export default function Home({ session }) {
                 ? "Uploading files..." 
                 : (isWebSearch ? "Searching the web..." : (isThinking ? "Thinking deeply..." : "Thinking..."));
 
+            // Retrieve cached or session Google OAuth token so super-endpoint can sync/use it
+            const cachedGoogleToken = typeof window !== 'undefined' ? (localStorage.getItem('google_provider_token') || sessionStorage.getItem('google_provider_token')) : null;
+            const effectiveGoogleToken = cachedGoogleToken || session?.provider_token || null;
+
             // Cloud fetch directly to super-endpoint
                 const reqBody = {
                     message: text,
@@ -728,11 +734,13 @@ export default function Home({ session }) {
                     has_local_folder: !!localDirectoryHandleRef.current,
                     is_thinking: isThinking,
                     is_web_search: isWebSearch,
+                    google_token: effectiveGoogleToken,
                     user_context: {
                         date: new Date().toLocaleDateString(),
                         time: new Date().toLocaleTimeString(),
                         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                        dayOfWeek: new Date().toLocaleDateString(undefined, { weekday: 'long' })
+                        dayOfWeek: new Date().toLocaleDateString(undefined, { weekday: 'long' }),
+                        google_token: effectiveGoogleToken
                     }
                 };
 
@@ -1170,14 +1178,16 @@ export default function Home({ session }) {
                 }
 
                 // Dynamic AI Title Generation using gpt-4o-mini (Turn 1 & Turn 2)
+                const currentMetaTitle = (chatMetadata[idToUse]?.title || '').trim();
+                const isGenericTitle = !currentMetaTitle || currentMetaTitle === 'New Chat' || currentMetaTitle === 'Telegram Chat' || currentMetaTitle.startsWith('Topic ');
                 if (!isTemporary && !localStorage.getItem('user_renamed_' + idToUse)) {
-                    if (initialMessageCount === 0) {
-                        // Turn 1: Generate clean 3-4 word title right after 1st chat exchange
+                    if (initialMessageCount === 0 || isGenericTitle) {
+                        // Turn 1 / Generic: Generate clean 3-4 word title right after chat exchange
                         generateChatTitle([
                             { role: 'user', content: text },
                             { role: 'assistant', content: aiRawText }
                         ], session?.access_token, userMemories).then(async (newTitle) => {
-                            if (newTitle && newTitle !== 'New Chat') {
+                            if (newTitle && newTitle !== 'New Chat' && !newTitle.startsWith('Topic ')) {
                                 await supabase.from('chats').update({ title: newTitle }).eq('id', idToUse);
                                 const cached = await cacheManager.getChat(idToUse);
                                 if (cached) await cacheManager.setChat({ ...cached, title: newTitle });
@@ -1370,6 +1380,25 @@ export default function Home({ session }) {
                         };
                     });
                     setChats(prev => ({ ...prev, [id]: formatted }));
+
+                    const curTitle = (chatMetadata[id]?.title || '').trim();
+                    if (!curTitle || curTitle === 'New Chat' || curTitle === 'Telegram Chat' || curTitle.startsWith('Topic ')) {
+                        generateChatTitle(
+                            sortedChatMsgs.slice(0, 4).map(m => ({ role: m.role || (m.sender === 'user' ? 'user' : 'assistant'), content: m.content || m.text || '' })),
+                            session?.access_token,
+                            userMemories
+                        ).then(async (newTitle) => {
+                            if (newTitle && newTitle !== 'New Chat' && !newTitle.startsWith('Topic ')) {
+                                await supabase.from('chats').update({ title: newTitle }).eq('id', id);
+                                const cached = await cacheManager.getChat(id);
+                                if (cached) await cacheManager.setChat({ ...cached, title: newTitle });
+                                setChatMetadata(prev => ({
+                                    ...prev,
+                                    [id]: { ...(prev[id] || {}), title: newTitle }
+                                }));
+                            }
+                        }).catch(console.error);
+                    }
                 }
             } catch (e) {
                 console.error("Error switching chat:", e);
@@ -1636,6 +1665,7 @@ export default function Home({ session }) {
                     onToggleSettings={() => setIsSettingsOpen(true)}
                     onOpenSearch={() => setIsSearchModalOpen(true)}
                     onOpenLibrary={() => { setIsLibraryOpen(true); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}
+                    onTaskClick={() => { setIsTaskModalOpen(true); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}
                     togglePinChat={togglePinChat}
                     deleteChat={deleteChat}
                     renameChat={renameChat}
@@ -1854,6 +1884,10 @@ export default function Home({ session }) {
                     chatMetadata={chatMetadata}
                     switchChat={switchChat}
                     currentChatId={currentChatId}
+                />
+                <TaskModal 
+                    isOpen={isTaskModalOpen}
+                    onClose={() => setIsTaskModalOpen(false)}
                 />
             </main>
 

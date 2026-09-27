@@ -194,9 +194,31 @@ export function routeIntent(
   const lowerMessage = (message || '').toLowerCase().trim();
   const isQuestion = isQuestionOrInquiry(lowerMessage);
 
-  // Only inherit previous assistant text for short confirmatory replies (e.g. "yes", "proceed")
-  // For normal messages or questions, evaluate the user's message itself to prevent history leakage.
-  const isShortConfirmation = /^(?:yes|yep|yeah|sure|ok|okay|proceed|go ahead|build it|do it|approved|start|lets do it|let's do it)\b/i.test(lowerMessage);
+  const isShortConfirmation = /^(?:yes|yep|yeah|sure|ok|okay|proceed|go ahead|build it|do it|approved|start|lets do it|let's do it|send|send it|send now|please send|confirm|looks good|done|no just set|just set|set it|schedule it|add it)\b/i.test(lowerMessage);
+  
+  // Check if conversation history has a pending email draft or pending proposal
+  const hasPendingEmailDraft = Array.isArray(history) && history.slice(-4).some(m => 
+    typeof m?.content === 'string' && (
+      m.content.includes("Draft Created in Gmail") ||
+      m.content.includes("Message Preview") ||
+      m.content.includes("Would you like me to send it now") ||
+      m.content.includes("send it now?")
+    )
+  );
+
+  const hasPendingCalendarAction = Array.isArray(history) && history.slice(-4).some(m => 
+    typeof m?.content === 'string' && (
+      /(?:calendar event|schedule an appointment|meeting scheduled|set this in your calendar|noted down your meeting|calendar_connector|set a calendar event)/i.test(m.content)
+    )
+  );
+
+  const hasPendingActionInHistory = hasPendingEmailDraft || hasPendingCalendarAction || (Array.isArray(history) && history.slice(-4).some(m => 
+    typeof m?.content === 'string' && (
+      m.content.includes("Website Implementation Plan") ||
+      m.content.includes("Would you like me to proceed")
+    )
+  ));
+
   let contextText = lowerMessage;
   if (isShortConfirmation && history && Array.isArray(history)) {
     const lastAssistantMsg = history.slice().reverse().find(m => m.role === 'assistant');
@@ -208,7 +230,8 @@ export function routeIntent(
   const lowerContext = contextText.toLowerCase().trim();
 
   // ── Casual chat check — load nothing (saves 4,000+ tokens on greetings) ────
-  if (!hasImage && !hasDocument && !isThinking && !isWebSearch && CASUAL_PATTERNS.some(p => p.test(lowerMessage))) {
+  // DO NOT treat as casual chat if the user is confirming a pending action (e.g. "ok", "sure", "proceed")!
+  if (!hasImage && !hasDocument && !isThinking && !isWebSearch && !hasPendingActionInHistory && CASUAL_PATTERNS.some(p => p.test(lowerMessage))) {
     return {
       toolIds: [],
       toolSchemas: [],
@@ -336,6 +359,22 @@ export function routeIntent(
     const provCap = CAPABILITIES.find(c => c.id === "provenance");
     if (provCap && !matchedCapabilities.includes(provCap)) {
       matchedCapabilities.push(provCap);
+    }
+  }
+
+  // ── Pending Email Draft confirmation: guarantee gmail capability ───────────────
+  if (hasPendingEmailDraft && (isShortConfirmation || /\b(?:send|mail|email|yes|proceed|ok|sure)\b/i.test(lowerMessage))) {
+    const gmailCap = CAPABILITIES.find(c => c.id === "gmail");
+    if (gmailCap && !matchedCapabilities.includes(gmailCap)) {
+      matchedCapabilities.push(gmailCap);
+    }
+  }
+
+  // ── Pending Calendar Action confirmation: guarantee calendar capability ─────────
+  if (hasPendingCalendarAction && (isShortConfirmation || /\b(?:set|schedule|meeting|event|book|yes|proceed|ok|sure|clender|calender|metting)\b/i.test(lowerMessage))) {
+    const calCap = CAPABILITIES.find(c => c.id === "calendar");
+    if (calCap && !matchedCapabilities.includes(calCap)) {
+      matchedCapabilities.push(calCap);
     }
   }
 

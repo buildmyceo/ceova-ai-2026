@@ -24,7 +24,8 @@ import {
   isCalendarItem,
   isCeovaItem
 } from '../services/libraryFetchEngine';
-import { useDriveThumbnail, getDriveImageBlob, extractDriveId } from '../services/driveThumbnailCache';
+import { useDriveThumbnail, getDriveImageBlob, extractDriveId, getDriveThumbnailUrl } from '../services/driveThumbnailCache';
+import DriveFilePreviewModal from '../components/DriveFilePreviewModal';
 import { resolveSupabaseImage } from '../services/supabaseStorageHelper';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -428,13 +429,15 @@ function ItemMenu({ item, onPreview, onDownload, onVisit, onSummarize, onOCR, on
 export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDelete }) {
   const [loaded, setLoaded] = useState(false);
   const [imgErr, setImgErr] = useState(false);
-  const [activeSrc, setActiveSrc] = useState(() => item?.thumbnail_url || item?.url || null);
+  const isDrive = item?.source === 'gdrive' || !!item?.drive_id;
+  const driveThumb = isDrive ? getDriveThumbnailUrl(item) : null;
+  const [activeSrc, setActiveSrc] = useState(() => driveThumb || item?.thumbnail_url || item?.url || null);
 
   const { src: driveSrc, loading: driveLoading, error: driveErr, driveId } = useDriveThumbnail(item);
 
   useEffect(() => {
     let isMounted = true;
-    const initial = driveSrc || item?.thumbnail_url || item?.url || item?.web_view_link;
+    const initial = driveSrc || driveThumb || item?.thumbnail_url || item?.url || item?.web_view_link;
 
     const isSupabase = typeof initial === 'string' && (
       initial.includes('/storage/v1/') || !!item?.path
@@ -453,7 +456,7 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDel
     }
 
     return () => { isMounted = false; };
-  }, [driveSrc, item?.thumbnail_url, item?.url, item?.web_view_link, item?.path]);
+  }, [driveSrc, driveThumb, item?.thumbnail_url, item?.url, item?.web_view_link, item?.path]);
 
   const isFailed = imgErr || (driveErr && !driveLoading && !activeSrc);
 
@@ -565,6 +568,10 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDel
 // ─── File/doc/media card ──────────────────────────────────────────────────────
 export function FileCard({ item, onClick, onPreview, onDownload, onVisit, onSummarize, onOCR, onDelete }) {
   const { icon: Icon, color, label } = MIME_ICON(item.mime_type || '', item.name);
+  const [thumbError, setThumbError] = useState(false);
+
+  const isDrive = item.source === 'gdrive' || !!item.drive_id;
+  const driveThumb = isDrive ? getDriveThumbnailUrl(item) : (item.thumbnail_url || null);
 
   const handleCardClick = (e) => {
     // If inside a dropdown, button or link, don't trigger card preview
@@ -582,8 +589,31 @@ export function FileCard({ item, onClick, onPreview, onDownload, onVisit, onSumm
 
   return (
     <div className="lib-card lib-card-file" onClick={handleCardClick} style={{ cursor: 'pointer' }}>
-      <div className="lib-file-icon" style={{ background: `${color}18`, borderColor: `${color}30` }}>
-        <Icon size={28} color={color} />
+      <div 
+        className="lib-file-icon" 
+        style={{ 
+          background: `${color}18`, 
+          borderColor: `${color}30`,
+          position: 'relative',
+          overflow: 'hidden'
+        }}
+      >
+        {driveThumb && !thumbError ? (
+          <img
+            src={driveThumb}
+            alt=""
+            referrerPolicy="no-referrer"
+            onError={() => setThumbError(true)}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              borderRadius: '10px'
+            }}
+          />
+        ) : (
+          <Icon size={26} color={color} />
+        )}
       </div>
       <div className="lib-file-body">
         <span className="lib-file-name">{truncate(item.name, 32)}</span>
@@ -1029,6 +1059,7 @@ export default function Library({ session, onBack, switchChat }) {
   const [needsDriveAuth, setNeedsDriveAuth] = useState(false);
   const [syncNotice, setSyncNotice] = useState('');
   const [lightbox, setLightbox] = useState(null);
+  const [drivePreviewModalFile, setDrivePreviewModalFile] = useState(null);
   const [aiModal, setAiModal] = useState(null);
   const [emailPreview, setEmailPreview] = useState(null);
   const [eventPreview, setEventPreview] = useState(null);
@@ -1679,8 +1710,20 @@ export default function Library({ session, onBack, switchChat }) {
                       key={item.id}
                       item={item}
                       onDelete={handleDelete}
-                      onClick={it => setLightbox({ item: it, src: it.resolvedSrc || it.blobUrl || it.url, caption: it.name })}
-                      onPreview={it => setLightbox({ item: it, src: it.resolvedSrc || it.blobUrl || it.url, caption: it.name })}
+                      onClick={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                        } else {
+                          setLightbox({ item: it, src: it.resolvedSrc || it.blobUrl || it.url, caption: it.name });
+                        }
+                      }}
+                      onPreview={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                        } else {
+                          setLightbox({ item: it, src: it.resolvedSrc || it.blobUrl || it.url, caption: it.name });
+                        }
+                      }}
                       onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                     />
@@ -1705,7 +1748,16 @@ export default function Library({ session, onBack, switchChat }) {
                       key={item.id}
                       item={item}
                       onDelete={handleDelete}
+                      onClick={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                        }
+                      }}
                       onPreview={async it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                          return;
+                        }
                         const targetUrl = it.web_view_link || it.url;
                         const resolved = await resolveSupabaseImage(targetUrl, it);
                         window.open(resolved || targetUrl, '_blank', 'noopener,noreferrer');
@@ -1740,7 +1792,18 @@ export default function Library({ session, onBack, switchChat }) {
                       key={item.id}
                       item={item}
                       onDelete={handleDelete}
-                      onPreview={it => window.open(it.web_view_link || it.url, '_blank')}
+                      onClick={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                        }
+                      }}
+                      onPreview={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                          return;
+                        }
+                        window.open(it.web_view_link || it.url, '_blank');
+                      }}
                       onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                       onSummarize={handleSummarize}
@@ -1767,7 +1830,18 @@ export default function Library({ session, onBack, switchChat }) {
                       key={item.id}
                       item={item}
                       onDelete={handleDelete}
-                      onPreview={it => window.open(it.web_view_link || it.url, '_blank')}
+                      onClick={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                        }
+                      }}
+                      onPreview={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                          return;
+                        }
+                        window.open(it.web_view_link || it.url, '_blank');
+                      }}
                       onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                       onSummarize={handleSummarize}
@@ -1808,6 +1882,15 @@ export default function Library({ session, onBack, switchChat }) {
           src={lightbox.src}
           caption={lightbox.caption}
           onClose={() => setLightbox(null)}
+        />
+      )}
+
+      {/* ── Drive File Interactive Preview Modal ── */}
+      {drivePreviewModalFile && (
+        <DriveFilePreviewModal
+          file={drivePreviewModalFile}
+          isOpen={!!drivePreviewModalFile}
+          onClose={() => setDrivePreviewModalFile(null)}
         />
       )}
 

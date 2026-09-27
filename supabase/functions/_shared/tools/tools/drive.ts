@@ -125,7 +125,7 @@ DRIVE_CONNECTOR RULES:
 async function listFiles(token: string): Promise<ToolResult> {
   const url = new URL("https://www.googleapis.com/drive/v3/files");
   url.searchParams.append("pageSize", "20");
-  url.searchParams.append("fields", "files(id, name, mimeType, modifiedTime, webViewLink)");
+  url.searchParams.append("fields", "files(id, name, mimeType, size, modifiedTime, webViewLink, webContentLink, thumbnailLink, iconLink)");
   url.searchParams.append("orderBy", "modifiedTime desc");
 
   const res = await fetch(url.toString(), {
@@ -138,23 +138,38 @@ async function listFiles(token: string): Promise<ToolResult> {
   }
 
   const data = await res.json();
-  const files = data.files || [];
+  const rawFiles = data.files || [];
 
-  if (files.length === 0) {
+  if (rawFiles.length === 0) {
     return { success: true, data: { text: "Your Google Drive is empty or no files were found." } };
   }
-  
-  const text = `📁 **Recent Files:**\n\n` + files.map((f: any) => `- **${f.name}**\n  Type: ${f.mimeType === 'application/vnd.google-apps.folder' ? 'Folder' : 'File'}\n  ID: \`${f.id}\`\n  [View](${f.webViewLink})`).join('\n\n');
-  return { success: true, data: { text } };
+
+  const driveFiles = rawFiles.map((f: any) => ({
+    id: f.id,
+    name: f.name || "Untitled File",
+    mimeType: f.mimeType,
+    size: f.size,
+    modifiedTime: f.modifiedTime,
+    webViewLink: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view`,
+    webContentLink: f.webContentLink || `https://drive.google.com/uc?export=download&id=${f.id}`,
+    thumbnailLink: f.thumbnailLink || `https://drive.google.com/thumbnail?id=${f.id}&sz=w600`,
+    iconLink: f.iconLink
+  }));
+
+  const textSummary = `📁 **Recent Files:**\n\n` + rawFiles.map((f: any) => `- **${f.name}**\n  Type: ${f.mimeType === 'application/vnd.google-apps.folder' ? 'Folder' : 'File'}\n  ID: \`${f.id}\`\n  [View](${f.webViewLink})`).join('\n\n');
+  const actionMeta = `<!-- ACTION_META:${JSON.stringify({ type: 'drive_files', title: 'Recent Google Drive Files', files: driveFiles })} -->`;
+  const tagBlock = `:::drive_files ${JSON.stringify(driveFiles)} :::`;
+
+  return { success: true, data: { text: `${textSummary}\n\n${actionMeta}\n${tagBlock}`, files: driveFiles } };
 }
 
 async function searchFiles(token: string, name?: string): Promise<ToolResult> {
   const url = new URL("https://www.googleapis.com/drive/v3/files");
   url.searchParams.append("pageSize", "20");
-  url.searchParams.append("fields", "files(id, name, mimeType, webViewLink, webContentLink)");
+  url.searchParams.append("fields", "files(id, name, mimeType, size, modifiedTime, webViewLink, webContentLink, thumbnailLink, iconLink)");
   if (name) {
-    const escapedName = name.replace(/'/g, "\\\\'");
-    url.searchParams.append("q", `name contains '${escapedName}'`);
+    const escapedName = name.replace(/'/g, "\\'");
+    url.searchParams.append("q", `name contains '${escapedName}' and trashed = false`);
   }
 
   const res = await fetch(url.toString(), {
@@ -166,14 +181,29 @@ async function searchFiles(token: string, name?: string): Promise<ToolResult> {
   }
 
   const data = await res.json();
-  const files = data.files || [];
+  const rawFiles = data.files || [];
 
-  if (files.length === 0) {
+  if (rawFiles.length === 0) {
     return { success: true, data: { text: `No files found matching "${name}".` } };
   }
-  
-  const text = `🔍 **Search Results:**\n\n` + files.map((f: any) => `- **${f.name}**\n  Type: ${f.mimeType === 'application/vnd.google-apps.folder' ? 'Folder' : 'File'}\n  ID: \`${f.id}\`\n  [View](${f.webViewLink})`).join('\n\n');
-  return { success: true, data: { text } };
+
+  const driveFiles = rawFiles.map((f: any) => ({
+    id: f.id,
+    name: f.name || "Untitled File",
+    mimeType: f.mimeType,
+    size: f.size,
+    modifiedTime: f.modifiedTime,
+    webViewLink: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view`,
+    webContentLink: f.webContentLink || `https://drive.google.com/uc?export=download&id=${f.id}`,
+    thumbnailLink: f.thumbnailLink || `https://drive.google.com/thumbnail?id=${f.id}&sz=w600`,
+    iconLink: f.iconLink
+  }));
+
+  const textSummary = `🔍 **Search Results:**\n\n` + rawFiles.map((f: any) => `- **${f.name}**\n  Type: ${f.mimeType === 'application/vnd.google-apps.folder' ? 'Folder' : 'File'}\n  ID: \`${f.id}\`\n  [View](${f.webViewLink})`).join('\n\n');
+  const actionMeta = `<!-- ACTION_META:${JSON.stringify({ type: 'drive_files', title: `Search Results for "${name || ''}"`, files: driveFiles })} -->`;
+  const tagBlock = `:::drive_files ${JSON.stringify(driveFiles)} :::`;
+
+  return { success: true, data: { text: `${textSummary}\n\n${actionMeta}\n${tagBlock}`, files: driveFiles } };
 }
 
 async function uploadFile(token: string, fileUrl: string, name: string): Promise<ToolResult> {

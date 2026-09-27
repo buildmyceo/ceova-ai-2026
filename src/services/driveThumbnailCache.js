@@ -134,27 +134,37 @@ export async function getDriveImageBlob(driveId, userId = null) {
 }
 
 /**
+ * Return high-resolution thumbnail URL for Google Drive items
+ */
+export function getDriveThumbnailUrl(item) {
+  if (!item) return null;
+  const driveId = extractDriveId(item);
+  if (item.thumbnail_url && !item.thumbnail_url.includes('undefined')) {
+    return item.thumbnail_url;
+  }
+  if (item.thumbnailLink) {
+    return item.thumbnailLink;
+  }
+  if (driveId) {
+    return `https://drive.google.com/thumbnail?id=${driveId}&sz=w600`;
+  }
+  return item.url || null;
+}
+
+/**
  * React hook to get a reliable image source for Google Drive or regular items
  */
 export function useDriveThumbnail(item, fallbackSrc = null) {
   const isDriveItem = item?.source === 'gdrive' || !!item?.drive_id;
   const driveId = isDriveItem ? extractDriveId(item) : null;
 
-  // Compute non-drive default src
+  // Immediate thumbnail URL from Google CDN if available
+  const driveThumbUrl = isDriveItem && driveId ? getDriveThumbnailUrl(item) : null;
   const nonDriveSrc = item?.thumbnail_url || item?.url || fallbackSrc;
+  const initialSrc = isDriveItem ? (driveId && blobCache.has(driveId) ? blobCache.get(driveId) : driveThumbUrl || nonDriveSrc) : nonDriveSrc;
 
-  const [src, setSrc] = useState(() => {
-    if (!isDriveItem || !driveId) return nonDriveSrc;
-    if (driveId && blobCache.has(driveId)) return blobCache.get(driveId);
-    return item?.thumbnail_url || nonDriveSrc;
-  });
-
-  const [loading, setLoading] = useState(() => {
-    if (!isDriveItem) return false;
-    if (driveId && blobCache.has(driveId)) return false;
-    return true;
-  });
-
+  const [src, setSrc] = useState(initialSrc);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -172,9 +182,15 @@ export function useDriveThumbnail(item, fallbackSrc = null) {
       return;
     }
 
-    let isMounted = true;
-    setLoading(true);
+    // Set immediate Google Drive CDN thumbnail if we don't have a blob yet
+    const cdnThumb = getDriveThumbnailUrl(item);
+    if (cdnThumb && src !== cdnThumb) {
+      setSrc(cdnThumb);
+    }
 
+    let isMounted = true;
+
+    // Fetch authenticated blob in background for maximum fidelity
     getDriveImageBlob(driveId)
       .then(blobUrl => {
         if (!isMounted) return;
@@ -182,18 +198,22 @@ export function useDriveThumbnail(item, fallbackSrc = null) {
           setSrc(blobUrl);
           setError(false);
         } else {
-          // If blob fetch failed, try whatever fallback or thumbnail link exists
-          if (!src && !item?.thumbnail_url) {
+          // If blob fetch failed, fallback to CDN thumbnail
+          if (cdnThumb) {
+            setSrc(cdnThumb);
+            setError(false);
+          } else if (!src) {
             setError(true);
           }
         }
       })
       .catch(() => {
         if (!isMounted) return;
-        if (!src) setError(true);
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false);
+        if (cdnThumb) {
+          setSrc(cdnThumb);
+        } else if (!src) {
+          setError(true);
+        }
       });
 
     return () => {
@@ -203,3 +223,4 @@ export function useDriveThumbnail(item, fallbackSrc = null) {
 
   return { src, loading, error, driveId };
 }
+

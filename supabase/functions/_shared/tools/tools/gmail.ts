@@ -118,11 +118,16 @@ export const GmailConnectorTool: Tool = {
         }
       }
 
+      let draftId = args.draft_id;
       // If action is reply_email or send_email and fields are missing, inspect conversation history for recent draft
-      if ((action === "reply_email" || action === "send_email") && (!recipient || !body) && Array.isArray(context.history)) {
+      if ((action === "reply_email" || action === "send_email") && (!recipient || !body || !draftId) && Array.isArray(context.history)) {
         for (let i = context.history.length - 1; i >= 0; i--) {
           const content = context.history[i]?.content || "";
-          if (content.includes("Draft Created in Gmail") || content.includes("**Draft Preview:**") || content.includes("**Message Preview:**")) {
+          if (content.includes("Draft Created in Gmail") || content.includes("**Draft Preview:**") || content.includes("**Message Preview:**") || content.includes("**Draft ID:**")) {
+            if (!draftId) {
+              const draftMatch = content.match(/\*\*Draft ID:\*\*\s*([^\s\n]+)/);
+              if (draftMatch) draftId = draftMatch[1].trim();
+            }
             if (!recipient) {
               const toMatch = content.match(/\*\*To:\*\*\s*([^\s\n]+@[^\s\n]+)/);
               if (toMatch) recipient = toMatch[1];
@@ -178,12 +183,20 @@ export const GmailConnectorTool: Tool = {
       }
 
       // Check if user has explicitly confirmed sending
-      const isExplicitSendConfirmation = /^(?:yes|send|send\s*it|send\s*now|send\s*the\s*email|send\s*the\s*mail|send\s*the\s*reply|send\s*reply|proceed|looks\s*good|confirm|approved|approve|go\s*ahead|please\s*send|ok\s*send|okay\s*send)(?:[\s!,.]|$)/i.test(userMsg);
+      const isExplicitSendConfirmation = 
+        /^(?:yes|yep|yeah|sure|ok|okay|send|send\s*it|send\s*now|send\s*the\s*email|send\s*the\s*mail|send\s*the\s*reply|send\s*reply|proceed|looks\s*good|confirm|approved|approve|go\s*ahead|please\s*send|ok\s*send|okay\s*send|do\s*it|send\s*this)(?:[\s!,.]|$)/i.test(userMsg) ||
+        /\b(?:send\s*it|send\s*now|please\s*send|yes\s*send|ok\s*send|confirm\s*send|go\s*ahead\s*and\s*send|send\s*email\s*now|send\s*the\s*email)\b/i.test(userMsg);
       const isForcedSend = args.force_send === true || args.confirmed === true;
 
-      // If action is send_email or reply_email, but the user has NOT explicitly confirmed sending:
+      // Has recent draft in history
+      const hasRecentDraftInHistory = Array.isArray(context.history) && context.history.slice(-4).some((m: any) => {
+        const c = m?.content || '';
+        return c.includes("Draft Created in Gmail") || c.includes("Message Preview") || c.includes("Would you like me to send it now") || c.includes("send it now?");
+      });
+
+      // If action is send_email or reply_email, but the user has NOT explicitly confirmed sending AND there's no draft yet:
       // ALWAYS intercept to draft_email so the user can review in chat and Gmail first!
-      if ((action === "send_email" || action === "reply_email") && !isForcedSend && !isExplicitSendConfirmation) {
+      if ((action === "send_email" || action === "reply_email") && !isForcedSend && !isExplicitSendConfirmation && !hasRecentDraftInHistory) {
         Logger.INFO(`Two-way draft policy: intercepting ${action} to draft_email for user review first.`);
         action = "draft_email";
       }
@@ -231,7 +244,7 @@ export const GmailConnectorTool: Tool = {
         case "read_email":
           return await readSpecificEmail(accessToken, args.message_id);
         case "send_email":
-          return await sendEmail(accessToken, recipient, subject, body, fetchedAttachments);
+          return await sendEmail(accessToken, recipient, subject, body, fetchedAttachments, threadId, draftId);
         case "draft_email":
           return await draftEmail(accessToken, recipient, subject, body, fetchedAttachments, threadId);
         case "reply_email":
@@ -283,7 +296,7 @@ async function readSpecificEmail(token: string, messageId: string): Promise<Tool
   return { success: true, data: { text } };
 }
 
-async function sendEmail(token: string, to: string, subject: string, body: string, attachments: any[] = []): Promise<ToolResult> {
+async function sendEmail(token: string, to: string, subject: string, body: string, attachments: any[] = [], threadId?: string, draftId?: string): Promise<ToolResult> {
   if (!to || !subject || !body) {
     const missing = [];
     if (!to) missing.push("recipient");
@@ -300,22 +313,59 @@ async function sendEmail(token: string, to: string, subject: string, body: strin
       error: { code: "INVALID_RECIPIENT", message: `Recipient must be a valid email address containing '@'. You passed: "${to}". Please provide their valid email address.` }
     };
   }
-  
-  const raw = createRawEmail(to, subject, body, undefined, attachments);
+
+  // 1. If draftId is present, attempt to send directly via Gmail drafts/send API
+  if (draftId) {
+    try {
+      Logger.INFO(`Attempting to send draft ${draftId} via Gmail API...`);
+      const draftUrl = `https://gmail.googleapis.com/gmail/v1/users/me/drafts/send`;
+      const draftRes = await fetch(draftUrl, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ id: draftId })
+      });
+      if (draftRes.ok) {
+        return { success: true, data: { text: `✅ Email successfully sent to ${to}.` } };
+      }
+      const draftErr = await draftRes.text().catch(() => '');
+      Logger.WARN(`drafts/send failed (${draftRes.status}): ${draftErr}. Falling back to messages/send.`);
+    } catch (e: any) {
+      Logger.WARN(`Exception in drafts/send: ${e.message}. Falling back to messages/send.`);
+    }
+  }
+
+  // 2. Direct message send via messages/send
+  const raw = createRawEmail(to, subject, body, threadId, attachments);
+  const sendPayload: any = { raw };
+  if (threadId) {
+    sendPayload.threadId = threadId;
+  }
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`;
   const res = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ raw })
+    body: JSON.stringify(sendPayload)
   });
 
   if (!res.ok) {
     const errorText = await res.text();
-    if (res.status === 403 && errorText.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT")) {
+    if (res.status === 401) {
+      throw new Error("Your Gmail session has expired. Please re-authenticate Google Mail in Settings > Connectors.");
+    }
+    if (res.status === 403 && (errorText.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT") || errorText.includes("insufficientPermissions"))) {
       throw new Error("Missing permission to send emails. Please go to your CEOVA Library and click 'Connect / Sync Google Mail' to grant CEOVA permission to send emails on your behalf.");
     }
-    throw new Error(errorText);
+    throw new Error(errorText || `Gmail API returned status ${res.status}`);
   }
+
+  // Clean up old draft if draftId existed
+  if (draftId) {
+    fetch(`https://gmail.googleapis.com/gmail/v1/users/me/drafts/${draftId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` }
+    }).catch(() => {});
+  }
+
   return { success: true, data: { text: `✅ Email successfully sent to ${to}.` } };
 }
 
@@ -373,10 +423,13 @@ async function draftEmail(token: string, to: string, subject: string, body: stri
 
   if (!res.ok) {
     const errorText = await res.text();
-    if (res.status === 403 && errorText.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT")) {
+    if (res.status === 401) {
+      throw new Error("Your Gmail session has expired. Please re-authenticate Google Mail in Settings > Connectors.");
+    }
+    if (res.status === 403 && (errorText.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT") || errorText.includes("insufficientPermissions"))) {
       throw new Error("Missing permission to draft emails. Please go to your CEOVA Library and click 'Connect / Sync Google Mail' to grant CEOVA permission to manage your emails.");
     }
-    throw new Error(errorText);
+    throw new Error(errorText || `Gmail API returned status ${res.status}`);
   }
 
   const responseData = await res.json().catch(() => ({}));
@@ -385,7 +438,8 @@ async function draftEmail(token: string, to: string, subject: string, body: stri
   const previewText = `📝 **Draft Created in Gmail**\n\n` +
     `**To:** ${to}\n` +
     `**Subject:** ${subject}\n` +
-    (resolvedThreadId ? `**Thread ID:** ${resolvedThreadId}\n\n` : `\n`) +
+    (resolvedThreadId ? `**Thread ID:** ${resolvedThreadId}\n` : '') +
+    (draftId ? `**Draft ID:** ${draftId}\n\n` : `\n`) +
     `**Message Preview:**\n${body}\n\n` +
     `---\n` +
     `I have created this draft in your Gmail and provided the preview above. Would you like me to send it now?`;

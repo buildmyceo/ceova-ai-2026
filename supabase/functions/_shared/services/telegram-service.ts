@@ -368,6 +368,106 @@ export async function sendTelegramDocument(
 }
 
 /**
+ * Edit a forum topic title in Telegram if the chat is a forum supergroup
+ */
+export async function editTelegramForumTopic(
+  chatId: string | number,
+  messageThreadId: number | string,
+  name: string
+): Promise<boolean> {
+  try {
+    const token = getBotToken();
+    const cleanName = name.replace(/[.!?:;]+$/g, '').trim().slice(0, 128);
+    const res = await fetch(`https://api.telegram.org/bot${token}/editForumTopic`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_thread_id: Number(messageThreadId),
+        name: cleanName,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data.ok) {
+      Logger.WARN(`[Telegram] editForumTopic note (${data.error_code}): ${data.description}`);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    Logger.WARN(`[Telegram] editForumTopic call error: ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Generates a concise 3-4 word AI title for Telegram conversations
+ */
+export async function generateTelegramConversationTitle(
+  userMessage: string,
+  aiReply: string,
+  history: any[] = []
+): Promise<string | null> {
+  try {
+    const apiKey = Deno.env.get("OPEN_AI") || Deno.env.get("OPENAI_API_KEY");
+    if (!apiKey) return null;
+
+    const conversationSnippet = [
+      ...history.slice(-2).map((m: any) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`),
+      `User: ${userMessage.slice(0, 300)}`,
+      `Assistant: ${aiReply.slice(0, 300)}`
+    ].join("\n");
+
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are a concise conversation title generator. Output ONLY a short, meaningful title summarizing the main topic or question based on the user and AI messages.
+STRICT RULES:
+1. Maximum 3 to 4 words total.
+2. Do NOT use quotation marks, punctuation, or emojis.
+3. Title Case (e.g. 'Morning Project Review', 'Logo Design Help', 'React Debugging', 'Travel Itinerary Plan').
+4. If the user only says a generic greeting like 'hi' or 'hello' and there is no subsequent question, output 'New Chat'. Otherwise, capture their specific question or topic.
+5. Output ONLY the 3-4 word title and nothing else.`
+          },
+          {
+            role: "user",
+            content: conversationSnippet
+          }
+        ],
+        max_tokens: 20,
+        temperature: 0.3
+      }),
+      signal: AbortSignal.timeout(6000)
+    });
+
+    if (!res.ok) return null;
+
+    const data = await res.json().catch(() => ({}));
+    let title = data.choices?.[0]?.message?.content?.trim();
+    if (!title) return null;
+
+    title = title.replace(/^["'`]|["'`]$/g, "").replace(/[.!?:;]+$/g, "").trim();
+    const words = title.split(/\s+/).filter(Boolean);
+    if (words.length > 4) {
+      title = words.slice(0, 4).join(" ");
+    }
+    return title;
+  } catch (err: any) {
+    Logger.WARN(`[Telegram] Failed to generate conversation title: ${err.message}`);
+    return null;
+  }
+}
+
+
+/**
  * Build connected apps summary card
  */
 export async function buildAppsSummary(supabase: any, userId: string): Promise<string> {
@@ -539,7 +639,7 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
   const isTopicMessage = message?.is_topic_message || !!tgThreadId;
   const isTopicCreated = !!message?.forum_topic_created;
   const effectiveChatId = tgThreadId ? `${tgChatId}_${tgThreadId}` : tgChatId;
-  const topicName = message?.forum_topic_created?.name;
+  const topicName = message?.forum_topic_created?.name || message?.forum_topic_edited?.name;
   const rawText = (message?.text || message?.caption || "").trim();
 
   if (!tgChatId) {
@@ -975,12 +1075,31 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
   }
 
   // ── 6. Fetch Conversation History ──────────────────────────────────────────
-  // Ensure chat record exists in Supabase (isolated per thread/topic)
-  await supabase.from("chats").upsert({
-    id: effectiveChatId,
-    user_id: userId,
-    title: topicName || (tgThreadId ? `Topic ${tgThreadId}` : "Telegram Chat"),
-  }, { onConflict: "id" });
+  // Ensure chat record exists in Supabase without overwriting meaningful titles with defaults
+  const { data: existingChat } = await supabase
+    .from("chats")
+    .select("id, title")
+    .eq("id", effectiveChatId)
+    .maybeSingle();
+
+  if (!existingChat) {
+    await supabase.from("chats").insert({
+      id: effectiveChatId,
+      user_id: userId,
+      title: topicName || (tgThreadId ? `Topic ${tgThreadId}` : "Telegram Chat"),
+    });
+  } else if (topicName && existingChat.title !== topicName) {
+    // If the topic was explicitly renamed or created with a custom title in Telegram
+    await supabase.from("chats").update({ title: topicName }).eq("id", effectiveChatId);
+  }
+
+  const currentChatTitle = (existingChat?.title || topicName || (tgThreadId ? `Topic ${tgThreadId}` : "Telegram Chat")).trim();
+  const isDefaultTitle = !currentChatTitle ||
+    currentChatTitle === "Telegram Chat" ||
+    currentChatTitle === "New Chat" ||
+    currentChatTitle.startsWith("Topic ") ||
+    currentChatTitle.startsWith("Topic #") ||
+    /^(hy|hey|hi|hello|whats|what is|whta)\b/i.test(currentChatTitle);
 
   const { data: rawHistory } = await supabase
     .from("messages")
@@ -1088,6 +1207,42 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
     }
   }
 
+  // Ensure gmail_connector is available if user has a pending email draft or confirms sending
+  const hasPendingEmailDraft = history && Array.isArray(history) && history.slice(-6).some((m: any) => 
+    typeof m.content === 'string' && (
+      /(?:Would you like me to send it now|created this draft|send this draft|Draft ID:|preview of the email|preview above)/i.test(m.content) ||
+      m.content.includes("draft_email") ||
+      m.content.includes("gmail_connector")
+    )
+  );
+  const isEmailConfirmation = hasPendingEmailDraft && 
+    /^(?:yes|yep|yeah|sure|ok|okay|send|send\s*it|proceed|please\s*send|go\s*ahead|do\s*it|confirm|approved?)\b/i.test(effectiveMessage.trim());
+
+  if (hasPendingEmailDraft && connectorsUsed < connectorsLimit) {
+    const gmailTool = toolRegistry.getTool("gmail_connector");
+    if (gmailTool && !intent.toolSchemas.some((s: any) => s.id === "gmail_connector")) {
+      intent.toolSchemas.push(gmailTool.metadata);
+    }
+  }
+
+  // Ensure calendar_connector is available if user has a pending calendar event or confirms scheduling
+  const hasPendingCalendarEvent = history && Array.isArray(history) && history.slice(-6).some((m: any) => 
+    typeof m.content === 'string' && (
+      /(?:calendar event|schedule an appointment|meeting scheduled|set this in your calendar|noted down your meeting|calendar_connector|set a calendar event)/i.test(m.content)
+    )
+  );
+  const isCalendarConfirmation = hasPendingCalendarEvent && 
+    /^(?:yes|yep|yeah|sure|ok|okay|set|set\s*it|just\s*set|no\s*just\s*set|proceed|confirm|approved?|go\s*ahead|do\s*it|schedule\s*it)\b/i.test(effectiveMessage.trim());
+  const isExplicitCalendarAction = !isQuestionOrInquiry(effectiveMessage) && 
+    /(?:clende|clender|calender|calander|calendar|schedule|appointment|apointment|meeting|metting|remind|reminder|book|reschedule|cancel\s+event|agenda|set\s+(?:a\s+)?(?:clender|calender|calendar|event|meeting|appointment)|add\s+(?:to\s+)?(?:clender|calender|calendar)|event\s+tomorrow|meeting\s+tomorrow)/i.test(effectiveMessage);
+
+  if ((hasPendingCalendarEvent || isExplicitCalendarAction) && connectorsUsed < connectorsLimit) {
+    const calTool = toolRegistry.getTool("calendar_connector");
+    if (calTool && !intent.toolSchemas.some((s: any) => s.id === "calendar_connector")) {
+      intent.toolSchemas.push(calTool.metadata);
+    }
+  }
+
   const isQuestion = isQuestionOrInquiry(effectiveMessage);
 
   // ── Detect imperative image generation command (never for inquiries/questions) ───
@@ -1188,11 +1343,17 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
   let toolCallMatch: { tool: string; args: any } | null = null;
 
   try {
-    // Only force tool_choice for explicit creation commands (never on questions/inquiries)
+    // Only force tool_choice for explicit creation commands or email/calendar confirmation (never on questions/inquiries)
+    const forceGmailSend = isEmailConfirmation && openAITools?.some((t: any) => t.function?.name === 'gmail_connector');
+    const forceCalendar = (isCalendarConfirmation || isExplicitCalendarAction) && openAITools?.some((t: any) => t.function?.name === 'calendar_connector');
     const forceImageGen = isImageGenCommand && openAITools?.some((t: any) => t.function?.name === 'generate_image');
-    const toolChoiceOverride = forceImageGen
-      ? { type: 'function', function: { name: 'generate_image' } }
-      : undefined;
+    const toolChoiceOverride = forceGmailSend
+      ? { type: 'function', function: { name: 'gmail_connector' } }
+      : (forceCalendar
+        ? { type: 'function', function: { name: 'calendar_connector' } }
+        : (forceImageGen
+          ? { type: 'function', function: { name: 'generate_image' } }
+          : undefined));
 
     aiResponse = await aiRouter.generateContent(llmMessages, "telegram", userId, {
       temperature: 0.3,
@@ -1235,6 +1396,26 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
   let toolExecuted = false;
   let isConnector = false;
   let replyMarkup: any = undefined;
+
+  // Fallback auto-send: If user confirmed sending an email draft but AI answered with conversational text
+  if (!toolCallMatch && isEmailConfirmation && connectorsUsed < connectorsLimit) {
+    Logger.INFO('[Telegram] Email confirmation detected without explicit tool call. Triggering auto-send via gmail_connector.');
+    toolCallMatch = {
+      tool: 'gmail_connector',
+      args: {
+        action: 'send_email',
+        confirmed: true
+      }
+    };
+  } else if (!toolCallMatch && (isCalendarConfirmation || isExplicitCalendarAction) && connectorsUsed < connectorsLimit) {
+    Logger.INFO('[Telegram] Calendar action/confirmation detected without explicit tool call. Triggering auto-create via calendar_connector.');
+    toolCallMatch = {
+      tool: 'calendar_connector',
+      args: {
+        action: 'create_event'
+      }
+    };
+  }
 
   if (toolCallMatch) {
     const toolId = toolCallMatch.tool;
@@ -1372,6 +1553,29 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
     });
   } catch (dbErr: any) {
     Logger.WARN("[Telegram] Failed to save assistant message to DB:", dbErr.message);
+  }
+
+  // ── 13.1 Dynamic Title Generation (Replace 'Topic 3099' or generic titles with meaningful AI title) ──
+  if (isDefaultTitle || (history.length <= 2 && currentChatTitle?.startsWith("Topic "))) {
+    try {
+      const generatedTitle = await generateTelegramConversationTitle(
+        effectiveMessage,
+        finalTelegramReply,
+        history
+      );
+
+      if (generatedTitle && generatedTitle !== "New Chat" && !generatedTitle.startsWith("Topic ")) {
+        Logger.INFO(`[Telegram] Generated AI title for chat ${effectiveChatId}: "${generatedTitle}"`);
+        await supabase.from("chats").update({ title: generatedTitle }).eq("id", effectiveChatId);
+
+        // Also rename the forum topic directly in Telegram if applicable
+        if (tgThreadId) {
+          await editTelegramForumTopic(tgChatId, tgThreadId, generatedTitle);
+        }
+      }
+    } catch (titleErr: any) {
+      Logger.WARN(`[Telegram] Title generation error: ${titleErr.message}`);
+    }
   }
 
   // ── 14. Dispatch Final Reply to Telegram ────────────────────────────────────

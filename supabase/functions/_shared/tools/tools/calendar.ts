@@ -80,7 +80,56 @@ CALENDAR_CONNECTOR RULES:
       }
 
       const args = context.args || {};
-      const action = args.action;
+      const action = args.action || "create_event";
+
+      let title = args.title;
+      let startTime = args.start_time;
+      let endTime = args.end_time;
+
+      // If action is create_event and title or startTime are missing, attempt recovery from history
+      if (action === "create_event" && (!title || !startTime)) {
+        const fullConversation = [...(context.history || []), { content: context.message || "" }];
+        const convText = fullConversation.map(m => typeof m?.content === 'string' ? m.content : '').join("\n");
+
+        if (!title) {
+          const titleMatch = convText.match(/(?:meeting\s+with|appointment\s+with|with)\s+([A-Za-z0-9_\-\s]{2,30}?)(?:\s+(?:tomorrow|today|from|at|on)|\n|$)/i);
+          if (titleMatch) {
+            title = `Meeting with ${titleMatch[1].trim()}`;
+          } else {
+            title = "Meeting";
+          }
+        }
+
+        if (!startTime) {
+          const timeMatch = convText.match(/(?:from\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*(?:to|-)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i) ||
+                            convText.match(/\b(?:at|from)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i);
+          const isTomorrow = /\btomorrow\b/i.test(convText);
+          const targetDate = new Date();
+          if (isTomorrow) targetDate.setDate(targetDate.getDate() + 1);
+
+          if (timeMatch) {
+            const parseTimeStr = (tStr: string, baseDate: Date) => {
+              const d = new Date(baseDate);
+              const m = tStr.trim().match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+              if (!m) return null;
+              let h = parseInt(m[1], 10);
+              const min = m[2] ? parseInt(m[2], 10) : 0;
+              const meridiem = m[3].toLowerCase();
+              if (meridiem === 'pm' && h < 12) h += 12;
+              if (meridiem === 'am' && h === 12) h = 0;
+              d.setHours(h, min, 0, 0);
+              return d.toISOString();
+            };
+
+            const sParsed = parseTimeStr(timeMatch[1], targetDate);
+            if (sParsed) startTime = sParsed;
+            if (timeMatch[2]) {
+              const eParsed = parseTimeStr(timeMatch[2], targetDate);
+              if (eParsed) endTime = eParsed;
+            }
+          }
+        }
+      }
 
       context.onStatusUpdate?.(`Executing ${action}...`);
 
@@ -90,9 +139,9 @@ CALENDAR_CONNECTOR RULES:
         case "search_events":
           return await searchEvents(accessToken, args.query || "");
         case "create_event":
-          return await createEvent(accessToken, args.title, args.start_time, args.end_time, args.force_create);
+          return await createEvent(accessToken, title, startTime, endTime, args.force_create);
         case "update_event":
-          return await updateEvent(accessToken, args.event_id, args.title, args.start_time, args.end_time);
+          return await updateEvent(accessToken, args.event_id, title, startTime, endTime);
         case "delete_event":
           return await deleteEvent(accessToken, args.event_id);
         default:
@@ -268,6 +317,12 @@ async function createEvent(token: string, title: string, startTime: string, endT
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      return { success: false, error: { code: "AUTH_EXPIRED", message: "Your Google session has expired. Please re-authenticate Google Calendar in Settings > Connectors." } };
+    }
+    if (res.status === 403) {
+      return { success: false, error: { code: "SCOPE_INSUFFICIENT", message: "Missing Google Calendar permissions. Please click 'Connect / Sync Google Calendar' in your Library or Settings to grant calendar permissions." } };
+    }
     return { success: false, error: { code: "API_ERROR", message: JSON.stringify(errorData) } };
   }
 
