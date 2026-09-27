@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar as CalendarIcon, Clock, ExternalLink, Check, Copy, Sparkles, MapPin, Users } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, ExternalLink, Check, Copy, MapPin, Users } from 'lucide-react';
 
 function formatEventDate(startStr, endStr) {
   if (!startStr) {
@@ -28,7 +28,6 @@ function formatEventDate(startStr, endStr) {
   const weekday = s.toLocaleString('en-US', { weekday: 'short' });
   const year = s.getFullYear();
 
-  // Check if today or tomorrow
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const eventDay = new Date(s.getFullYear(), s.getMonth(), s.getDate());
@@ -40,7 +39,6 @@ function formatEventDate(startStr, endStr) {
   else if (diffDays === -1) relative = 'Yesterday, ';
 
   const fullDate = `${relative}${weekday}, ${s.toLocaleString('en-US', { month: 'short' })} ${day}, ${year}`;
-
   const startTime = s.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
   let timeRange = startTime;
@@ -77,48 +75,44 @@ export default function CalendarEventCard({ event = {}, note = '' }) {
   return (
     <div
       style={{
-        margin: '14px 0',
-        maxWidth: '480px',
+        margin: '12px 0',
+        maxWidth: '460px',
         width: '100%',
-        background: 'linear-gradient(145deg, rgba(26, 32, 44, 0.85) 0%, rgba(15, 20, 28, 0.95) 100%)',
-        border: '1px solid rgba(66, 133, 244, 0.28)',
-        borderRadius: '16px',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05)',
-        backdropFilter: 'blur(16px)',
+        backgroundColor: '#0c0c0e',
+        border: '1px solid #27272a',
+        borderRadius: '14px',
         overflow: 'hidden',
-        transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        transition: 'border-color 0.2s ease, transform 0.2s ease'
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'rgba(66, 133, 244, 0.48)';
-        e.currentTarget.style.transform = 'translateY(-2px)';
-        e.currentTarget.style.boxShadow = '0 12px 36px rgba(66, 133, 244, 0.15), 0 4px 20px rgba(0, 0, 0, 0.6)';
+        e.currentTarget.style.borderColor = '#3f3f46';
+        e.currentTarget.style.transform = 'translateY(-1px)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'rgba(66, 133, 244, 0.28)';
+        e.currentTarget.style.borderColor = '#27272a';
         e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05)';
       }}
     >
-      {/* Top Banner with status badge and Google Calendar icon */}
+      {/* Header bar */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '12px 16px',
-          background: 'rgba(66, 133, 244, 0.08)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.06)'
+          padding: '11px 16px',
+          backgroundColor: '#141417',
+          borderBottom: '1px solid #27272a'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <img
             src="/google_calendar.png"
             alt="Google Calendar"
-            style={{ width: '18px', height: '18px', objectFit: 'contain' }}
+            style={{ width: '16px', height: '16px', objectFit: 'contain' }}
             onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
-          <span style={{ fontSize: '12px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.85)', letterSpacing: '0.2px' }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: '#f4f4f5', letterSpacing: '0.2px' }}>
             Google Calendar
           </span>
         </div>
@@ -127,44 +121,43 @@ export default function CalendarEventCard({ event = {}, note = '' }) {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '5px',
+            gap: '6px',
             padding: '3px 9px',
-            borderRadius: '12px',
-            background: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid rgba(16, 185, 129, 0.35)',
+            borderRadius: '9999px',
+            backgroundColor: '#1f1f23',
+            border: '1px solid #3f3f46',
             fontSize: '11px',
-            fontWeight: 600,
-            color: '#34d399'
+            fontWeight: 500,
+            color: '#f4f4f5'
           }}
         >
-          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#34d399' }} />
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ffffff' }} />
           <span>Event Created</span>
         </div>
       </div>
 
-      {/* Main Content Body */}
+      {/* Main details body */}
       <div style={{ padding: '16px 18px', display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-        {/* Calendar Tile (Month / Day) */}
+        {/* Minimal Solid Date Tile */}
         <div
           style={{
-            width: '54px',
-            borderRadius: '12px',
+            width: '52px',
+            borderRadius: '10px',
             overflow: 'hidden',
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            backgroundColor: '#18181b',
+            border: '1px solid #27272a',
             textAlign: 'center',
-            flexShrink: 0,
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)'
+            flexShrink: 0
           }}
         >
           <div
             style={{
-              background: '#4285F4',
-              color: '#ffffff',
+              backgroundColor: '#ffffff',
+              color: '#000000',
               fontSize: '10px',
               fontWeight: 700,
               padding: '3px 0',
-              letterSpacing: '0.6px'
+              letterSpacing: '0.8px'
             }}
           >
             {month}
@@ -172,7 +165,7 @@ export default function CalendarEventCard({ event = {}, note = '' }) {
           <div
             style={{
               color: '#ffffff',
-              fontSize: '20px',
+              fontSize: '19px',
               fontWeight: 700,
               padding: '6px 0',
               fontFamily: 'system-ui, -apple-system, sans-serif'
@@ -182,12 +175,12 @@ export default function CalendarEventCard({ event = {}, note = '' }) {
           </div>
         </div>
 
-        {/* Event Details */}
+        {/* Text info */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <h3
             style={{
-              margin: '0 0 6px 0',
-              fontSize: '16px',
+              margin: '0 0 7px 0',
+              fontSize: '15px',
               fontWeight: 600,
               color: '#ffffff',
               lineHeight: 1.3,
@@ -197,28 +190,28 @@ export default function CalendarEventCard({ event = {}, note = '' }) {
             {title}
           </h3>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '13px', color: 'rgba(255, 255, 255, 0.7)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-              <CalendarIcon size={14} color="#60a5fa" style={{ flexShrink: 0 }} />
-              <span style={{ fontWeight: 500, color: 'rgba(255, 255, 255, 0.9)' }}>{fullDate}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '13px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <CalendarIcon size={14} color="#a1a1aa" style={{ flexShrink: 0 }} />
+              <span style={{ color: '#ffffff', fontWeight: 500 }}>{fullDate}</span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-              <Clock size={14} color="#93c5fd" style={{ flexShrink: 0 }} />
-              <span>{timeRange}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Clock size={14} color="#a1a1aa" style={{ flexShrink: 0 }} />
+              <span style={{ color: '#a1a1aa' }}>{timeRange}</span>
             </div>
 
             {location && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                <MapPin size={14} color="#f87171" style={{ flexShrink: 0 }} />
-                <span>{location}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MapPin size={14} color="#a1a1aa" style={{ flexShrink: 0 }} />
+                <span style={{ color: '#a1a1aa' }}>{location}</span>
               </div>
             )}
 
             {attendees.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                <Users size={14} color="#a78bfa" style={{ flexShrink: 0 }} />
-                <span>{attendees.join(', ')}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Users size={14} color="#a1a1aa" style={{ flexShrink: 0 }} />
+                <span style={{ color: '#a1a1aa' }}>{attendees.join(', ')}</span>
               </div>
             )}
           </div>
@@ -228,8 +221,7 @@ export default function CalendarEventCard({ event = {}, note = '' }) {
               style={{
                 marginTop: '10px',
                 fontSize: '11px',
-                color: 'rgba(255, 255, 255, 0.5)',
-                fontStyle: 'italic'
+                color: '#71717a'
               }}
             >
               {note}
@@ -238,15 +230,15 @@ export default function CalendarEventCard({ event = {}, note = '' }) {
         </div>
       </div>
 
-      {/* Action Footer Buttons */}
+      {/* Solid Black & White Actions */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: '8px',
           padding: '10px 16px',
-          background: 'rgba(0, 0, 0, 0.25)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.06)'
+          backgroundColor: '#141417',
+          borderTop: '1px solid #27272a'
         }}
       >
         <a
@@ -258,28 +250,28 @@ export default function CalendarEventCard({ event = {}, note = '' }) {
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '7px',
+            gap: '6px',
             padding: '8px 14px',
-            borderRadius: '9px',
-            background: 'linear-gradient(135deg, #4285F4 0%, #2b6cb0 100%)',
-            color: '#ffffff',
+            borderRadius: '8px',
+            backgroundColor: '#ffffff',
+            color: '#000000',
             fontSize: '12px',
             fontWeight: 600,
             textDecoration: 'none',
-            boxShadow: '0 2px 10px rgba(66, 133, 244, 0.35)',
-            transition: 'all 0.18s ease'
+            border: '1px solid #ffffff',
+            transition: 'background-color 0.15s ease'
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.filter = 'brightness(1.1)';
-            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.backgroundColor = '#e4e4e7';
+            e.currentTarget.style.borderColor = '#e4e4e7';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.filter = 'none';
-            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.backgroundColor = '#ffffff';
+            e.currentTarget.style.borderColor = '#ffffff';
           }}
         >
           <span>View on Google Calendar</span>
-          <ExternalLink size={13} />
+          <ExternalLink size={13} color="#000000" />
         </a>
 
         <button
@@ -292,23 +284,25 @@ export default function CalendarEventCard({ event = {}, note = '' }) {
             justifyContent: 'center',
             gap: '5px',
             padding: '8px 12px',
-            borderRadius: '9px',
-            background: 'rgba(255, 255, 255, 0.08)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            color: copied ? '#34d399' : 'rgba(255, 255, 255, 0.8)',
+            borderRadius: '8px',
+            backgroundColor: '#1f1f23',
+            border: '1px solid #27272a',
+            color: copied ? '#ffffff' : '#a1a1aa',
             fontSize: '12px',
             fontWeight: 500,
             cursor: 'pointer',
-            transition: 'all 0.18s ease'
+            transition: 'all 0.15s ease'
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.14)';
+            e.currentTarget.style.backgroundColor = '#27272a';
+            e.currentTarget.style.color = '#ffffff';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+            e.currentTarget.style.backgroundColor = '#1f1f23';
+            e.currentTarget.style.color = copied ? '#ffffff' : '#a1a1aa';
           }}
         >
-          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? <Check size={13} color="#ffffff" /> : <Copy size={13} />}
           <span>{copied ? 'Copied' : 'Copy'}</span>
         </button>
       </div>
