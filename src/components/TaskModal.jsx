@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckSquare, SquareCheck, Check, Trash2, Plus, X, ListTodo, Calendar, Clock } from 'lucide-react';
+import { Check, Trash2, Plus, X, ListTodo, CheckSquare } from 'lucide-react';
 
 const STORAGE_KEY = 'ceova_user_tasks';
 
@@ -18,6 +18,7 @@ export default function TaskModal({ isOpen, onClose }) {
 
     const [newTaskText, setNewTaskText] = useState('');
     const [filter, setFilter] = useState('all'); // 'all' | 'pending' | 'completed'
+    const inputRef = useRef(null);
 
     useEffect(() => {
         try {
@@ -36,6 +37,12 @@ export default function TaskModal({ isOpen, onClose }) {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isOpen, onClose]);
+
+    useEffect(() => {
+        if (isOpen) {
+            setTimeout(() => inputRef.current?.focus(), 50);
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -82,7 +89,7 @@ export default function TaskModal({ isOpen, onClose }) {
                     style={{ 
                         position: 'fixed', 
                         inset: 0, 
-                        background: 'rgba(0, 0, 0, 0.72)', 
+                        backgroundColor: 'rgba(0, 0, 0, 0.75)', 
                         backdropFilter: 'blur(16px)',
                         WebkitBackdropFilter: 'blur(16px)',
                         display: 'flex', 
@@ -94,199 +101,244 @@ export default function TaskModal({ isOpen, onClose }) {
                 >
                     <motion.div 
                         onClick={e => e.stopPropagation()}
-                        initial={{ opacity: 0, scale: 0.96, y: 14 }}
+                        initial={{ opacity: 0, scale: 0.96, y: 12 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.96, y: 14 }}
-                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        exit={{ opacity: 0, scale: 0.96, y: 12 }}
+                        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                         style={{ 
                             width: '100%', 
                             maxWidth: '520px', 
-                            background: 'rgba(22, 22, 26, 0.92)', 
-                            backdropFilter: 'blur(32px) saturate(190%)',
-                            WebkitBackdropFilter: 'blur(32px) saturate(190%)',
-                            border: '1px solid rgba(255, 255, 255, 0.12)', 
-                            borderRadius: '24px',
+                            backgroundColor: '#0c0c0e', 
+                            border: '1px solid #27272a', 
+                            borderRadius: '16px',
                             display: 'flex', 
                             flexDirection: 'column',
                             maxHeight: '85vh',
-                            boxShadow: '0 32px 80px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+                            boxShadow: '0 24px 60px rgba(0, 0, 0, 0.85)',
                             overflow: 'hidden'
                         }}
                     >
-                        {/* Header */}
+                        {/* Header Bar */}
                         <div style={{
-                            padding: '20px 24px 16px',
+                            padding: '14px 18px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                            background: 'rgba(255, 255, 255, 0.02)'
+                            borderBottom: '1px solid #27272a',
+                            backgroundColor: '#141417'
                         }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <div style={{
-                                    width: '36px',
-                                    height: '36px',
-                                    borderRadius: '10px',
-                                    background: 'rgba(66, 133, 244, 0.15)',
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '8px',
+                                    backgroundColor: '#18181b',
+                                    border: '1px solid #27272a',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    color: '#4285F4',
-                                    border: '1px solid rgba(66, 133, 244, 0.25)'
+                                    color: '#ffffff'
                                 }}>
-                                    <SquareCheck size={20} />
+                                    <CheckSquare size={16} color="#ffffff" />
                                 </div>
                                 <div>
-                                    <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#ffffff', letterSpacing: '-0.01em' }}>
+                                    <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#ffffff', letterSpacing: '-0.01em' }}>
                                         Tasks
                                     </h2>
-                                    <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'rgba(255, 255, 255, 0.5)' }}>
-                                        {pendingCount} pending · {completedCount} completed
-                                    </p>
                                 </div>
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '3px 9px',
+                                    borderRadius: '9999px',
+                                    backgroundColor: '#1f1f23',
+                                    border: '1px solid #3f3f46',
+                                    fontSize: '11px',
+                                    fontWeight: 500,
+                                    color: '#f4f4f5'
+                                }}>
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ffffff' }} />
+                                    <span>{pendingCount} pending · {completedCount} done</span>
+                                </div>
+
                                 <button
+                                    type="button"
                                     onClick={onClose}
                                     style={{
-                                        background: 'rgba(255, 255, 255, 0.06)',
-                                        border: '1px solid rgba(255, 255, 255, 0.08)',
-                                        color: 'rgba(255, 255, 255, 0.7)',
+                                        backgroundColor: '#1f1f23',
+                                        border: '1px solid #27272a',
+                                        color: '#a1a1aa',
                                         cursor: 'pointer',
                                         padding: '6px',
-                                        borderRadius: '50%',
+                                        borderRadius: '7px',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         transition: 'all 0.15s ease'
                                     }}
-                                    onMouseOver={e => {
-                                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                                    onMouseEnter={e => {
+                                        e.currentTarget.style.backgroundColor = '#27272a';
                                         e.currentTarget.style.color = '#ffffff';
                                     }}
-                                    onMouseOut={e => {
-                                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                                        e.currentTarget.style.color = 'rgba(255, 255, 255, 0.7)';
+                                    onMouseLeave={e => {
+                                        e.currentTarget.style.backgroundColor = '#1f1f23';
+                                        e.currentTarget.style.color = '#a1a1aa';
                                     }}
                                     title="Close (Esc)"
                                 >
-                                    <X size={16} />
+                                    <X size={15} />
                                 </button>
                             </div>
                         </div>
 
                         {/* Input Row */}
                         <form onSubmit={handleAddTask} style={{
-                            padding: '16px 24px',
+                            padding: '14px 18px',
                             display: 'flex',
-                            gap: '10px',
-                            background: 'rgba(255, 255, 255, 0.015)',
-                            borderBottom: '1px solid rgba(255, 255, 255, 0.06)'
+                            gap: '8px',
+                            backgroundColor: '#0c0c0e',
+                            borderBottom: '1px solid #27272a'
                         }}>
                             <input 
+                                ref={inputRef}
                                 type="text"
                                 placeholder="Add a new task..."
                                 value={newTaskText}
                                 onChange={(e) => setNewTaskText(e.target.value)}
-                                autoFocus
                                 style={{
                                     flex: 1,
-                                    background: 'rgba(255, 255, 255, 0.06)',
-                                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                                    borderRadius: '12px',
-                                    padding: '11px 16px',
+                                    backgroundColor: '#141417',
+                                    border: '1px solid #27272a',
+                                    borderRadius: '8px',
+                                    padding: '9px 14px',
                                     color: '#ffffff',
-                                    fontSize: '14px',
+                                    fontSize: '13px',
                                     outline: 'none',
-                                    transition: 'border-color 0.2s',
+                                    transition: 'border-color 0.15s ease',
                                     fontFamily: 'inherit'
                                 }}
-                                onFocus={e => e.currentTarget.style.borderColor = 'rgba(66, 133, 244, 0.6)'}
-                                onBlur={e => e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'}
+                                onFocus={e => e.currentTarget.style.borderColor = '#52525b'}
+                                onBlur={e => e.currentTarget.style.borderColor = '#27272a'}
                             />
                             <button
                                 type="submit"
                                 disabled={!newTaskText.trim()}
                                 style={{
-                                    background: newTaskText.trim() ? '#4285F4' : 'rgba(255, 255, 255, 0.06)',
-                                    color: newTaskText.trim() ? '#ffffff' : 'rgba(255, 255, 255, 0.3)',
-                                    border: 'none',
-                                    padding: '0 18px',
-                                    borderRadius: '12px',
-                                    fontWeight: 500,
-                                    fontSize: '13.5px',
+                                    backgroundColor: newTaskText.trim() ? '#ffffff' : '#1f1f23',
+                                    color: newTaskText.trim() ? '#000000' : '#52525b',
+                                    border: newTaskText.trim() ? '1px solid #ffffff' : '1px solid #27272a',
+                                    padding: '0 16px',
+                                    borderRadius: '8px',
+                                    fontWeight: 600,
+                                    fontSize: '12px',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '6px',
+                                    gap: '5px',
                                     cursor: newTaskText.trim() ? 'pointer' : 'default',
                                     transition: 'all 0.15s ease'
                                 }}
+                                onMouseEnter={e => {
+                                    if (newTaskText.trim()) {
+                                        e.currentTarget.style.backgroundColor = '#e4e4e7';
+                                        e.currentTarget.style.borderColor = '#e4e4e7';
+                                    }
+                                }}
+                                onMouseLeave={e => {
+                                    if (newTaskText.trim()) {
+                                        e.currentTarget.style.backgroundColor = '#ffffff';
+                                        e.currentTarget.style.borderColor = '#ffffff';
+                                    }
+                                }}
                             >
-                                <Plus size={16} />
+                                <Plus size={14} color={newTaskText.trim() ? '#000000' : '#52525b'} />
                                 <span>Add</span>
                             </button>
                         </form>
 
-                        {/* Filter Tabs */}
+                        {/* Filter Tabs & Clear Completed */}
                         <div style={{
-                            padding: '12px 24px 6px',
+                            padding: '12px 18px 6px',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'space-between'
+                            justifyContent: 'space-between',
+                            backgroundColor: '#0c0c0e'
                         }}>
                             <div style={{ display: 'flex', gap: '6px' }}>
                                 {[
                                     { id: 'all', label: 'All', count: tasks.length },
                                     { id: 'pending', label: 'Pending', count: pendingCount },
                                     { id: 'completed', label: 'Done', count: completedCount }
-                                ].map(tab => (
-                                    <button
-                                        key={tab.id}
-                                        type="button"
-                                        onClick={() => setFilter(tab.id)}
-                                        style={{
-                                            background: filter === tab.id ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
-                                            color: filter === tab.id ? '#ffffff' : 'rgba(255, 255, 255, 0.5)',
-                                            border: 'none',
-                                            padding: '5px 12px',
-                                            borderRadius: '8px',
-                                            fontSize: '12.5px',
-                                            fontWeight: 500,
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            transition: 'all 0.15s ease'
-                                        }}
-                                    >
-                                        <span>{tab.label}</span>
-                                        <span style={{
-                                            fontSize: '11px',
-                                            opacity: 0.7,
-                                            background: filter === tab.id ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                                            padding: '1px 5px',
-                                            borderRadius: '6px'
-                                        }}>{tab.count}</span>
-                                    </button>
-                                ))}
+                                ].map(tab => {
+                                    const isActive = filter === tab.id;
+                                    return (
+                                        <button
+                                            key={tab.id}
+                                            type="button"
+                                            onClick={() => setFilter(tab.id)}
+                                            style={{
+                                                backgroundColor: isActive ? '#ffffff' : '#141417',
+                                                color: isActive ? '#000000' : '#a1a1aa',
+                                                border: isActive ? '1px solid #ffffff' : '1px solid #27272a',
+                                                padding: '4px 10px',
+                                                borderRadius: '6px',
+                                                fontSize: '12px',
+                                                fontWeight: isActive ? 600 : 500,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                            onMouseEnter={e => {
+                                                if (!isActive) {
+                                                    e.currentTarget.style.backgroundColor = '#1f1f23';
+                                                    e.currentTarget.style.borderColor = '#3f3f46';
+                                                    e.currentTarget.style.color = '#ffffff';
+                                                }
+                                            }}
+                                            onMouseLeave={e => {
+                                                if (!isActive) {
+                                                    e.currentTarget.style.backgroundColor = '#141417';
+                                                    e.currentTarget.style.borderColor = '#27272a';
+                                                    e.currentTarget.style.color = '#a1a1aa';
+                                                }
+                                            }}
+                                        >
+                                            <span>{tab.label}</span>
+                                            <span style={{
+                                                fontSize: '10px',
+                                                fontWeight: 600,
+                                                backgroundColor: isActive ? '#000000' : '#27272a',
+                                                color: isActive ? '#ffffff' : '#a1a1aa',
+                                                padding: '1px 5px',
+                                                borderRadius: '4px'
+                                            }}>{tab.count}</span>
+                                        </button>
+                                    );
+                                })}
                             </div>
 
                             {completedCount > 0 && (
                                 <button
+                                    type="button"
                                     onClick={clearCompleted}
                                     style={{
-                                        background: 'transparent',
+                                        backgroundColor: 'transparent',
                                         border: 'none',
-                                        color: 'rgba(255, 255, 255, 0.4)',
-                                        fontSize: '12px',
+                                        color: '#71717a',
+                                        fontSize: '11px',
+                                        fontWeight: 500,
                                         cursor: 'pointer',
-                                        padding: '4px 8px',
-                                        borderRadius: '6px',
+                                        padding: '4px 6px',
+                                        borderRadius: '4px',
                                         transition: 'color 0.15s ease'
                                     }}
-                                    onMouseOver={e => e.currentTarget.style.color = '#EA4335'}
-                                    onMouseOut={e => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.4)'}
+                                    onMouseEnter={e => e.currentTarget.style.color = '#ffffff'}
+                                    onMouseLeave={e => e.currentTarget.style.color = '#71717a'}
                                 >
                                     Clear completed
                                 </button>
@@ -297,11 +349,12 @@ export default function TaskModal({ isOpen, onClose }) {
                         <div style={{
                             flex: 1,
                             overflowY: 'auto',
-                            padding: '8px 24px 20px',
+                            padding: '10px 18px 18px',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '8px',
-                            minHeight: '220px'
+                            minHeight: '200px',
+                            backgroundColor: '#0c0c0e'
                         }}>
                             {filteredTasks.length === 0 ? (
                                 <div style={{
@@ -309,15 +362,15 @@ export default function TaskModal({ isOpen, onClose }) {
                                     flexDirection: 'column',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    padding: '48px 16px',
-                                    color: 'rgba(255, 255, 255, 0.35)',
+                                    padding: '42px 16px',
+                                    color: '#71717a',
                                     textAlign: 'center'
                                 }}>
-                                    <ListTodo size={36} style={{ opacity: 0.4, marginBottom: '12px' }} />
-                                    <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 500 }}>
+                                    <ListTodo size={32} color="#52525b" style={{ marginBottom: '10px' }} />
+                                    <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: 600, color: '#f4f4f5' }}>
                                         {filter === 'completed' ? 'No completed tasks' : (filter === 'pending' ? 'No pending tasks' : 'No tasks yet')}
                                     </p>
-                                    <p style={{ margin: 0, fontSize: '12px', opacity: 0.7 }}>
+                                    <p style={{ margin: 0, fontSize: '11px', color: '#71717a' }}>
                                         Add tasks to stay focused and track your productivity.
                                     </p>
                                 </div>
@@ -329,22 +382,24 @@ export default function TaskModal({ isOpen, onClose }) {
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '12px',
-                                            padding: '12px 14px',
-                                            borderRadius: '12px',
-                                            background: task.completed ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.04)',
-                                            border: `1px solid ${task.completed ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.08)'}`,
-                                            transition: 'all 0.15s ease'
+                                            padding: '10px 14px',
+                                            borderRadius: '8px',
+                                            backgroundColor: '#141417',
+                                            border: '1px solid #27272a',
+                                            transition: 'border-color 0.15s ease'
                                         }}
+                                        onMouseEnter={e => e.currentTarget.style.borderColor = '#3f3f46'}
+                                        onMouseLeave={e => e.currentTarget.style.borderColor = '#27272a'}
                                     >
                                         <button
                                             type="button"
                                             onClick={() => toggleTask(task.id)}
                                             style={{
-                                                width: '22px',
-                                                height: '22px',
-                                                borderRadius: '6px',
-                                                border: `2px solid ${task.completed ? '#4285F4' : 'rgba(255, 255, 255, 0.3)'}`,
-                                                background: task.completed ? '#4285F4' : 'transparent',
+                                                width: '20px',
+                                                height: '20px',
+                                                borderRadius: '5px',
+                                                border: task.completed ? '1.5px solid #ffffff' : '1.5px solid #52525b',
+                                                backgroundColor: task.completed ? '#ffffff' : '#18181b',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
@@ -353,14 +408,20 @@ export default function TaskModal({ isOpen, onClose }) {
                                                 flexShrink: 0,
                                                 transition: 'all 0.15s ease'
                                             }}
+                                            onMouseEnter={e => {
+                                                if (!task.completed) e.currentTarget.style.borderColor = '#ffffff';
+                                            }}
+                                            onMouseLeave={e => {
+                                                if (!task.completed) e.currentTarget.style.borderColor = '#52525b';
+                                            }}
                                         >
-                                            {task.completed && <Check size={14} color="#ffffff" strokeWidth={3} />}
+                                            {task.completed && <Check size={13} color="#000000" strokeWidth={3} />}
                                         </button>
 
                                         <span style={{
                                             flex: 1,
-                                            fontSize: '14px',
-                                            color: task.completed ? 'rgba(255, 255, 255, 0.4)' : '#f4f4f5',
+                                            fontSize: '13px',
+                                            color: task.completed ? '#71717a' : '#f4f4f5',
                                             textDecoration: task.completed ? 'line-through' : 'none',
                                             wordBreak: 'break-word',
                                             lineHeight: 1.4
@@ -372,11 +433,11 @@ export default function TaskModal({ isOpen, onClose }) {
                                             type="button"
                                             onClick={() => deleteTask(task.id)}
                                             style={{
-                                                background: 'transparent',
+                                                backgroundColor: 'transparent',
                                                 border: 'none',
-                                                color: 'rgba(255, 255, 255, 0.3)',
+                                                color: '#52525b',
                                                 cursor: 'pointer',
-                                                padding: '6px',
+                                                padding: '5px',
                                                 borderRadius: '6px',
                                                 display: 'flex',
                                                 alignItems: 'center',
@@ -384,17 +445,17 @@ export default function TaskModal({ isOpen, onClose }) {
                                                 transition: 'all 0.15s ease',
                                                 flexShrink: 0
                                             }}
-                                            onMouseOver={e => {
-                                                e.currentTarget.style.color = '#EA4335';
-                                                e.currentTarget.style.background = 'rgba(234, 67, 53, 0.1)';
+                                            onMouseEnter={e => {
+                                                e.currentTarget.style.color = '#ffffff';
+                                                e.currentTarget.style.backgroundColor = '#1f1f23';
                                             }}
-                                            onMouseOut={e => {
-                                                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.3)';
-                                                e.currentTarget.style.background = 'transparent';
+                                            onMouseLeave={e => {
+                                                e.currentTarget.style.color = '#52525b';
+                                                e.currentTarget.style.backgroundColor = 'transparent';
                                             }}
                                             title="Delete task"
                                         >
-                                            <Trash2 size={15} />
+                                            <Trash2 size={14} />
                                         </button>
                                     </div>
                                 ))
