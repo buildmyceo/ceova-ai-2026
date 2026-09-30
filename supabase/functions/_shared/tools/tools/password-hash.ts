@@ -17,8 +17,8 @@ export class PasswordHashTool implements Tool {
       properties: {
         action: {
           type: 'string',
-          description: 'The action to perform: generate_password, generate_passphrase, hash_text, verify_hash.',
-          enum: ['generate_password', 'generate_passphrase', 'hash_text', 'verify_hash']
+          description: 'The action to perform: generate_password, generate_passphrase, hash_text, verify_hash, unlock_pdf, protect_pdf.',
+          enum: ['generate_password', 'generate_passphrase', 'hash_text', 'verify_hash', 'unlock_pdf', 'protect_pdf']
         },
         text: {
           type: 'string',
@@ -74,25 +74,31 @@ export class PasswordHashTool implements Tool {
     try {
       updateStatus(`Executing ${action}...`);
 
+      const pdfAttachments = (context.attachments || []).filter(a => a.type === 'application/pdf' || a.name?.endsWith('.pdf'));
+      if (pdfAttachments.length > 0 && (action === 'generate_password' || action === 'generate_passphrase' || action === 'unlock_pdf' || action === 'protect_pdf' || !action)) {
+        const fullPrompt = `${action || ''} ${params.text || ''} ${context.prompt || ''}`.toLowerCase();
+        const isUnlock = fullPrompt.includes('unlock') || fullPrompt.includes('decrypt') || fullPrompt.includes('unlocak') || fullPrompt.includes('remove') || action === 'unlock_pdf';
+        const isChange = fullPrompt.includes('change') || fullPrompt.includes('reset');
+        const operation = isUnlock ? 'unlock' : (isChange ? 'change_password' : 'protect');
+
+        updateStatus(`Redirecting to client for PDF ${operation}`);
+        const actionMeta = {
+            type: 'client_file_conversion',
+            operation,
+            files: pdfAttachments.map(f => ({ name: f.name || 'document.pdf', url: f.url }))
+        };
+        return {
+            success: true,
+            data: {
+                text: `Redirected to client for password operation.\n\n<!-- ACTION_META: ${JSON.stringify(actionMeta)} -->`,
+                urls: [],
+                processingTimeMs: Date.now() - startTime
+            },
+            ui: { type: 'message', props: { text: `Please enter the password securely below:` } }
+        };
+      }
+
       if (action === 'generate_password' || action === 'generate_passphrase') {
-        const pdfAttachments = (context.attachments || []).filter(a => a.type === 'application/pdf' || a.name.endsWith('.pdf'));
-        if (pdfAttachments.length > 0) {
-            updateStatus('Redirecting to client for PDF password protection');
-            const actionMeta = {
-                type: 'client_file_conversion',
-                operation: 'protect',
-                files: pdfAttachments.map(f => ({ name: f.name || 'document.pdf', url: f.url }))
-            };
-            return {
-                success: true,
-                data: {
-                    text: `Redirected to client for password operation.\n\n<!-- ACTION_META: ${JSON.stringify(actionMeta)} -->`,
-                    urls: [],
-                    processingTimeMs: Date.now() - startTime
-                },
-                ui: { type: 'message', props: { text: `Please enter the password securely below:` } }
-            };
-        }
 
         updateStatus('Delegating generation to client for security');
         const actionMeta = {

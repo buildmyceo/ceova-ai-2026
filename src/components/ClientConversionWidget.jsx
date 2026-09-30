@@ -32,16 +32,16 @@ export default function ClientConversionWidget({ meta }) {
               const res = await fetch(files[0].url, { mode: 'cors' });
               const blob = await res.blob();
               const arrayBuffer = await blob.arrayBuffer();
-              const pdf = await PDFDocument.load(arrayBuffer, { password: passwordInput });
-              const savedBytes = await pdf.save();
-              setVerifiedPdfBytes(savedBytes);
+              const { decryptPDF } = await import('@pdfsmaller/pdf-decrypt');
+              const decryptedBytes = await decryptPDF(new Uint8Array(arrayBuffer), passwordInput);
+              setVerifiedPdfBytes(decryptedBytes);
               setOldPassword(passwordInput);
               setPasswordInput('');
               setPasswordState('prompt_change_step2');
               setIsProcessing(false);
           } catch (err) {
               console.error(err);
-              setError("Incorrect password or failed to read PDF.");
+              setError("Incorrect password or failed to decrypt PDF.");
               setIsProcessing(false);
           }
           return;
@@ -53,7 +53,7 @@ export default function ClientConversionWidget({ meta }) {
               return;
           }
       }
-      if (!passwordInput && actionType !== 'keep_unlocked' && passwordState !== 'prompt_unlock') {
+      if (!passwordInput && actionType !== 'keep_unlocked') {
           setError("Password cannot be empty.");
           return;
       }
@@ -82,16 +82,17 @@ export default function ClientConversionWidget({ meta }) {
                   output.push({ name: `protected_${f.name}`, blob: new Blob([encryptedPdfBytes], { type: 'application/pdf' }) });
               }
           } else if (currentState === 'prompt_unlock' || (currentState === 'prompt_change_step2' && actionType === 'keep_unlocked')) {
+              const { decryptPDF } = await import('@pdfsmaller/pdf-decrypt');
               for (let i = 0; i < fetchedBlobs.length; i++) {
                   const f = fetchedBlobs[i];
-                  const sourceBytes = verifiedPdfBytes || await f.blob.arrayBuffer();
-                  if (!verifiedPdfBytes) {
-                      const pdf = await PDFDocument.load(sourceBytes, { password: passwordInput });
-                      const savedBytes = await pdf.save();
-                      output.push({ name: `unlocked_${f.name}`, blob: new Blob([savedBytes], { type: 'application/pdf' }) });
+                  let decryptedBytes;
+                  if (verifiedPdfBytes) {
+                      decryptedBytes = verifiedPdfBytes;
                   } else {
-                      output.push({ name: `unlocked_${f.name}`, blob: new Blob([verifiedPdfBytes], { type: 'application/pdf' }) });
+                      const sourceBytes = new Uint8Array(await f.blob.arrayBuffer());
+                      decryptedBytes = await decryptPDF(sourceBytes, passwordInput);
                   }
+                  output.push({ name: `unlocked_${f.name}`, blob: new Blob([decryptedBytes], { type: 'application/pdf' }) });
               }
           }
           
@@ -106,9 +107,12 @@ export default function ClientConversionWidget({ meta }) {
           setIsProcessing(false);
       } catch (err) {
           console.error("Password action error:", err);
-          setError(err.message || "Failed to process PDF with password.");
+          const errorMsg = err.message?.includes("Incorrect password")
+              ? "Incorrect password. The provided password does not match."
+              : (err.message || "Failed to process PDF with password.");
+          setError(errorMsg);
           setIsProcessing(false);
-          setPasswordState(currentState); // Restore state on error
+          setPasswordState(currentState); // Restore state on error so user can retry
       }
   };
 
@@ -353,10 +357,7 @@ export default function ClientConversionWidget({ meta }) {
                       autoComplete="new-password"
                       autoCorrect="off"
                       spellCheck="false"
-                      onCopy={e => e.preventDefault()}
-                      onCut={e => e.preventDefault()}
-                      onPaste={e => e.preventDefault()}
-                      style={{ padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: '14px', WebkitTextSecurity: 'disc', userSelect: 'none', WebkitUserSelect: 'none' }}
+                      style={{ padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: '14px', WebkitTextSecurity: 'disc' }}
                   />
                   {isProtect && (
                       <input
@@ -367,16 +368,13 @@ export default function ClientConversionWidget({ meta }) {
                           autoComplete="new-password"
                           autoCorrect="off"
                           spellCheck="false"
-                          onCopy={e => e.preventDefault()}
-                          onCut={e => e.preventDefault()}
-                          onPaste={e => e.preventDefault()}
-                          style={{ padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: '14px', WebkitTextSecurity: 'disc', userSelect: 'none', WebkitUserSelect: 'none' }}
+                          style={{ padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: '14px', WebkitTextSecurity: 'disc' }}
                       />
                   )}
                   
                   <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
                       <button 
-                          onClick={() => runPasswordAction('protect')}
+                          onClick={() => runPasswordAction(passwordState === 'prompt_unlock' ? 'unlock' : 'protect')}
                           style={{ flex: 1, background: '#2563eb', color: '#fff', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer', fontWeight: 500 }}
                       >
                           {passwordState === 'prompt_protect' ? 'Protect PDF' : 

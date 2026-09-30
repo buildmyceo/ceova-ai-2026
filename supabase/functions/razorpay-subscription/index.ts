@@ -36,6 +36,23 @@ serve(async (req) => {
 
     const adminClient = getAdminClient();
 
+    // Rate Limiting: Max 5 subscription creation attempts per 5 minutes per user
+    const { checkRateLimit } = await import("../_shared/rate-limit.ts");
+    const rateLimit = await checkRateLimit(
+      adminClient,
+      `razorpay-subscription:${user.id}`,
+      5,     // max burst 5 requests
+      0.016  // 1 token every ~60 seconds
+    );
+
+    if (!rateLimit.allowed) {
+      console.warn(`[RAZORPAY-SUBSCRIPTION] Rate limit exceeded for user ${user.id}`);
+      return new Response(JSON.stringify({ error: "Too many subscription attempts. Please wait a few minutes." }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
     // 2. Get plan details + razorpay_plan_id
     let { data: plan, error: planError } = await adminClient
       .from("subscription_plans")

@@ -36,6 +36,16 @@ async function fireEmail(
   }
 }
 
+// Constant-time string comparison to prevent timing attacks
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
 // Verify Razorpay webhook HMAC-SHA256 signature
 async function verifyWebhookSignature(body: string, signature: string, secret: string): Promise<boolean> {
   const encoder = new TextEncoder();
@@ -44,7 +54,7 @@ async function verifyWebhookSignature(body: string, signature: string, secret: s
   );
   const signatureBytes = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
   const computedHex = Array.from(new Uint8Array(signatureBytes)).map(b => b.toString(16).padStart(2, "0")).join("");
-  return computedHex === signature;
+  return timingSafeEqual(computedHex.toLowerCase(), signature.toLowerCase());
 }
 
 // ── Idempotency: record processed webhook events ─────────────────────────────

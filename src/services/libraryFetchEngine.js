@@ -83,6 +83,7 @@ export async function fetchUserLibraryItems(userId, options = {}) {
 
                     items.push({
                         id: `att-${msg.id}-${att.name || Math.random()}`,
+                        message_id: msg.id,
                         kind,
                         category,
                         name: att.name || 'Untitled',
@@ -108,6 +109,7 @@ export async function fetchUserLibraryItems(userId, options = {}) {
                     while ((m = imgRegex.exec(msg.content)) !== null) {
                         items.push({
                             id: `img-${msg.id}-${m.index}`,
+                            message_id: msg.id,
                             kind: 'image',
                             category: 'images',
                             name: m[1] || 'AI Generated Image',

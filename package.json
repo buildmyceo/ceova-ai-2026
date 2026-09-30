@@ -16,6 +16,7 @@
     "@google/generative-ai": "^0.21.0",
     "@modelcontextprotocol/sdk": "^1.30.1",
     "@monaco-editor/react": "^4.7.0",
+    "@pdfsmaller/pdf-decrypt": "^1.0.1",
     "@pdfsmaller/pdf-encrypt-lite": "^1.0.2",
     "@quicktoolsone/pdf-compress": "^2.0.0",
     "@supabase/supabase-js": "^2.103.0",

@@ -14,6 +14,16 @@ function getAdminClient() {
   );
 }
 
+// Constant-time string comparison to prevent timing attacks
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
 // Verify Razorpay signature for frontend subscription success
 async function verifySignature(paymentId: string, subscriptionId: string, signature: string, secret: string): Promise<boolean> {
   const encoder = new TextEncoder();
@@ -24,7 +34,7 @@ async function verifySignature(paymentId: string, subscriptionId: string, signat
   const payload = `${paymentId}|${subscriptionId}`;
   const signatureBytes = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
   const computedHex = Array.from(new Uint8Array(signatureBytes)).map(b => b.toString(16).padStart(2, "0")).join("");
-  return computedHex === signature;
+  return timingSafeEqual(computedHex.toLowerCase(), signature.toLowerCase());
 }
 
 serve(async (req) => {
@@ -43,26 +53,87 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await userClient.auth.getUser();
     if (authError || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
 
+    const adminClient = getAdminClient();
+
+    // 2. Rate Limiting: Prevent automated brute-force / race attacks via Burp Suite
+    const { checkRateLimit } = await import("../_shared/rate-limit.ts");
+    const rateLimit = await checkRateLimit(
+      adminClient,
+      `razorpay-verify:${user.id}`,
+      5,   // max burst 5 requests
+      0.1  // refill 1 token every 10 seconds
+    );
+
+    if (!rateLimit.allowed) {
+      console.warn(`[VERIFY] Rate limit exceeded for user ${user.id}`);
+      return new Response(JSON.stringify({ error: "Too many verification requests. Please wait a moment." }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
     const { razorpay_payment_id, razorpay_subscription_id, razorpay_signature } = await req.json();
 
+    // Strict parameter validation
     if (!razorpay_payment_id || !razorpay_subscription_id || !razorpay_signature) {
       return new Response(JSON.stringify({ error: "Missing required Razorpay parameters" }), { status: 400, headers: corsHeaders });
     }
 
-    const RAZORPAY_KEY_SECRET = Deno.env.get("RAZORPAY_KEY_SECRET")!;
-    
-    // 2. Verify signature
-    const isValid = await verifySignature(razorpay_payment_id, razorpay_subscription_id, razorpay_signature, RAZORPAY_KEY_SECRET);
-    
-    if (!isValid) {
-      console.error("[VERIFY] Invalid signature", { razorpay_payment_id, razorpay_subscription_id });
-      return new Response(JSON.stringify({ error: "Invalid payment signature" }), { status: 400, headers: corsHeaders });
+    if (
+      typeof razorpay_payment_id !== "string" || !razorpay_payment_id.startsWith("pay_") ||
+      typeof razorpay_subscription_id !== "string" || !razorpay_subscription_id.startsWith("sub_") ||
+      typeof razorpay_signature !== "string"
+    ) {
+      return new Response(JSON.stringify({ error: "Invalid parameter format" }), { status: 400, headers: corsHeaders });
     }
 
-    // 3. Fetch Subscription details from Razorpay
+    const RAZORPAY_KEY_SECRET = Deno.env.get("RAZORPAY_KEY_SECRET")!;
     const RAZORPAY_KEY_ID = Deno.env.get("RAZORPAY_KEY_ID")!;
     const basicAuth = btoa(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`);
     
+    // 3. Timing-safe cryptographic signature verification
+    const isValid = await verifySignature(razorpay_payment_id, razorpay_subscription_id, razorpay_signature, RAZORPAY_KEY_SECRET);
+    if (!isValid) {
+      console.error("[VERIFY] Invalid signature attempt", { userId: user.id, razorpay_payment_id, razorpay_subscription_id });
+      return new Response(JSON.stringify({ error: "Invalid payment signature" }), { status: 400, headers: corsHeaders });
+    }
+
+    // 4. Replay Protection: Check if this payment ID was already used
+    const paymentIdempotencyKey = `payment_${razorpay_payment_id}`;
+    const { error: idempotencyErr } = await adminClient
+      .from("webhook_events_processed")
+      .insert({ event_id: paymentIdempotencyKey, processed_at: new Date().toISOString() });
+
+    if (idempotencyErr && idempotencyErr.code === "23505") {
+      console.warn(`[VERIFY] Replay detected! Payment ${razorpay_payment_id} was already processed.`);
+      return new Response(JSON.stringify({ success: true, message: "Payment has already been processed" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // 5. Query Razorpay API directly to verify the Payment is CAPTURED
+    const payResponse = await fetch(`https://api.razorpay.com/v1/payments/${razorpay_payment_id}`, {
+      method: "GET",
+      headers: {
+        "Authorization": `Basic ${basicAuth}`,
+        "Content-Type": "application/json",
+      }
+    });
+
+    if (!payResponse.ok) {
+      const errorData = await payResponse.json();
+      console.error("[VERIFY] Razorpay payment check failed:", errorData);
+      return new Response(JSON.stringify({ error: "Payment verification failed with provider" }), { status: 400, headers: corsHeaders });
+    }
+
+    const payData = await payResponse.json();
+    if (payData.status !== "captured") {
+      console.error(`[VERIFY] Payment status not captured: ${payData.status}`);
+      return new Response(JSON.stringify({ error: `Payment is not captured (status: ${payData.status})` }), { status: 400, headers: corsHeaders });
+    }
+
+    // 6. Fetch Subscription details from Razorpay
     const rzpResponse = await fetch(`https://api.razorpay.com/v1/subscriptions/${razorpay_subscription_id}`, {
       method: "GET",
       headers: {
@@ -78,15 +149,28 @@ serve(async (req) => {
     }
 
     const subData = await rzpResponse.json();
+
+    // 7. Security Check: Validate user ownership
+    if (subData.notes?.user_id && subData.notes.user_id !== user.id) {
+      console.error("[VERIFY] Security Alert: User ID mismatch! Possible subscription hijacking attempt:", {
+        authenticatedUser: user.id,
+        subscriptionOwner: subData.notes.user_id
+      });
+      return new Response(JSON.stringify({ error: "Unauthorized subscription ownership" }), { status: 403, headers: corsHeaders });
+    }
+
+    // 8. Security Check: Ensure subscription status is actually active/authenticated
+    if (subData.status !== "active" && subData.status !== "authenticated") {
+      console.error(`[VERIFY] Subscription is not in active state (status: ${subData.status})`);
+      return new Response(JSON.stringify({ error: `Subscription is not active (status: ${subData.status})` }), { status: 400, headers: corsHeaders });
+    }
+
     const planSlug = subData.notes?.plan_slug;
-    
     if (!planSlug) {
       return new Response(JSON.stringify({ error: "Subscription missing plan_slug in notes" }), { status: 400, headers: corsHeaders });
     }
 
-    const adminClient = getAdminClient();
-
-    // 4. Look up plan ID
+    // 9. Look up plan ID
     const { data: plan, error: planError } = await adminClient
       .from("subscription_plans")
       .select("id")
@@ -97,7 +181,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Plan not found" }), { status: 404, headers: corsHeaders });
     }
 
-    // 5. Update user_subscriptions
+    // 10. Update user_subscriptions
     const cycleStart = new Date(subData.current_start * 1000).toISOString();
     const cycleEnd = new Date(subData.current_end * 1000).toISOString();
 
@@ -116,11 +200,21 @@ serve(async (req) => {
       console.error("[VERIFY] Failed to update user_subscriptions:", upsertError);
       return new Response(JSON.stringify({ error: "Failed to update database" }), { status: 500, headers: corsHeaders });
     }
-    
-    // Note: We don't need to manually insert payment_history here because the webhook will eventually process `payment.captured`
-    // However, if the webhook fails, the subscription is still active and working.
 
-    console.log(`[VERIFY] Successfully verified and activated plan ${planSlug} for user ${user.id}`);
+    // 11. Atomically record payment in history using RPC
+    await adminClient.rpc('process_subscription_payment', {
+      p_razorpay_sub_id: subData.id,
+      p_payment_id: razorpay_payment_id,
+      p_amount: (payData.amount || 0) / 100,
+      p_currency: payData.currency || "INR",
+      p_method: payData.method || "unknown",
+      p_status: payData.status,
+      p_captured_at: new Date((payData.created_at || Date.now() / 1000) * 1000).toISOString(),
+      p_cycle_start: cycleStart,
+      p_cycle_end: cycleEnd,
+    });
+
+    console.log(`[VERIFY] Successfully verified and activated plan ${planSlug} for user ${user.id} with payment ${razorpay_payment_id}`);
 
     return new Response(JSON.stringify({ success: true, message: "Subscription activated successfully" }), {
       status: 200,

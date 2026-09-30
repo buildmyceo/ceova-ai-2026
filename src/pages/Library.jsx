@@ -1319,17 +1319,40 @@ export default function Library({ session, onBack, switchChat }) {
     if (res.success) setAiModal({ title: `Summary: ${item.name}`, text: res.summary });
   };
 
-  
-  const deleteFromStorage = async (url) => {
-    if (!url || !url.includes('/storage/v1/object/public/')) return;
+  const deleteFromStorage = async (url, explicitPath) => {
+    if (!url && !explicitPath) return;
     try {
-      const parts = url.split('/storage/v1/object/public/')[1].split('/');
-      const bucket = parts[0];
-      const path = parts.slice(1).join('/');
-      await supabase.storage.from(bucket).remove([path]);
+      let bucket = null;
+      let path = explicitPath || null;
+
+      if (url && typeof url === 'string') {
+        const storageMatch = url.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)/);
+        if (storageMatch) {
+          bucket = storageMatch[1];
+          path = storageMatch[2].split('?')[0];
+        }
+      }
+
+      if (!bucket && path) {
+        bucket = 'user_files';
+      }
+
+      if (bucket && path) {
+        const cleanPath = decodeURIComponent(path);
+        await supabase.storage.from(bucket).remove([cleanPath]);
+      }
     } catch (e) {
       console.warn('Storage delete error', e);
     }
+  };
+
+  const getMessageIdFromItem = (item) => {
+    if (item.message_id) return item.message_id;
+    if (item.id && typeof item.id === 'string' && item.id.startsWith('att-')) {
+      const match = item.id.match(/^att-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      if (match) return match[1];
+    }
+    return null;
   };
 
   const handleDelete = async (item) => {
@@ -1343,20 +1366,40 @@ export default function Library({ session, onBack, switchChat }) {
         await supabase.from('calendar_events').delete().eq('id', item.id.replace('db-gcal-', ''));
       } else if (item.source === 'gdrive') {
         await supabase.from('files').delete().eq('id', item.id);
-      } else if (item.id.startsWith('aig-')) {
-        await supabase.from('ai_generated_files').delete().eq('id', item.id.replace('aig-', ''));
-        await deleteFromStorage(item.url);
-      } else if (item.id.startsWith('att-')) {
-        const msgId = item.id.split('-')[1];
-        const { data: msg } = await supabase.from('messages').select('attachments').eq('id', msgId).single();
-        if (msg && msg.attachments) {
-           const newAtt = msg.attachments.filter(a => a.name !== item.name && a.url !== item.url);
-           await supabase.from('messages').update({ attachments: newAtt }).eq('id', msgId);
-           await deleteFromStorage(item.url);
+      } else if (item.id && String(item.id).startsWith('aig-')) {
+        await supabase.from('ai_generated_files').delete().eq('id', String(item.id).replace('aig-', ''));
+        await deleteFromStorage(item.url, item.path);
+      } else if (item.id && String(item.id).startsWith('att-')) {
+        const msgId = getMessageIdFromItem(item);
+        if (msgId) {
+          try {
+            const { data: msg } = await supabase.from('messages').select('attachments').eq('id', msgId).maybeSingle();
+            if (msg && Array.isArray(msg.attachments)) {
+              const newAtt = msg.attachments.filter(a => a.name !== item.name && a.url !== item.url);
+              await supabase.from('messages').update({ attachments: newAtt }).eq('id', msgId);
+            }
+          } catch (mErr) {
+            console.warn('Message attachment update warning:', mErr);
+          }
         }
+        if (session?.user?.id && item.name) {
+          try {
+            await supabase.from('files').delete().eq('user_id', session.user.id).eq('name', item.name);
+          } catch (fErr) {
+            console.warn('Files table cleanup warning:', fErr);
+          }
+        }
+        await deleteFromStorage(item.url, item.path);
       } else {
-        await supabase.from('files').delete().eq('id', item.id);
-        await deleteFromStorage(item.url);
+        if (item.id) {
+          await supabase.from('files').delete().eq('id', item.id);
+          try {
+            await supabase.from('user_files').delete().eq('id', item.id);
+          } catch (ufErr) {
+            // Optional table, ignore if not present
+          }
+        }
+        await deleteFromStorage(item.url, item.path);
       }
       
       const newItems = allItems.filter(i => i.id !== item.id);
@@ -1364,42 +1407,84 @@ export default function Library({ session, onBack, switchChat }) {
       cacheManager.setLibraryItems(newItems);
     } catch (e) {
       console.error('Delete error', e);
-      alert('Failed to delete item');
+      alert('Failed to delete item: ' + (e.message || e));
     } finally {
       setLoading(false);
     }
   };
 
   const handleClearCeovaDrive = async () => {
-    if (!window.confirm('Are you sure you want to clear all CEOVA Drive files?\n\nWARNING: This will permanently delete all attachments from your chats and cannot be restored.')) return;
+    if (!window.confirm('Are you sure you want to clear all CEOVA Drive files?\n\nWARNING: This will permanently delete all attachments and files stored in your CEOVA Drive.')) return;
 
     setLoading(true);
     try {
-      const ceovaItems = allItems.filter(i => {
-        const isAiItem = i.source === 'ai' || i.source === 'ai_generated' || i.category === 'ai_generated' || i.category === 'action';
-        return i.source !== 'gdrive' && i.source !== 'gmail' && i.source !== 'gcalendar' && !isAiItem;
-      });
-
-      for (const item of ceovaItems) {
-        if (item.id.startsWith('att-')) {
-          const msgId = item.id.split('-')[1];
-          const { data: msg } = await supabase.from('messages').select('attachments').eq('id', msgId).single();
-          if (msg && msg.attachments) {
-             const newAtt = msg.attachments.filter(a => a.name !== item.name && a.url !== item.url);
-             await supabase.from('messages').update({ attachments: newAtt }).eq('id', msgId);
-          }
-        } else if (!item.id.startsWith('aig-') && !item.id.startsWith('db-')) {
-          await supabase.from('files').delete().eq('id', item.id);
-        }
-        await deleteFromStorage(item.url);
+      const ceovaItems = allItems.filter(isCeovaItem);
+      if (ceovaItems.length === 0) {
+        alert('CEOVA Drive is already empty.');
+        setLoading(false);
+        return;
       }
 
-      const newItems = allItems.filter(i => !ceovaItems.includes(i));
-      setAllItems(newItems);
-      cacheManager.setLibraryItems(newItems);
+      const messageAttachmentsMap = new Map();
+      const filesToDeleteIds = [];
+
+      for (const item of ceovaItems) {
+        // 1. Delete actual binary file from Supabase storage
+        await deleteFromStorage(item.url, item.path);
+
+        // 2. Identify message attachments
+        const msgId = getMessageIdFromItem(item);
+        if (msgId) {
+          if (!messageAttachmentsMap.has(msgId)) {
+            messageAttachmentsMap.set(msgId, []);
+          }
+          messageAttachmentsMap.get(msgId).push(item);
+        } else if (item.id && !String(item.id).startsWith('aig-') && !String(item.id).startsWith('db-') && !String(item.id).startsWith('img-') && !String(item.id).startsWith('act-')) {
+          filesToDeleteIds.push(item.id);
+        }
+      }
+
+      // 3. Update chat messages to remove attachments
+      for (const [msgId, itemsToRemove] of messageAttachmentsMap.entries()) {
+        try {
+          const { data: msg } = await supabase.from('messages').select('attachments').eq('id', msgId).maybeSingle();
+          if (msg && Array.isArray(msg.attachments)) {
+            const removeNames = new Set(itemsToRemove.map(it => it.name));
+            const removeUrls = new Set(itemsToRemove.map(it => it.url).filter(Boolean));
+            const updatedAttachments = msg.attachments.filter(att => !removeNames.has(att.name) && !removeUrls.has(att.url));
+            await supabase.from('messages').update({ attachments: updatedAttachments }).eq('id', msgId);
+          }
+        } catch (msgErr) {
+          console.warn(`Error updating message attachments for msg ${msgId}:`, msgErr);
+        }
+      }
+
+      // 4. Delete entries from files and user_files tables
+      if (session?.user?.id) {
+        try {
+          if (filesToDeleteIds.length > 0) {
+            await supabase.from('files').delete().in('id', filesToDeleteIds);
+            try {
+              await supabase.from('user_files').delete().in('id', filesToDeleteIds);
+            } catch {}
+          }
+          // Also remove any remaining local/ceova files for this user
+          await supabase.from('files').delete().eq('user_id', session.user.id).in('storage_source', ['local', 'ceova']);
+        } catch (filesErr) {
+          console.warn('Error clearing files table:', filesErr);
+        }
+      }
+
+      // 5. Update UI and local cache
+      const ceovaItemIds = new Set(ceovaItems.map(i => i.id));
+      const remainingItems = allItems.filter(i => !ceovaItemIds.has(i.id));
+      setAllItems(remainingItems);
+      await cacheManager.setLibraryItems(remainingItems);
+
+      alert('CEOVA Drive cleared successfully.');
     } catch (e) {
       console.error('Clear ceova drive error', e);
-      alert('Failed to clear CEOVA Drive');
+      alert('Failed to clear CEOVA Drive: ' + (e.message || e));
     } finally {
       setLoading(false);
     }
