@@ -190,7 +190,7 @@ export default function GuestHome() {
                     <div className="guest-sidebar-header">
                         {sidebarOpen && (
                             <div className="guest-sidebar-logo-group" onClick={() => navigate('/')}>
-                                <img src="/ceova logo dark.png" alt="CEOVA Logo" className="guest-brand-logo" />
+                                <img src="/ceova-logo.png" alt="CEOVA Logo" className="guest-brand-logo" />
                                 <span className="guest-brand-name">CEOVA</span>
                             </div>
                         )}
@@ -439,7 +439,7 @@ export default function GuestHome() {
                             <X size={20} />
                         </button>
 
-                        <img src="/ceova logo dark.png" alt="CEOVA" className="guest-modal-logo" />
+                        <img src="/ceova-logo.png" alt="CEOVA" className="guest-modal-logo" />
 
                         <h2 className="guest-modal-title">
                             {authModalMode === 'login' ? 'Welcome back to CEOVA' : 'Create your CEOVA account'}

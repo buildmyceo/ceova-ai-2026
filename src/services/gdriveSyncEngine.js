@@ -75,6 +75,12 @@ export async function connectGoogleDrive() {
  * Fetch Google OAuth Access Token with multiple robust fallbacks and expiration check
  */
 export async function getGoogleAccessToken(userId) {
+  if (!userId) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id;
+    } catch (e) {}
+  }
   let dbToken = null;
   // 1. Fetch from user_google_tokens database table first
   if (userId) {

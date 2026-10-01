@@ -9,8 +9,7 @@ export default function ProtectedRoute({ children }) {
   console.log("Loading:", loading);
 
   if (loading) {
-    const themeMod = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-    const logoSrc = themeMod === 'light' ? '/ceova logo light.png' : '/ceova logo dark.png';
+    const logoSrc = '/ceova-logo.png';
     return (
         <div className="auth-overlay">
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>

@@ -5,14 +5,15 @@ import {
   X, Search, Image, FileText, File, Code2, Music, Video,
   Download, ExternalLink, Calendar as CalendarIcon, MessageSquare, Filter,
   Grid3X3, List, ChevronLeft, Sparkles, User, Loader2,
-  ZoomIn, Copy, Check, Brain, Paperclip, SortDesc, Zap, MoreVertical,
-  HardDrive, Cloud, RefreshCw, Eye, AlertCircle, Mail, Inbox, Send, Bookmark, MapPin, Users, Video as VideoCam
+  ZoomIn, ZoomOut, Copy, Check, Brain, Paperclip, SortDesc, Zap, MoreVertical,
+  HardDrive, Cloud, RefreshCw, Eye, AlertCircle, Mail, Inbox, Send, Bookmark, MapPin, Users, Video as VideoCam,
+  Plus, Clock
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { syncGoogleDrive, connectGoogleDrive } from '../services/gdriveSyncEngine';
 import { fetchGoogleEmails } from '../services/gmailSyncEngine';
-import { fetchGoogleCalendarEvents } from '../services/gcalendarSyncEngine';
+import { fetchGoogleCalendarEvents, createGoogleCalendarEvent } from '../services/gcalendarSyncEngine';
 import { summarizeDocument, performOCR } from '../services/libraryAIService';
 import { cacheManager } from '../services/CacheManager';
 import { 
@@ -23,6 +24,9 @@ import {
   isCalendarItem,
   isCeovaItem
 } from '../services/libraryFetchEngine';
+import { useDriveThumbnail, getDriveImageBlob, extractDriveId, getDriveThumbnailUrl } from '../services/driveThumbnailCache';
+import DriveFilePreviewModal from '../components/DriveFilePreviewModal';
+import { resolveSupabaseImage } from '../services/supabaseStorageHelper';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const MIME_ICON = (type = '', name = '') => {
@@ -62,18 +66,193 @@ const fmtSize = (bytes) => {
 const truncate = (str, n) => (str && str.length > n ? str.slice(0, n) + '…' : str);
 
 // ─── Image Lightbox ───────────────────────────────────────────────────────────
-function Lightbox({ src, caption, onClose }) {
+function Lightbox({ item, src, caption, onClose }) {
+  const driveId = extractDriveId(item);
+  const isDriveItem = !!driveId || item?.source === 'gdrive';
+
+  // Check if passed src is an actual image URL or an HTML webpage URL (like drive.google.com/file/.../view)
+  const isHtmlPageUrl = src && typeof src === 'string' && (src.includes('drive.google.com/file/') || src.includes('/view') || src.includes('google.com/document/'));
+  const initialValidSrc = (src && !isHtmlPageUrl) ? src : null;
+
+  const [displaySrc, setDisplaySrc] = useState(initialValidSrc);
+  const [loading, setLoading] = useState(!initialValidSrc && isDriveItem);
+  const [loadError, setLoadError] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
+
   useEffect(() => {
-    const handler = (e) => e.key === 'Escape' && onClose();
+    const handler = (e) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === '+' || e.key === '=') setZoomLevel(z => Math.min(Number((z + 0.5).toFixed(1)), 3.5));
+      if (e.key === '-') setZoomLevel(z => Math.max(Number((z - 0.5).toFixed(1)), 0.5));
+      if (e.key === '0') setZoomLevel(1);
+    };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    if (driveId) {
+      setLoading(true);
+      setLoadError(false);
+      getDriveImageBlob(driveId)
+        .then(blobUrl => {
+          if (!isMounted) return;
+          if (blobUrl) {
+            setDisplaySrc(blobUrl);
+            setLoadError(false);
+          } else {
+            setLoadError(true);
+          }
+        })
+        .catch(() => { if (isMounted) setLoadError(true); })
+        .finally(() => { if (isMounted) setLoading(false); });
+      return;
+    }
+
+    const currentSrc = initialValidSrc || src || item?.url;
+    const isSupabase = typeof currentSrc === 'string' && (
+      currentSrc.includes('/storage/v1/') || !!item?.path
+    );
+
+    if (isSupabase) {
+      setLoading(true);
+      resolveSupabaseImage(currentSrc, item)
+        .then(resolved => {
+          if (!isMounted) return;
+          if (resolved) {
+            setDisplaySrc(resolved);
+            setLoadError(false);
+          } else {
+            setDisplaySrc(currentSrc);
+          }
+        })
+        .catch(() => {
+          if (isMounted) setDisplaySrc(currentSrc);
+        })
+        .finally(() => {
+          if (isMounted) setLoading(false);
+        });
+      return;
+    }
+
+    if (currentSrc && !isHtmlPageUrl) {
+      setDisplaySrc(currentSrc);
+      setLoading(false);
+      setLoadError(false);
+    } else {
+      setLoadError(true);
+      setLoading(false);
+    }
+
+    return () => { isMounted = false; };
+  }, [driveId, initialValidSrc, isHtmlPageUrl, src, item]);
+
+  const zoomIn = () => setZoomLevel(z => Math.min(Number((z + 0.5).toFixed(1)), 3.5));
+  const zoomOut = () => setZoomLevel(z => Math.max(Number((z - 0.5).toFixed(1)), 0.5));
+  const resetZoom = () => setZoomLevel(1);
+
+  const driveViewLink = item?.web_view_link || (driveId ? `https://drive.google.com/file/d/${driveId}/view` : (isHtmlPageUrl ? src : null));
+  const downloadLink = displaySrc || item?.web_download_link || item?.url;
+
   return (
     <div className="lib-lightbox" onClick={onClose}>
-      <button className="lib-lightbox-close" onClick={onClose}><X size={22} /></button>
+      <div className="lib-lightbox-top-bar" onClick={e => e.stopPropagation()}>
+        <div className="lib-lightbox-title-wrap">
+          <span className="lib-lightbox-name">{caption || item?.name || 'Image Preview'}</span>
+          {item?.size && <span className="lib-lightbox-meta">{fmtSize(item.size)}</span>}
+        </div>
+
+        <div className="lib-lightbox-actions">
+          {/* Zoom controls */}
+          <div className="lib-lightbox-zoom-group">
+            <button className="lib-lightbox-btn" onClick={zoomOut} title="Zoom out (-)" disabled={zoomLevel <= 0.5}>
+              <ZoomOut size={16} />
+            </button>
+            <button className="lib-lightbox-btn-text" onClick={resetZoom} title="Reset zoom (0)">
+              {Math.round(zoomLevel * 100)}%
+            </button>
+            <button className="lib-lightbox-btn" onClick={zoomIn} title="Zoom in (+)" disabled={zoomLevel >= 3.5}>
+              <ZoomIn size={16} />
+            </button>
+          </div>
+
+          {/* Open in Google Drive if applicable */}
+          {driveViewLink && (
+            <a
+              href={driveViewLink}
+              target="_blank"
+              rel="noreferrer"
+              className="lib-lightbox-link-btn"
+              title="Open original in Google Drive"
+            >
+              <ExternalLink size={15} />
+              <span>Drive</span>
+            </a>
+          )}
+
+          {/* Download button */}
+          {downloadLink && (
+            <a
+              href={downloadLink}
+              download={caption || item?.name || 'download'}
+              className="lib-lightbox-link-btn"
+              title="Download image"
+            >
+              <Download size={15} />
+            </a>
+          )}
+
+          {/* Close button */}
+          <button className="lib-lightbox-close" onClick={onClose} title="Close (Esc)">
+            <X size={20} />
+          </button>
+        </div>
+      </div>
+
       <div className="lib-lightbox-body" onClick={e => e.stopPropagation()}>
-        <img src={src} alt={caption} className="lib-lightbox-img" />
+        {loading ? (
+          <div className="lib-lightbox-status">
+            <Loader2 size={36} className="lib-spinner-anim" />
+            <span>Loading image from Google Drive...</span>
+          </div>
+        ) : loadError || !displaySrc ? (
+          <div className="lib-lightbox-status lib-lightbox-err">
+            <AlertCircle size={36} color="#f87171" />
+            <p>Unable to display direct image preview</p>
+            {driveViewLink && (
+              <a
+                href={driveViewLink}
+                target="_blank"
+                rel="noreferrer"
+                className="lib-lightbox-fallback-btn"
+              >
+                <ExternalLink size={16} /> Open in Google Drive
+              </a>
+            )}
+          </div>
+        ) : (
+          <div 
+            className="lib-lightbox-img-container"
+            style={{ overflow: zoomLevel > 1 ? 'auto' : 'hidden' }}
+          >
+            <img
+              src={displaySrc}
+              alt={caption}
+              className="lib-lightbox-img"
+              style={{
+                transform: `scale(${zoomLevel})`,
+                cursor: zoomLevel === 1 ? 'zoom-in' : 'zoom-out',
+                transition: 'transform 0.15s ease-out'
+              }}
+              onClick={() => {
+                if (zoomLevel === 1) zoomIn();
+                else resetZoom();
+              }}
+            />
+          </div>
+        )}
         {caption && <p className="lib-lightbox-caption">{caption}</p>}
       </div>
     </div>
@@ -249,60 +428,123 @@ function ItemMenu({ item, onPreview, onDownload, onVisit, onSummarize, onOCR, on
 // ─── Single card (image) ──────────────────────────────────────────────────────
 export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDelete }) {
   const [loaded, setLoaded] = useState(false);
-  const [err, setErr] = useState(false);
-  const [useFallback, setUseFallback] = useState(false);
+  const [imgErr, setImgErr] = useState(false);
+  const isDrive = item?.source === 'gdrive' || !!item?.drive_id;
+  const driveThumb = isDrive ? getDriveThumbnailUrl(item) : null;
+  const [activeSrc, setActiveSrc] = useState(() => driveThumb || item?.thumbnail_url || item?.url || null);
 
-  const driveId = item.drive_id || (item.id && !String(item.id).includes('-') ? item.id : null);
-  const baseSrc = driveId 
-    ? (item.thumbnail_url || `https://lh3.googleusercontent.com/d/${driveId}=s400`)
-    : (item.thumbnail_url || item.url);
+  const { src: driveSrc, loading: driveLoading, error: driveErr, driveId } = useDriveThumbnail(item);
 
-  let primarySrc = baseSrc;
-  if (!useFallback && primarySrc) {
-    if (primarySrc.includes('/storage/v1/object/public/')) {
-      primarySrc = primarySrc.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + (primarySrc.includes('?') ? '&' : '?') + 'width=400&resize=contain';
-    } else if (primarySrc.includes('/storage/v1/object/sign/')) {
-      primarySrc = primarySrc.replace('/storage/v1/object/sign/', '/storage/v1/render/image/sign/') + (primarySrc.includes('?') ? '&' : '?') + 'width=400&resize=contain';
+  useEffect(() => {
+    let isMounted = true;
+    const initial = driveSrc || driveThumb || item?.thumbnail_url || item?.url || item?.web_view_link;
+
+    const isSupabase = typeof initial === 'string' && (
+      initial.includes('/storage/v1/') || !!item?.path
+    );
+
+    if (isSupabase) {
+      resolveSupabaseImage(initial, item).then(resolved => {
+        if (isMounted && resolved) {
+          setActiveSrc(resolved);
+          setImgErr(false);
+        }
+      });
+    } else if (initial) {
+      setActiveSrc(initial);
+      setImgErr(false);
     }
-  }
+
+    return () => { isMounted = false; };
+  }, [driveSrc, driveThumb, item?.thumbnail_url, item?.url, item?.web_view_link, item?.path]);
+
+  const isFailed = imgErr || (driveErr && !driveLoading && !activeSrc);
+
+  const handleCardClick = () => {
+    const itemWithSrc = {
+      ...item,
+      resolvedSrc: activeSrc || driveSrc || item.url
+    };
+    if (onClick) onClick(itemWithSrc);
+  };
+
+  const handlePreview = (it) => {
+    const itemWithSrc = {
+      ...it,
+      resolvedSrc: activeSrc || driveSrc || it.url
+    };
+    if (onPreview) onPreview(itemWithSrc);
+  };
 
   return (
-    <div className="lib-card lib-card-image" onClick={() => onClick(item)}>
+    <div className="lib-card lib-card-image" onClick={handleCardClick}>
       <div className="lib-card-img-wrap">
-        {!loaded && !err && <div className="lib-img-skeleton"><div className="lib-skeleton-shimmer" /></div>}
-        {!err && (
+        {(!loaded || driveLoading) && !isFailed && (
+          <div className="lib-img-skeleton"><div className="lib-skeleton-shimmer" /></div>
+        )}
+        {!isFailed && activeSrc && (
           <img
-            src={primarySrc}
+            src={activeSrc}
             alt={item.name}
             loading="lazy"
-            className={`lib-card-img ${loaded ? 'loaded' : ''}`}
-            onLoad={() => setLoaded(true)}
-            onError={(e) => {
-              if (!useFallback && baseSrc && (baseSrc.includes('/storage/v1/object/public/') || baseSrc.includes('/storage/v1/object/sign/'))) {
-                setUseFallback(true);
-                return;
-              }
-              if (driveId && !e.target.dataset.fallback1) {
-                e.target.dataset.fallback1 = 'true';
-                e.target.src = `https://drive.google.com/thumbnail?id=${driveId}&sz=w400`;
-                return;
-              }
-              if (driveId && !e.target.dataset.fallback2) {
-                e.target.dataset.fallback2 = 'true';
-                e.target.src = `https://drive.google.com/uc?export=view&id=${driveId}`;
-                return;
-              }
+            className={`lib-card-img ${loaded && !driveLoading ? 'loaded' : ''}`}
+            onLoad={() => {
               setLoaded(true);
-              setErr(true);
+              setImgErr(false);
+            }}
+            onError={async () => {
+              // 1. Try Supabase authenticated Blob resolution
+              try {
+                const blobUrl = await resolveSupabaseImage(activeSrc, item);
+                if (blobUrl && blobUrl !== activeSrc) {
+                  setActiveSrc(blobUrl);
+                  setImgErr(false);
+                  setLoaded(true);
+                  return;
+                }
+              } catch (err) {}
+
+              // 2. If it's a Drive item, try fetching authenticated blob
+              if (driveId && typeof activeSrc === 'string' && !activeSrc.startsWith('blob:')) {
+                try {
+                  const blobUrl = await getDriveImageBlob(driveId);
+                  if (blobUrl) {
+                    setActiveSrc(blobUrl);
+                    setLoaded(true);
+                    setImgErr(false);
+                    return;
+                  }
+                } catch (err) {}
+              }
+
+              // 3. Fallback to raw URL if activeSrc was modified
+              if (item.url && activeSrc !== item.url) {
+                setActiveSrc(item.url);
+                return;
+              }
+
+              setLoaded(true);
+              setImgErr(true);
             }}
             referrerPolicy="no-referrer"
           />
         )}
-        {err && <div className="lib-img-err"><Image size={28} /><span>Preview unavailable</span></div>}
+        {isFailed && (
+          <div className="lib-img-err">
+            <Image size={28} />
+            <span>Preview unavailable</span>
+          </div>
+        )}
         <div className="lib-card-overlay">
           <ZoomIn size={18} />
         </div>
-        <ItemMenu item={item} onPreview={onPreview} onDownload={onDownload} onVisit={onVisit} onDelete={onDelete} />
+        <ItemMenu 
+          item={item} 
+          onPreview={() => handlePreview(item)} 
+          onDownload={onDownload} 
+          onVisit={onVisit} 
+          onDelete={onDelete} 
+        />
       </div>
       <div className="lib-card-meta">
         <span className="lib-card-name">{truncate(item.name, 24)}</span>
@@ -319,7 +561,6 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDel
           <Cloud size={10} /> Drive
         </div>
       )}
-
     </div>
   );
 }
@@ -327,17 +568,52 @@ export function ImageCard({ item, onClick, onPreview, onDownload, onVisit, onDel
 // ─── File/doc/media card ──────────────────────────────────────────────────────
 export function FileCard({ item, onClick, onPreview, onDownload, onVisit, onSummarize, onOCR, onDelete }) {
   const { icon: Icon, color, label } = MIME_ICON(item.mime_type || '', item.name);
+  const [thumbError, setThumbError] = useState(false);
+
+  const isDrive = item.source === 'gdrive' || !!item.drive_id;
+  const driveThumb = isDrive ? getDriveThumbnailUrl(item) : (item.thumbnail_url || null);
+
+  const handleCardClick = (e) => {
+    // If inside a dropdown, button or link, don't trigger card preview
+    if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.lib-menu-wrap')) {
+      return;
+    }
+    if (onClick) {
+      onClick(item);
+    } else if (onPreview) {
+      onPreview(item);
+    } else if (item.web_view_link || item.url) {
+      window.open(item.web_view_link || item.url, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   return (
-    <div className="lib-card lib-card-file" onClick={(e) => {
-      if (onClick) {
-        // Only trigger onClick if it's the picker doing it. 
-        // We prevent default so buttons inside don't fire this.
-        onClick(item);
-      }
-    }} style={{ cursor: onClick ? 'pointer' : 'default' }}>
-      <div className="lib-file-icon" style={{ background: `${color}18`, borderColor: `${color}30` }}>
-        <Icon size={28} color={color} />
+    <div className="lib-card lib-card-file" onClick={handleCardClick} style={{ cursor: 'pointer' }}>
+      <div 
+        className="lib-file-icon" 
+        style={{ 
+          background: `${color}18`, 
+          borderColor: `${color}30`,
+          position: 'relative',
+          overflow: 'hidden'
+        }}
+      >
+        {driveThumb && !thumbError ? (
+          <img
+            src={driveThumb}
+            alt=""
+            referrerPolicy="no-referrer"
+            onError={() => setThumbError(true)}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              borderRadius: '10px'
+            }}
+          />
+        ) : (
+          <Icon size={26} color={color} />
+        )}
       </div>
       <div className="lib-file-body">
         <span className="lib-file-name">{truncate(item.name, 32)}</span>
@@ -439,6 +715,333 @@ function ActionCard({ item, onPreview, onDownload, onVisit, onDelete }) {
   );
 }
 
+// ─── Add Calendar Event Modal ───────────────────────────────────────────────
+function AddEventModal({ isOpen, onClose, onEventCreated, userId }) {
+  const [title, setTitle] = useState('');
+  const [isAllDay, setIsAllDay] = useState(false);
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [startTime, setStartTime] = useState('10:00');
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [endTime, setEndTime] = useState('11:00');
+  const [location, setLocation] = useState('');
+  const [attendees, setAttendees] = useState('');
+  const [description, setDescription] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      setError('Event title is required');
+      return;
+    }
+    if (!startDate) {
+      setError('Start date is required');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    const parsedAttendees = attendees
+      ? attendees.split(/[,;\s]+/).map(a => a.trim()).filter(a => a.includes('@'))
+      : [];
+
+    const res = await createGoogleCalendarEvent(userId, {
+      title,
+      description,
+      location,
+      startDate,
+      startTime,
+      endDate: endDate || startDate,
+      endTime,
+      isAllDay,
+      attendees: parsedAttendees
+    });
+
+    setLoading(false);
+
+    if (res.success && res.event) {
+      onEventCreated(res.event);
+      onClose();
+    } else {
+      setError(res.error || 'Failed to create event in Google Calendar');
+    }
+  };
+
+  return (
+    <div className="lib-lightbox" onClick={onClose}>
+      <button className="lib-lightbox-close" onClick={onClose}><X size={22} /></button>
+      <div
+        className="lib-lightbox-body"
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--bg-main)',
+          padding: '28px',
+          borderRadius: '16px',
+          border: '1px solid var(--border-color)',
+          maxWidth: '540px',
+          width: '92%',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+          <div style={{ background: 'rgba(56, 189, 248, 0.15)', padding: '10px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <CalendarIcon color="#38bdf8" size={24} />
+          </div>
+          <div>
+            <h3 style={{ color: 'var(--text-main)', fontSize: '18px', fontWeight: 600, margin: 0 }}>Add Calendar Event</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '12px', margin: '2px 0 0' }}>Saves directly to your Google Calendar</p>
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', padding: '10px 14px', color: '#fca5a5', fontSize: '13px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertCircle size={16} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Title */}
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>EVENT TITLE *</label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Product Demo with Team"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'rgba(255,255,255,0.04)',
+                color: 'var(--text-main)',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          {/* All day toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="checkbox"
+              id="isAllDayEvent"
+              checked={isAllDay}
+              onChange={e => setIsAllDay(e.target.checked)}
+              style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+            />
+            <label htmlFor="isAllDayEvent" style={{ fontSize: '13px', color: 'var(--text-main)', cursor: 'pointer', userSelect: 'none' }}>
+              All-day event
+            </label>
+          </div>
+
+          {/* Dates & Times */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>START DATE *</label>
+              <input
+                type="date"
+                required
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'var(--text-main)',
+                  fontSize: '13px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              {!isAllDay && (
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'rgba(255,255,255,0.04)',
+                    color: 'var(--text-main)',
+                    fontSize: '13px',
+                    outline: 'none',
+                    marginTop: '6px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              )}
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>END DATE</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'var(--text-main)',
+                  fontSize: '13px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              {!isAllDay && (
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'rgba(255,255,255,0.04)',
+                    color: 'var(--text-main)',
+                    fontSize: '13px',
+                    outline: 'none',
+                    marginTop: '6px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Location */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>LOCATION / MEET LINK</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                placeholder="Google Meet, Zoom, or office address"
+                value={location}
+                onChange={e => setLocation(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px 9px 34px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'var(--text-main)',
+                  fontSize: '13px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              <MapPin size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            </div>
+          </div>
+
+          {/* Attendees */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>GUESTS / ATTENDEES</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                placeholder="colleague@example.com, client@domain.com"
+                value={attendees}
+                onChange={e => setAttendees(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px 9px 34px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'var(--text-main)',
+                  fontSize: '13px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              <Users size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>DESCRIPTION / AGENDA</label>
+            <textarea
+              rows={3}
+              placeholder="Notes or details about this event..."
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'rgba(255,255,255,0.04)',
+                color: 'var(--text-main)',
+                fontSize: '13px',
+                outline: 'none',
+                resize: 'vertical',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '9px 16px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'transparent',
+                color: 'var(--text-main)',
+                fontSize: '13px',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                padding: '9px 20px',
+                borderRadius: '8px',
+                border: 'none',
+                background: '#38bdf8',
+                color: '#000',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                opacity: loading ? 0.7 : 1
+              }}
+            >
+              {loading ? <Loader2 size={15} className="lib-spin" /> : <Plus size={15} />}
+              <span>{loading ? 'Adding Event...' : 'Add Event'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Library Page Component ──────────────────────────────────────────────
 export default function Library({ session, onBack, switchChat }) {
   const { resolvedTheme } = useTheme();
@@ -456,14 +1059,23 @@ export default function Library({ session, onBack, switchChat }) {
   const [needsDriveAuth, setNeedsDriveAuth] = useState(false);
   const [syncNotice, setSyncNotice] = useState('');
   const [lightbox, setLightbox] = useState(null);
+  const [drivePreviewModalFile, setDrivePreviewModalFile] = useState(null);
   const [aiModal, setAiModal] = useState(null);
   const [emailPreview, setEmailPreview] = useState(null);
   const [eventPreview, setEventPreview] = useState(null);
+  const [showAddEventModal, setShowAddEventModal] = useState(false);
 
   // Raw items
   const [allItems, setAllItems] = useState([]);
 
-  // ── Trigger Storage Services Sync (Google Drive) ─────────────────
+  const handleEventCreated = (newEvent) => {
+    if (!newEvent) return;
+    setAllItems(prev => [newEvent, ...prev]);
+    setSyncNotice(`Event "${newEvent.name}" added to Google Calendar!`);
+    setTimeout(() => setSyncNotice(''), 5000);
+  };
+
+  // ── Trigger Storage Services Sync (Google Drive, Gmail, Google Calendar) ──
   const handleSyncDrive = async () => {
     if (!session?.user?.id) return;
     const userId = session.user.id;
@@ -474,7 +1086,7 @@ export default function Library({ session, onBack, switchChat }) {
 
       const res = await syncGoogleDrive(userId);
       console.log('[Library] Drive sync result:', res);
-      if (res.needsAuth) {
+      if (res?.needsAuth) {
         needsAuth = true;
       }
 
@@ -497,7 +1109,7 @@ export default function Library({ session, onBack, switchChat }) {
 
       setNeedsDriveAuth(false);
       setSyncNotice('Cloud services synced.');
-      await fetchLibraryData();
+      await fetchLibraryData(true);
     } catch (e) {
       console.warn('Cloud sync error:', e);
       setSyncNotice('Cloud sync error.');
@@ -507,23 +1119,25 @@ export default function Library({ session, onBack, switchChat }) {
   };
 
   // ── Fetch Content (Chat messages + Google Drive + Google Mail + Google Calendar) ──
-  const fetchLibraryData = useCallback(async () => {
+  const fetchLibraryData = useCallback(async (forceLive = false) => {
     if (!session?.user?.id) return;
     const userId = session.user.id;
     
-    // Quick load from cache for instant UI
+    // Quick load from cache for instant UI (unless forceLive is requested)
     let loadedFromCache = false;
-    try {
-      const cachedItems = await cacheManager.getLibraryItems();
-      if (cachedItems && cachedItems.length > 0) {
-        setAllItems(cachedItems);
-        const hasGoogleItems = cachedItems.some(i => i.source === 'gdrive' || i.source === 'gmail' || i.source === 'gcalendar');
-        if (hasGoogleItems) setNeedsDriveAuth(false);
-        loadedFromCache = true;
-        setLoading(false);
+    if (!forceLive) {
+      try {
+        const cachedItems = await cacheManager.getLibraryItems();
+        if (cachedItems && cachedItems.length > 0) {
+          setAllItems(cachedItems);
+          const hasGoogleItems = cachedItems.some(i => i.source === 'gdrive' || i.source === 'gmail' || i.source === 'gcalendar');
+          if (hasGoogleItems) setNeedsDriveAuth(false);
+          loadedFromCache = true;
+          setLoading(false);
+        }
+      } catch (cacheErr) {
+        console.warn('[Library] Cache load error:', cacheErr);
       }
-    } catch (cacheErr) {
-      console.warn('[Library] Cache load error:', cacheErr);
     }
     
     if (!loadedFromCache) {
@@ -531,7 +1145,7 @@ export default function Library({ session, onBack, switchChat }) {
     }
 
     try {
-      const deduped = await fetchUserLibraryItems(userId);
+      const deduped = await fetchUserLibraryItems(userId, { forceLiveGoogle: forceLive });
       setAllItems(deduped);
       const hasGoogleItems = deduped.some(i => i.source === 'gdrive' || i.source === 'gmail' || i.source === 'gcalendar');
       if (hasGoogleItems) {
@@ -560,6 +1174,23 @@ export default function Library({ session, onBack, switchChat }) {
       setTimeout(() => handleSyncDrive(), 1500);
     }
   }, [location?.state?.triggerSync]);
+
+  // Auto-sync when switching to gcalendar or gmail if empty
+  useEffect(() => {
+    if (session?.user?.id && !isSyncing) {
+      if (topTab === 'gcalendar') {
+        const calCount = allItems.filter(isCalendarItem).length;
+        if (calCount === 0) {
+          handleSyncDrive();
+        }
+      } else if (topTab === 'gmail') {
+        const mailCount = allItems.filter(isGmailItem).length;
+        if (mailCount === 0) {
+          handleSyncDrive();
+        }
+      }
+    }
+  }, [topTab]);
 
   // Filter Items by Top Drive Tab (ceova, gdrive, dropbox, gmail, gcalendar, ai)
   const driveItems = allItems.filter(it => {
@@ -796,6 +1427,31 @@ export default function Library({ session, onBack, switchChat }) {
           {topTab === 'ceova' && (
              <button onClick={handleClearCeovaDrive} style={{ background: 'var(--glass)', color: '#ef4444', border: '1px solid #ef444455', padding: '8px 12px', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>Clear CEOVA Drive</button>
           )}
+
+          {/* Add Event Button for Google Calendar */}
+          {topTab === 'gcalendar' && (
+            <button
+              className="lib-btn"
+              onClick={() => setShowAddEventModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '13px',
+                padding: '7px 14px',
+                borderRadius: '8px',
+                border: '1px solid rgba(56, 189, 248, 0.45)',
+                background: 'rgba(56, 189, 248, 0.15)',
+                color: '#38bdf8',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              <Plus size={15} />
+              <span>Add Event</span>
+            </button>
+          )}
+
           {/* Sync Google Services Button */}
           <button
             className="lib-btn"
@@ -885,6 +1541,27 @@ export default function Library({ session, onBack, switchChat }) {
               <span style={{ fontSize: '11px', opacity: 0.7 }}>({s.count})</span>
             </button>
           ))}
+          {topTab === 'gcalendar' && (
+            <button
+              onClick={() => setShowAddEventModal(true)}
+              style={{
+                marginLeft: '12px',
+                padding: '4px 12px',
+                borderRadius: '16px',
+                fontSize: '12px',
+                fontWeight: 600,
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                background: 'rgba(56, 189, 248, 0.15)',
+                color: '#38bdf8',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <Plus size={13} /> Add Event
+            </button>
+          )}
           {syncNotice && (
             <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#6ee7b7' }}>{syncNotice}</span>
           )}
@@ -935,25 +1612,48 @@ export default function Library({ session, onBack, switchChat }) {
                 : 'Upload files or chat with CEOVA to add files here.'}
             </p>
             {(topTab === 'gmail' || topTab === 'gcalendar' || topTab === 'gdrive') && (
-              <button 
-                className="lib-btn" 
-                onClick={handleSyncDrive} 
-                style={{ 
-                  background: '#34d399', 
-                  color: '#000', 
-                  fontWeight: 600, 
-                  padding: '9px 18px', 
-                  borderRadius: '10px', 
-                  border: 'none', 
-                  cursor: 'pointer', 
-                  display: 'inline-flex', 
-                  alignItems: 'center', 
-                  gap: '6px',
-                  fontSize: '13px'
-                }}
-              >
-                <ExternalLink size={14} /> Connect / Sync {topTab === 'gmail' ? 'Google Mail' : topTab === 'gcalendar' ? 'Google Calendar' : 'Google Drive'}
-              </button>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                {topTab === 'gcalendar' && (
+                  <button 
+                    className="lib-btn" 
+                    onClick={() => setShowAddEventModal(true)}
+                    style={{ 
+                      background: '#38bdf8', 
+                      color: '#000', 
+                      fontWeight: 600, 
+                      padding: '9px 18px', 
+                      borderRadius: '10px', 
+                      border: 'none', 
+                      cursor: 'pointer', 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: '6px',
+                      fontSize: '13px'
+                    }}
+                  >
+                    <Plus size={15} /> Add Event
+                  </button>
+                )}
+                <button 
+                  className="lib-btn" 
+                  onClick={handleSyncDrive} 
+                  style={{ 
+                    background: topTab === 'gcalendar' ? 'rgba(56, 189, 248, 0.15)' : '#34d399', 
+                    color: topTab === 'gcalendar' ? '#38bdf8' : '#000', 
+                    border: topTab === 'gcalendar' ? '1px solid rgba(56, 189, 248, 0.3)' : 'none',
+                    fontWeight: 600, 
+                    padding: '9px 18px', 
+                    borderRadius: '10px', 
+                    cursor: 'pointer', 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    gap: '6px',
+                    fontSize: '13px'
+                  }}
+                >
+                  <ExternalLink size={14} /> Connect / Sync {topTab === 'gmail' ? 'Google Mail' : topTab === 'gcalendar' ? 'Google Calendar' : 'Google Drive'}
+                </button>
+              </div>
             )}
           </div>
         ) : (
@@ -1010,8 +1710,20 @@ export default function Library({ session, onBack, switchChat }) {
                       key={item.id}
                       item={item}
                       onDelete={handleDelete}
-                      onClick={it => setLightbox({ src: it.url || it.web_view_link, caption: it.name })}
-                      onPreview={it => setLightbox({ src: it.url || it.web_view_link, caption: it.name })}
+                      onClick={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                        } else {
+                          setLightbox({ item: it, src: it.resolvedSrc || it.blobUrl || it.url, caption: it.name });
+                        }
+                      }}
+                      onPreview={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                        } else {
+                          setLightbox({ item: it, src: it.resolvedSrc || it.blobUrl || it.url, caption: it.name });
+                        }
+                      }}
                       onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                     />
@@ -1036,8 +1748,25 @@ export default function Library({ session, onBack, switchChat }) {
                       key={item.id}
                       item={item}
                       onDelete={handleDelete}
-                      onPreview={it => window.open(it.web_view_link || it.url, '_blank')}
-                      onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
+                      onClick={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                        }
+                      }}
+                      onPreview={async it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                          return;
+                        }
+                        const targetUrl = it.web_view_link || it.url;
+                        const resolved = await resolveSupabaseImage(targetUrl, it);
+                        window.open(resolved || targetUrl, '_blank', 'noopener,noreferrer');
+                      }}
+                      onDownload={async it => {
+                        const targetUrl = it.web_download_link || it.url;
+                        const resolved = await resolveSupabaseImage(targetUrl, it);
+                        window.open(resolved || targetUrl, '_blank', 'noopener,noreferrer');
+                      }}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                       onSummarize={handleSummarize}
                       onOCR={handleOCR}
@@ -1063,7 +1792,18 @@ export default function Library({ session, onBack, switchChat }) {
                       key={item.id}
                       item={item}
                       onDelete={handleDelete}
-                      onPreview={it => window.open(it.web_view_link || it.url, '_blank')}
+                      onClick={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                        }
+                      }}
+                      onPreview={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                          return;
+                        }
+                        window.open(it.web_view_link || it.url, '_blank');
+                      }}
                       onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                       onSummarize={handleSummarize}
@@ -1090,7 +1830,18 @@ export default function Library({ session, onBack, switchChat }) {
                       key={item.id}
                       item={item}
                       onDelete={handleDelete}
-                      onPreview={it => window.open(it.web_view_link || it.url, '_blank')}
+                      onClick={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                        }
+                      }}
+                      onPreview={it => {
+                        if (it.source === 'gdrive' || it.drive_id) {
+                          setDrivePreviewModalFile(it);
+                          return;
+                        }
+                        window.open(it.web_view_link || it.url, '_blank');
+                      }}
                       onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                       onSummarize={handleSummarize}
@@ -1127,9 +1878,19 @@ export default function Library({ session, onBack, switchChat }) {
       {/* ── Lightbox ── */}
       {lightbox && (
         <Lightbox
+          item={lightbox.item}
           src={lightbox.src}
           caption={lightbox.caption}
           onClose={() => setLightbox(null)}
+        />
+      )}
+
+      {/* ── Drive File Interactive Preview Modal ── */}
+      {drivePreviewModalFile && (
+        <DriveFilePreviewModal
+          file={drivePreviewModalFile}
+          isOpen={!!drivePreviewModalFile}
+          onClose={() => setDrivePreviewModalFile(null)}
         />
       )}
 
@@ -1214,6 +1975,14 @@ export default function Library({ session, onBack, switchChat }) {
           </div>
         </div>
       )}
+
+      {/* ── Add Calendar Event Modal ── */}
+      <AddEventModal
+        isOpen={showAddEventModal}
+        onClose={() => setShowAddEventModal(false)}
+        onEventCreated={handleEventCreated}
+        userId={session?.user?.id}
+      />
     </div>
   );
 }

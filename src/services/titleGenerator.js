@@ -98,28 +98,33 @@ function fallbackTitle(messages) {
  * using gpt-4o-mini so past user chat history gets clean 3-4 word titles.
  */
 export async function renameLegacyChats({ chats, chatMetadata, setChatMetadata, token, userMemories = [] }) {
-    if (!chats || typeof chats !== 'object') return;
+    if (!chatMetadata && !chats) return;
 
-    const chatIds = Object.keys(chats).filter(id => {
-        if (id.startsWith('temp_')) return false;
-        const msgList = chats[id] || [];
-        if (msgList.length === 0) return false;
+    // Consider all chats known in chatMetadata or chats state
+    const allChatIds = Array.from(new Set([
+        ...Object.keys(chatMetadata || {}),
+        ...Object.keys(chats || {})
+    ])).filter(id => !id.startsWith('temp_'));
 
-        // Skip if already processed with AI
-        if (sessionStorage.getItem(`ai_titled_v5_${id}`)) return false;
+    const chatIdsToRename = allChatIds.filter(id => {
+        // Skip if already processed with AI in this session
+        if (sessionStorage.getItem(`ai_titled_v6_${id}`)) return false;
 
-        const currentTitle = (chatMetadata[id]?.title || '').trim();
+        const currentTitle = (chatMetadata?.[id]?.title || '').trim();
 
         // Detect if title needs AI generation:
         // 1. Generic placeholder or missing
-        // 2. Starts with raw user greetings like "hy", "hello", "hi"
-        // 3. Raw prompt starts like "genarte", "genrate", "generate", "creat", "create", "make"
-        // 4. Ends with ellipsis "..." or dangling prepositions like " of", " the", " a", " to", " in"
-        // 5. Contains more than 4 words or is entirely lowercase raw text
+        // 2. Starts with Telegram topic pattern like "Topic 3099", "Topic #..."
+        // 3. Starts with raw user greetings like "hy", "hello", "hi"
+        // 4. Raw prompt starts like "genarte", "genrate", "generate", "creat", "create", "make"
+        // 5. Ends with ellipsis "..." or dangling prepositions like " of", " the", " a", " to", " in"
+        // 6. Contains more than 4 words or is entirely lowercase raw text
         const isDefaultOrRaw = (
             !currentTitle ||
             currentTitle === 'New Chat' ||
+            currentTitle === 'Telegram Chat' ||
             currentTitle.startsWith('Topic ') ||
+            currentTitle.startsWith('Topic #') ||
             currentTitle.endsWith('...') ||
             /\b(of|the|a|an|in|on|at|for|to|with)\s*$/i.test(currentTitle) ||
             /^(hy|hey|hi|hello|whats|what is|whta)\b/i.test(currentTitle) ||
@@ -131,20 +136,32 @@ export async function renameLegacyChats({ chats, chatMetadata, setChatMetadata, 
         return isDefaultOrRaw;
     });
 
-    if (chatIds.length === 0) return;
+    if (chatIdsToRename.length === 0) return;
 
     // Process sequentially in the background with a 350ms delay
     (async () => {
-        for (const chatId of chatIds) {
+        for (const chatId of chatIdsToRename) {
             try {
-                const chatMsgs = chats[chatId] || [];
+                let chatMsgs = chats?.[chatId] || [];
                 if (chatMsgs.length === 0) {
-                    sessionStorage.setItem(`ai_titled_v5_${chatId}`, 'true');
-                    continue;
+                    // Fetch first 4 messages directly from Supabase if not yet in state
+                    const { data: dbMsgs } = await supabase
+                        .from('messages')
+                        .select('role, content')
+                        .eq('chat_id', chatId)
+                        .order('created_at', { ascending: true })
+                        .limit(4);
+
+                    if (dbMsgs && dbMsgs.length > 0) {
+                        chatMsgs = dbMsgs;
+                    } else {
+                        // Truly empty chat, leave it for when messages exist
+                        continue;
+                    }
                 }
 
                 const newTitle = await generateChatTitle(chatMsgs.slice(0, 4), token, userMemories);
-                if (newTitle && newTitle !== 'New Chat' && !/\b(of|the|a|an|in|on|at|for|to|with)\s*$/i.test(newTitle)) {
+                if (newTitle && newTitle !== 'New Chat' && !newTitle.startsWith('Topic ') && !/\b(of|the|a|an|in|on|at|for|to|with)\s*$/i.test(newTitle)) {
                     // Update Supabase
                     await supabase.from('chats').update({ title: newTitle }).eq('id', chatId);
 
@@ -155,11 +172,13 @@ export async function renameLegacyChats({ chats, chatMetadata, setChatMetadata, 
                     }
 
                     // Update React state immediately
-                    setChatMetadata(prev => ({
-                        ...prev,
-                        [chatId]: { ...(prev[chatId] || {}), title: newTitle }
-                    }));
-                    sessionStorage.setItem(`ai_titled_v5_${chatId}`, 'true');
+                    if (setChatMetadata) {
+                        setChatMetadata(prev => ({
+                            ...prev,
+                            [chatId]: { ...(prev[chatId] || {}), title: newTitle }
+                        }));
+                    }
+                    sessionStorage.setItem(`ai_titled_v6_${chatId}`, 'true');
                 }
                 await new Promise(r => setTimeout(r, 350));
             } catch (err) {

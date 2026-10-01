@@ -10,7 +10,7 @@ export default function Landing() {
             <header className="landing-nav">
                 <div className="nav-container">
                     <div className="logo-section">
-                        <img src="/ceova logo dark.png" alt="CEOVA Logo" className="logo-img" />
+                        <img src="/ceova-logo.png" alt="CEOVA Logo" className="logo-img" />
                         <span className="logo-text">CEOVA</span>
                     </div>
                     <div className="nav-links">
@@ -151,7 +151,7 @@ export default function Landing() {
                     <div className="footer-content">
                         <div className="footer-brand">
                             <div className="logo-section">
-                                <img src="/ceova logo dark.png" alt="CEOVA Logo" className="logo-img" />
+                                <img src="/ceova-logo.png" alt="CEOVA Logo" className="logo-img" />
                                 <span className="logo-text">CEOVA</span>
                             </div>
                             <p className="footer-desc">Your ultimate AI Executive Assistant.</p>

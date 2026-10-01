@@ -16,7 +16,7 @@ export default function LoadingScreen({ text = "Accessing Secure Vault..." }) {
                 className="loading-glass-card"
             >
                 <div className="logo-pulse-wrapper">
-                    <img src="/ceova logo dark.png" alt="Ceova" className="pulsing-logo-main" />
+                    <img src="/ceova-logo.png" alt="Ceova" className="pulsing-logo-main" />
                     <div className="loading-ring-spinner" />
                 </div>
                 <span className="loading-status-text">{text}</span>
