@@ -2142,6 +2142,17 @@ body {
         pointer-events: auto;
         width: 100% !important;
         max-width: 100% !important;
+        position: relative !important;
+    }
+
+    .attachment-sliding-tab,
+    .attachment-sliding-tab.slide-down,
+    .attachment-sliding-tab.slide-up {
+        bottom: calc(100% + 10px) !important;
+        top: auto !important;
+        width: 100% !important;
+        max-height: 65vh !important;
+        overflow-y: auto !important;
     }
 
     .input-wrapper {

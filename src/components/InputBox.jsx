@@ -626,16 +626,10 @@ export default function InputBox({
                 <AnimatePresence>
                     {isPlusOpen && (
                         <motion.div 
-                            className={`attachment-sliding-tab ${isHome ? 'slide-down' : 'slide-up'}`}
-                            initial={isHome 
-                                ? { y: -50, opacity: 0, scale: 0.98 } 
-                                : { y: 50, opacity: 0, scale: 0.98 }
-                            }
+                            className="attachment-sliding-tab slide-up"
+                            initial={{ y: 30, opacity: 0, scale: 0.98 }}
                             animate={{ y: 0, opacity: 1, scale: 1 }}
-                            exit={isHome 
-                                ? { y: -50, opacity: 0, scale: 0.98 } 
-                                : { y: 50, opacity: 0, scale: 0.98 }
-                            }
+                            exit={{ y: 30, opacity: 0, scale: 0.98 }}
                             transition={{ type: "spring", stiffness: 360, damping: 28 }}
                         >
                             {!isToolsSubmenuOpen && !isConnectorsSubmenuOpen && !isUploadSubmenuOpen && !isLibrarySubmenuOpen && (
