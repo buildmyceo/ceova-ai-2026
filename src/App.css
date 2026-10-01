@@ -2156,23 +2156,24 @@ body {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 12px 16px;
+        padding: max(env(safe-area-inset-top, 0px), 38px) 16px 10px 16px;
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
-        height: 60px;
-        background: transparent;
+        background: rgba(15, 23, 42, 0.85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
         z-index: 900;
-        border-bottom: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
 
     .mobile-header-btn {
         background: #202123;
-        border: none;
+        border: 1px solid rgba(255, 255, 255, 0.08);
         color: var(--text-main);
-        width: 40px;
-        height: 40px;
+        width: 38px;
+        height: 38px;
         border-radius: 50%;
         cursor: pointer;
         display: flex;
@@ -2181,7 +2182,7 @@ body {
     }
 
     .main-chat-container {
-        padding-top: 60px;
+        padding-top: calc(max(env(safe-area-inset-top, 0px), 38px) + 54px);
     }
 
     .plus-dropdown-menu {
