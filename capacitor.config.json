@@ -11,12 +11,12 @@
     "SplashScreen": {
       "launchAutoHide": true,
       "launchShowDuration": 1500,
-      "backgroundColor": "#0f172a",
+      "backgroundColor": "#000000",
       "showSpinner": false
     },
     "StatusBar": {
       "style": "DARK",
-      "backgroundColor": "#0f172a"
+      "backgroundColor": "#000000"
     },
     "Keyboard": {
       "resize": "body",

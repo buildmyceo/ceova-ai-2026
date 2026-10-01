@@ -1710,13 +1710,7 @@ export default function Home({ session }) {
                     <button className="mobile-header-btn" onClick={() => setIsSidebarOpen(true)}>
                         <Menu size={24} />
                     </button>
-                    <div className="mobile-header-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <img 
-                            src="/ceova-logo.png" 
-                            alt="CEOVA" 
-                            style={{ height: '28px', width: 'auto', objectFit: 'contain' }} 
-                        />
-                    </div>
+                    <div className="mobile-header-title"></div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <button 
                             className={`mobile-header-btn ${currentChatId?.startsWith('temp_') ? 'active-temp' : ''}`} 
@@ -1800,18 +1794,6 @@ export default function Home({ session }) {
                 {(chats[currentChatId] || []).length === 0 && (
                     <div className="home-empty-state-wrapper">
                         <div className="home-greeting">
-                            <div className="home-ceova-logo-container" style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
-                                <img 
-                                    src="/ceova-logo.png" 
-                                    alt="CEOVA" 
-                                    style={{ 
-                                        height: '52px', 
-                                        width: 'auto', 
-                                        objectFit: 'contain',
-                                        filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.25))' 
-                                    }} 
-                                />
-                            </div>
                             <AnimatePresence mode="wait">
                                 <motion.div
                                     key={currentChatId?.startsWith('temp_') ? 'temp' : 'normal'}

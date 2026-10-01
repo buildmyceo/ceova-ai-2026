@@ -1188,7 +1188,7 @@ export default function InputBox({
                     <textarea
                         id="userInput"
                         ref={textareaRef}
-                        placeholder="Ask Ceova anything..."
+                        placeholder="Ask Ceova..."
                         rows={1}
                         value={input}
                         onChange={handleInputChange}
