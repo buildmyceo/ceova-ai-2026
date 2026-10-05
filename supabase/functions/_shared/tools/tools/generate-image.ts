@@ -391,12 +391,9 @@ export class GenerateImageTool implements Tool {
             }
           }
 
-          // OpenAI ChatGPT model cascade: chatgpt-image-latest is the primary ChatGPT model
+          // OpenAI ChatGPT model: strictly use chatgpt-image-latest
           const editCandidates = [
-            'chatgpt-image-latest',
-            'gpt-image-2.5-sunburst',
-            'gpt-image-2',
-            'gpt-image-1'
+            'chatgpt-image-latest'
           ];
 
           for (const cand of editCandidates) {
@@ -465,9 +462,9 @@ export class GenerateImageTool implements Tool {
 
       // ══════════════════════════════════════════════════════════════════════════
       // PATH 2: TEXT-TO-IMAGE GENERATION — Strictly for brand new prompts without an image
-      // ══════════════════════════════════════════════════════════════════════════
       if (!b64Data && !generatedUrl) {
-        const candidateModels = ['chatgpt-image-latest', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-1', 'dall-e-3', 'dall-e-2'];
+        // Strictly use OpenAI's chatgpt-image-latest model as requested
+        const candidateModels = ['chatgpt-image-latest'];
 
         for (const model of candidateModels) {
           let requestBody: Record<string, any>;
