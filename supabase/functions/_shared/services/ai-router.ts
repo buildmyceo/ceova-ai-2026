@@ -20,12 +20,9 @@ export interface AIResponse {
 import { AI_MODEL } from "../ai/ai-provider.ts";
 
 export class AIRouter {
-    private getModelsForTask(taskType: TaskType): string[] {
-        if (taskType === 'analytics' || taskType === 'vision_analytics' || taskType === 'ocr_analytics') {
-            return ['gpt-4o', 'gpt-4o-mini'];
-        }
-        const primaryModel = (AI_MODEL as string) === 'gpt-5.6-luna' ? 'gpt-4o' : (AI_MODEL as string);
-        return [primaryModel, 'gpt-4o', 'gpt-4o-mini'];
+    private getModelsForTask(_taskType: TaskType): string[] {
+        // Exclusively use GPT-6 Luna as requested
+        return ['gpt-6-luna'];
     }
 
     async generateContent(
@@ -139,7 +136,7 @@ export class AIRouter {
         }
 
         const latency = Date.now() - startTime;
-        const estimatedCost = (totalTokens / 1_000_000) * (finalModel === 'gpt-4o' ? 5.00 : 0.15);
+        const estimatedCost = (totalTokens / 1_000_000) * 1.50;
 
         if (userId && userId !== 'system') {
             try {
@@ -181,13 +178,15 @@ export class AIRouter {
         const requestBody: any = {
             model: model,
             messages: messages,
-            max_tokens: maxTokens,
+            max_completion_tokens: maxTokens,
             stream: true
         };
 
-        const restrictsTemperature = model.startsWith('o1-') || model.startsWith('o3-');
+        const restrictsTemperature = model.startsWith('o1-') || model.startsWith('o3-') || model.includes('luna');
         if (!restrictsTemperature) {
             requestBody.temperature = temperature;
+        } else if (model.includes('luna')) {
+            requestBody.reasoning_effort = "none";
         }
 
         let response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -201,12 +200,14 @@ export class AIRouter {
         });
 
         if (!response.ok && (response.status === 404 || response.status === 400)) {
-            const fallbackModel = models[1] || 'gpt-4o';
+            const fallbackModel = models[1] || 'gpt-5.6-luna';
             if (fallbackModel !== model) {
                 Logger.WARN(`[AIRouter] Streaming fallback from ${model} to ${fallbackModel}...`);
                 requestBody.model = fallbackModel;
-                delete requestBody.reasoning_effort;
-                requestBody.temperature = temperature;
+                if (!fallbackModel.includes('luna')) {
+                    delete requestBody.reasoning_effort;
+                    requestBody.temperature = temperature;
+                }
                 response = await fetch("https://api.openai.com/v1/chat/completions", {
                     method: "POST",
                     headers: {
@@ -226,7 +227,7 @@ export class AIRouter {
         if (!userId || userId === 'system') return;
         const models = this.getModelsForTask(taskType);
         const model = models[0];
-        const estimatedCost = (totalTokens / 1_000_000) * (model === 'gpt-4o' ? 5.00 : 0.15);
+        const estimatedCost = (totalTokens / 1_000_000) * 1.50;
         try {
             await supabaseAdmin.from('api_request_logs').insert({
                 user_id: userId,

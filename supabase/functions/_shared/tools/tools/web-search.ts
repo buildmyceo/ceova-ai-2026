@@ -196,63 +196,119 @@ async function searchOpenAI(query: string, apiKey: string, limit = 5): Promise<S
 
   return items;
 /**
- * Searches the live web using Tavily Search API.
- * Returns structured search results with real titles, URLs, and snippets.
- * Requires TAVILY_API_KEY in the environment.
+ * Searches the live web using OpenAI's native Web Search tool via Responses API.
+ * Uses GPT-6 Luna model.
  */
 export async function performWebSearch(query: string, limit = 5): Promise<SearchResultItem[]> {
   const cleanQuery = (query || '').trim();
   if (!cleanQuery) return [];
 
   const results: SearchResultItem[] = [];
-  
-  const apiKey = Deno.env.get("TAVILY_API_KEY");
+  const openAiKey = Deno.env.get("OPEN_AI") || Deno.env.get("OPENAI_API_KEY");
 
-  if (!apiKey) {
-    console.warn("[web-search] Missing TAVILY_API_KEY environment variable.");
-    // Fallback error result to inform the user
-    return [{
-      title: "Tavily Search Configuration Required",
-      url: "https://tavily.com",
-      snippet: "Please create a free account at tavily.com and add TAVILY_API_KEY to your Supabase environment variables to enable live web search.",
-      source: "system"
-    }];
+  if (!openAiKey) {
+    console.warn("[web-search] Missing OPEN_AI API key.");
+    return [];
   }
 
   try {
-    const res = await fetch("https://api.tavily.com/search", {
+    const res = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
+        "Authorization": `Bearer ${openAiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        api_key: apiKey,
-        query: cleanQuery,
-        search_depth: "basic",
-        include_answer: false,
-        max_results: limit
+        model: "gpt-6-luna",
+        tools: [{ type: "web_search" }],
+        input: `Perform a comprehensive live web search for: "${cleanQuery}". Provide the latest accurate information and cite all source URLs.`
       }),
-      signal: AbortSignal.timeout(12000)
+      signal: AbortSignal.timeout(15000)
     });
 
     if (res.ok) {
       const data = await res.json();
-      if (data.results && Array.isArray(data.results)) {
-        for (const item of data.results) {
-          results.push({
-            title: item.title,
-            url: item.url,
-            snippet: item.content,
-            source: 'tavily'
-          });
+      
+      // Helper to extract markdown links from raw text if needed
+      const extractFromText = (text: string) => {
+        const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+        let m: RegExpExecArray | null;
+        while ((m = linkRegex.exec(text)) !== null && results.length < limit) {
+          const title = m[1].trim();
+          const url = m[2].trim();
+          if (!results.some(r => r.url === url)) {
+            results.push({
+              title,
+              url,
+              snippet: text.slice(Math.max(0, m.index - 50), m.index + 120).replace(/\n+/g, ' ').trim(),
+              source: 'openai_responses'
+            });
+          }
         }
+      };
+
+      if (Array.isArray(data.output)) {
+        for (const item of data.output) {
+          // Extract from annotations
+          if (item.content && Array.isArray(item.content)) {
+            for (const part of item.content) {
+              if (part.annotations && Array.isArray(part.annotations)) {
+                for (const ann of part.annotations) {
+                  const url = ann.url_citation?.url || ann.web_search_result?.url || ann.url;
+                  const title = ann.url_citation?.title || ann.web_search_result?.title || '';
+                  if (url && !results.some(r => r.url === url) && results.length < limit) {
+                    results.push({
+                      title: title || new URL(url).hostname,
+                      url,
+                      snippet: ann.url_citation?.snippet || ann.snippet || part.text?.slice(0, 200).replace(/\n+/g, ' ').trim() || '',
+                      source: 'openai_responses'
+                    });
+                  }
+                }
+              }
+              if (part.text) {
+                extractFromText(part.text);
+              }
+            }
+          }
+
+          // Extract from web_search_call outputs directly
+          if (item.type === 'web_search_call' || item.type === 'web_search_output') {
+            const searchResults = item.results || item.web_search_results || [];
+            for (const sr of searchResults) {
+              if (sr.url && !results.some(r => r.url === sr.url) && results.length < limit) {
+                results.push({
+                  title: sr.title || new URL(sr.url).hostname,
+                  url: sr.url,
+                  snippet: sr.snippet || sr.text || '',
+                  source: 'openai_responses'
+                });
+              }
+            }
+          }
+        }
+      }
+
+      const textOutput = data.output_text || (typeof data.output === 'string' ? data.output : '');
+      if (textOutput) {
+        extractFromText(textOutput);
+      }
+
+      // If we got raw text but no explicit sources, provide it as a single result
+      if (results.length === 0 && textOutput && textOutput.length > 40) {
+        results.push({
+          title: `Live Web Research: ${cleanQuery.slice(0, 45)}`,
+          url: 'https://openai.com/search',
+          snippet: textOutput.slice(0, 350).replace(/\n+/g, ' ').trim(),
+          source: 'openai_responses'
+        });
       }
     } else {
       const errText = await res.text();
-      console.warn(`[web-search] Tavily API error (${res.status}):`, errText);
+      console.warn(`[web-search] OpenAI responses API error:`, res.status, errText.slice(0, 200));
     }
   } catch (err: any) {
-    console.warn("[web-search] Tavily Search request failed:", err?.message || err);
+    console.warn(`[web-search] OpenAI responses API error:`, err?.message || err);
   }
 
   return results.slice(0, limit);
