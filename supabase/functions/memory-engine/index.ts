@@ -93,18 +93,23 @@ If no facts are present, return {"memories": []}. Respond with ONLY a valid JSON
 
           const lastUserMessage = messages.slice().reverse().find((m: any) => m.role === 'user')?.content || "";
           
-          let aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "gpt-4o-mini",
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: `Here is the user's latest message:\n"${lastUserMessage}"\nExtract any facts.` }
-              ],
-              response_format: { type: "json_object" }
-            })
-          });
+          const memoryModels = ["gpt-6-luna", "gpt-6_6-luna", "gpt-5_6-luna", "gpt-5.6-luna"];
+          let aiRes: Response | null = null;
+          for (const mModel of memoryModels) {
+            aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: mModel,
+                messages: [
+                  { role: "system", content: systemPrompt },
+                  { role: "user", content: `Here is the user's latest message:\n"${lastUserMessage}"\nExtract any facts.` }
+                ],
+                response_format: { type: "json_object" }
+              })
+            }).catch(() => null);
+            if (aiRes && aiRes.ok) break;
+          }
 
           if (aiRes?.ok) {
             const data = await aiRes.json();

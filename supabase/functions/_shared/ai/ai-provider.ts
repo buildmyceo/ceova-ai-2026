@@ -3,7 +3,7 @@
  * 
  * MODEL RULE:
  * - AI_PROVIDER: openai
- * - AI_MODEL: gpt-5.6-luna
+ * - AI_MODEL: gpt-6-luna
  * 
  * Exclusively used for all Ceova Cloud Development & Hosting operations.
  * Groq, Gemini, and other providers are strictly prohibited in this workflow.
@@ -13,7 +13,8 @@ import { Logger } from "../services/logger.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.2';
 
 export const AI_PROVIDER = 'openai' as const;
-export const AI_MODEL = 'gpt-5.6-luna' as const;
+export const AI_MODEL = 'gpt-6-luna' as const;
+export const AI_MODEL_ALT = 'gpt-5_6-luna' as const;
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -58,10 +59,10 @@ export interface AIProviderResult {
 
 export class AIProviderService {
   private static readonly MODEL_NAME: string = AI_MODEL;
-  private static readonly FALLBACK_MODEL: string = 'gpt-4o'; // OpenAI fallback if luna endpoint alias resolves standard
+  private static readonly FALLBACK_MODEL: string = AI_MODEL_ALT; // Luna fallback alias, strictly no GPT-4o
 
   /**
-   * Executes a complete chat completion via GPT-5.6 Luna
+   * Executes a complete chat completion via GPT-6 Luna
    */
   static async generate(
     messages: ChatMessage[],
@@ -162,12 +163,14 @@ export class AIProviderService {
             }
           }
 
-          // 3. If model genuinely not found on key (404), fallback gracefully to FALLBACK_MODEL (gpt-4o)
+          // 3. If model genuinely not found on key (404), fallback to alternative Luna alias (gpt-5.6-luna)
           if ((response.status === 404 || errText.includes("model_not_found")) && resolvedModel !== this.FALLBACK_MODEL) {
-            Logger.WARN(`[AIProvider] ${resolvedModel} not found on key, falling back to ${this.FALLBACK_MODEL}`);
+            Logger.WARN(`[AIProvider] ${resolvedModel} not found on key, retrying with ${this.FALLBACK_MODEL}`);
             resolvedModel = this.FALLBACK_MODEL;
             requestBody.model = this.FALLBACK_MODEL;
-            delete requestBody.reasoning_effort;
+            if (options.tools && options.tools.length > 0) {
+              requestBody.reasoning_effort = "none";
+            }
             delete requestBody.temperature;
             
             const fallbackRes = await fetch("https://api.openai.com/v1/chat/completions", {

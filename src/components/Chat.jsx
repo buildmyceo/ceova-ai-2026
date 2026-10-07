@@ -633,7 +633,7 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
     if (!rawText) return '';
     let text = rawText
       .replace(/The tool completed successfully\./gi, '')
-      .replace(/GPT-5\.6\s*Luna/gi, 'Ceova')
+      .replace(/GPT-(?:5\.6|6)\s*Luna/gi, 'Ceova')
       .replace(/-\s*\*\*Tech Stack\*\*:[^\n]+/gi, '')
       .replace(/Tech Stack:[^\n]+/gi, '')
       .trim();

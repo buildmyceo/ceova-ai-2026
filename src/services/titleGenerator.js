@@ -2,7 +2,7 @@ import { supabase, SUPABASE_URL, SUPABASE_KEY } from './supabase';
 import { cacheManager } from './CacheManager';
 
 /**
- * Generates a concise 3-4 word title using gpt-4o-mini via super-endpoint.
+ * Generates a concise 3-4 word title using GPT-6 Luna via super-endpoint.
  * @param {Array} messages - List of message objects ({ role/sender, content/text })
  * @param {string} [token] - Supabase auth token
  * @returns {Promise<string>} Clean 3-4 word title
@@ -95,7 +95,7 @@ function fallbackTitle(messages) {
 
 /**
  * Automatically renames legacy or raw chat titles in the background
- * using gpt-4o-mini so past user chat history gets clean 3-4 word titles.
+ * using GPT-6 Luna so past user chat history gets clean 3-4 word titles.
  */
 export async function renameLegacyChats({ chats, chatMetadata, setChatMetadata, token, userMemories = [] }) {
     if (!chatMetadata && !chats) return;

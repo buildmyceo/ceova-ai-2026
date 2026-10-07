@@ -14,7 +14,7 @@
  *         +
  * Version information
  *         ↓
- * GPT-5.6 Luna
+ * GPT-6 Luna
  * This allows the agent to reconstruct the context it needs for each task."
  */
 
@@ -48,7 +48,7 @@ export interface ReconstructedContext {
 
 export class ContextReconstructionService {
   /**
-   * Reconstructs the 5-pillar context for GPT-5.6 Luna on-demand
+   * Reconstructs the 5-pillar context for GPT-6 Luna on-demand
    */
   public static reconstruct(params: ReconstructedContextParams): ReconstructedContext {
     const {
@@ -110,7 +110,7 @@ export class ContextReconstructionService {
 RECONSTRUCTED PROJECT CONTEXT (MANDATORY REQUIREMENT 14):
 The model is stateless and is not expected to permanently remember the entire website.
 Instead, context is dynamically reconstructed for each task via the 5-pillar architecture:
-Persistent project state + Project files + Search/read tools + Current task + Version info → GPT-5.6 Luna
+Persistent project state + Project files + Search/read tools + Current task + Version info → GPT-6 Luna
 
 [PILLAR 1: PERSISTENT PROJECT STATE]
 ${stateSummary}

@@ -1,7 +1,7 @@
 /**
  * CEOVA Agentic Coding Engine (Codex-Style)
  * 
- * An autonomous, tool-driven coding agent for GPT-5.6 Luna.
+ * An autonomous, tool-driven coding agent for GPT-6 Luna.
  * Instead of receiving monolithic file dumps and regenerating entire codebases,
  * the agent operates in an interactive tool loop:
  * Inspect → Reason → Retrieve Relevant Context → Edit → Run → Verify → Fix → Repeat.
@@ -600,7 +600,7 @@ export class AgenticCodingEngine {
       isHistoryQuery: false
     });
 
-    const systemPrompt = `You are GPT-5.6 Luna, an elite autonomous senior coding engineer working inside CEOVA's cloud development environment.
+    const systemPrompt = `You are GPT-6 Luna, an elite autonomous senior coding engineer working inside CEOVA's cloud development environment.
 You are tasked with implementing or modifying a live website according to the user's request.
 
 ENVIRONMENT & WORKSPACE RULES:
@@ -612,7 +612,7 @@ ENVIRONMENT & WORKSPACE RULES:
 CONTEXT RECONSTRUCTION ARCHITECTURE (MANDATORY REQUIREMENT 14):
 Do not confuse context with memory. The model is stateless and is not expected to permanently remember the entire website.
 Instead, context is dynamically reconstructed for each task via the 5-pillar architecture:
-Persistent project state + Project files + Search/read tools + Current task + Version info → GPT-5.6 Luna
+Persistent project state + Project files + Search/read tools + Current task + Version info → GPT-6 Luna
 - You do NOT permanently remember previous code across sessions.
 - Every task reconstructs the architectural map and file index on demand.
 - When you need code details, use 'search_code' to pinpoint the location and 'read_file' to inspect the relevant slice.
@@ -695,7 +695,7 @@ You must execute your work as an iterative coding loop according to this concept
 └────────────┬────────────┘
              ↓
 ┌─────────────────────────┐
-│     GPT-5.6 Luna        │
+│     GPT-6 Luna        │
 │     Understand Task     │
 └────────────┬────────────┘
              ↓
@@ -791,13 +791,13 @@ The agent MUST AVOID ACCIDENTALLY:
 UNLESS the requested task genuinely and explicitly requires it.
 
 THE MODEL CONTROLS THE INVESTIGATION (MANDATORY REQUIREMENT 16):
-The model (GPT-5.6 Luna) controls the investigation and decides the depth of investigation based on the task.
+The model (GPT-6 Luna) controls the investigation and decides the depth of investigation based on the task.
 Do NOT hard-code or follow a fixed sequence such as:
 - Always read App.jsx
 - Always read index.html
 - Always read package.json
 - Always read all CSS
-Instead, GPT-5.6 Luna autonomously determines what tools to call and what files to inspect.
+Instead, GPT-6 Luna autonomously determines what tools to call and what files to inspect.
 
 Examples:
 1. Targeted / Isolated Task (e.g. "Change footer copyright text."):
@@ -829,7 +829,7 @@ Strict Division of Labor:
    - Build         → CEOVA tool ('run_build', 'run_command')
    - Deployment    → CEOVA tool ('deploy_website')
    - Log parsing   → CEOVA/backend (parses 3,000+ line logs down to exact status & error line)
-2. GPT-5.6 Luna Cognitive Responsibilities:
+2. GPT-6 Luna Cognitive Responsibilities:
    - Understanding (analyzing user intent, constraints, and domain requirements)
    - Reasoning (deducing architectural impacts, component interactions, styling changes)
    - Planning (formulating step-by-step execution plans)

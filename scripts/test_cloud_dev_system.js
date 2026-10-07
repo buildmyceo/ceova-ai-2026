@@ -13,13 +13,13 @@
 import assert from 'assert';
 
 // ── TEST 1: AI Provider & Exclusivity Rule ──────────────────────────────────
-console.log('\n--- TEST 1: AI Provider Rule (GPT-5.6 Luna) ---');
+console.log('\n--- TEST 1: AI Provider Rule (GPT-6 Luna) ---');
 const AI_PROVIDER = 'openai';
-const AI_MODEL = 'gpt-5.6-luna';
+const AI_MODEL = 'gpt-6-luna';
 
 assert.strictEqual(AI_PROVIDER, 'openai', 'AI_PROVIDER must be openai');
-assert.strictEqual(AI_MODEL, 'gpt-5.6-luna', 'AI_MODEL must be gpt-5.6-luna');
-console.log('✓ AI Model is exclusively configured as GPT-5.6 Luna.');
+assert.strictEqual(AI_MODEL, 'gpt-6-luna', 'AI_MODEL must be gpt-6-luna');
+console.log('✓ AI Model is exclusively configured as GPT-6 Luna.');
 
 // ── TEST 2: Security Boundaries & Path Traversal Guard ──────────────────────
 console.log('\n--- TEST 2: Sandbox Path Traversal Prevention ---');

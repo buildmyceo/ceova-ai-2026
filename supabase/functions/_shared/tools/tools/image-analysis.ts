@@ -61,47 +61,55 @@ export class ImageAnalysisTool implements Tool {
       let aiResponse = "";
       
       const url = "https://api.openai.com/v1/chat/completions";
-      const body = {
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: promptText },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mimeType};base64,${base64Data}`
-                }
-              }
-            ]
-          }
-        ],
-        max_completion_tokens: 2000,
-        temperature: 0.2
-      };
+      const lunaVisionModels = ["gpt-6-luna", "gpt-6_6-luna", "gpt-5_6-luna", "gpt-5.6-luna"];
+      let lastErrText = "";
 
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(body)
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        aiResponse = data.choices[0]?.message?.content || "";
+      for (const visionModel of lunaVisionModels) {
+        const body: Record<string, any> = {
+          model: visionModel,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: promptText },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:${mimeType};base64,${base64Data}`
+                  }
+                }
+              ]
+            }
+          ],
+          max_completion_tokens: 2000,
+          reasoning_effort: "none"
+        };
+
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(body)
+        });
         
-        // Log usage if user_id is provided
-        if (context.userId) {
-          const totalTokens = data.usage?.total_tokens || 0;
-          await aiRouter.logUsage(context.userId, 'vision', totalTokens, true);
+        if (res.ok) {
+          const data = await res.json();
+          aiResponse = data.choices[0]?.message?.content || "";
+          
+          if (context.userId) {
+            const totalTokens = data.usage?.total_tokens || 0;
+            await aiRouter.logUsage(context.userId, 'vision', totalTokens, true);
+          }
+          break;
+        } else {
+          lastErrText = await res.text();
         }
-      } else {
-        const errText = await res.text();
-        throw new Error(`OpenAI Vision error: ${res.status} ${errText}`);
+      }
+
+      if (!aiResponse) {
+        throw new Error(`OpenAI Vision error: ${lastErrText}`);
       }
 
 

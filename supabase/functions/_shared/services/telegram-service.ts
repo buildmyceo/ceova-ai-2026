@@ -418,37 +418,43 @@ export async function generateTelegramConversationTitle(
       `Assistant: ${aiReply.slice(0, 300)}`
     ].join("\n");
 
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `You are a concise conversation title generator. Output ONLY a short, meaningful title summarizing the main topic or question based on the user and AI messages.
+    const titleModels = ["gpt-6-luna", "gpt-6_6-luna", "gpt-5_6-luna", "gpt-5.6-luna"];
+    let res: Response | null = null;
+    for (const tModel of titleModels) {
+      res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: tModel,
+          messages: [
+            {
+              role: "system",
+              content: `You are a concise conversation title generator. Output ONLY a short, meaningful title summarizing the main topic or question based on the user and AI messages.
 STRICT RULES:
 1. Maximum 3 to 4 words total.
 2. Do NOT use quotation marks, punctuation, or emojis.
 3. Title Case (e.g. 'Morning Project Review', 'Logo Design Help', 'React Debugging', 'Travel Itinerary Plan').
 4. If the user only says a generic greeting like 'hi' or 'hello' and there is no subsequent question, output 'New Chat'. Otherwise, capture their specific question or topic.
 5. Output ONLY the 3-4 word title and nothing else.`
-          },
-          {
-            role: "user",
-            content: conversationSnippet
-          }
-        ],
-        max_tokens: 20,
-        temperature: 0.3
-      }),
-      signal: AbortSignal.timeout(6000)
-    });
+            },
+            {
+              role: "user",
+              content: conversationSnippet
+            }
+          ],
+          max_tokens: 20,
+          temperature: 0.3
+        }),
+        signal: AbortSignal.timeout(6000)
+      }).catch(() => null);
 
-    if (!res.ok) return null;
+      if (res && res.ok) break;
+    }
+
+    if (!res || !res.ok) return null;
 
     const data = await res.json().catch(() => ({}));
     let title = data.choices?.[0]?.message?.content?.trim();

@@ -1,7 +1,7 @@
 /**
  * CEOVA Controlled Cloud Development Tools
  * 
- * Secure, sandboxed tool layer exposed to GPT-5.6 Luna for building,
+ * Secure, sandboxed tool layer exposed to GPT-6 Luna for building,
  * testing, and deploying cloud projects to https://<project>.ceova.online.
  */
 

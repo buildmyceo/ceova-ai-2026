@@ -162,24 +162,29 @@ Keep it under 80 words. Return ONLY the paragraph, nothing else.`;
 
           const userPrompt = `Facts about the user (${label}):\n${facts.join("\n")}`;
 
-          const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${OPENAI_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "gpt-4o-mini",
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt },
-              ],
-              max_tokens: 150,
-              temperature: 0.4,
-            }),
-          });
+          const memoryModels = ["gpt-6-luna", "gpt-6_6-luna", "gpt-5_6-luna", "gpt-5.6-luna"];
+          let aiRes: Response | null = null;
+          for (const mModel of memoryModels) {
+            aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${OPENAI_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: mModel,
+                messages: [
+                  { role: "system", content: systemPrompt },
+                  { role: "user", content: userPrompt },
+                ],
+                max_completion_tokens: 150,
+                reasoning_effort: "none"
+              }),
+            });
+            if (aiRes.ok) break;
+          }
 
-          if (aiRes.ok) {
+          if (aiRes && aiRes.ok) {
             const data = await aiRes.json();
             summary = data.choices?.[0]?.message?.content?.trim() || "";
           }

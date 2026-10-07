@@ -243,7 +243,7 @@ export default function Subscription() {
                 { icon: Icons.link, text: 'Limited app connections', tooltip: '5 Connector Calls/day' },
                 { icon: Icons.brain, text: 'Limited AI memory', tooltip: '75 AI Memories' },
                 { icon: Icons.cloud, text: 'Limited cloud storage', tooltip: '20 MB Cloud Storage' },
-                { icon: Icons.sparkle, text: 'Standard AI experience', tooltip: 'GPT-5.6 Luna' },
+                { icon: Icons.sparkle, text: 'Standard AI experience', tooltip: 'GPT-6 Luna' },
                 { icon: Icons.file, text: 'Unlimited chat history', tooltip: 'Your chat history is never deleted' }
             ];
         }

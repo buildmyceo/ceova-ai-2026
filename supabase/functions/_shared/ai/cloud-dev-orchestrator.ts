@@ -1,7 +1,7 @@
 /**
  * CEOVA Cloud Development Agent Orchestrator
  * 
- * Autonomous full-stack cloud development loop powered by GPT-5.6 Luna.
+ * Autonomous full-stack cloud development loop powered by GPT-6 Luna.
  * Handles Project Creation -> Architecture Planning -> Code Generation
  * -> Isolated Worker Compilation & Testing -> Self-Healing Error Fixing -> Live Deployment.
  * 

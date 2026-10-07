@@ -21,8 +21,8 @@ import { AI_MODEL } from "../ai/ai-provider.ts";
 
 export class AIRouter {
     private getModelsForTask(_taskType: TaskType): string[] {
-        // Exclusively use GPT-6 Luna as requested
-        return ['gpt-6-luna'];
+        // Exclusively use GPT-6 Luna as requested with robust fallback aliases
+        return ['gpt-6-luna', 'gpt-6_6-luna', 'gpt-5_6-luna', 'gpt-5.6-luna'];
     }
 
     async generateContent(

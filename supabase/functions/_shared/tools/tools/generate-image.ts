@@ -322,9 +322,9 @@ export class GenerateImageTool implements Tool {
       }
     }, 3500);
 
-    const isPhotoRequest = /photo|realistic|real|camera|shot|scene|room|cubicle|desk|person|people/i.test(prompt);
+    const isPhotoRequest = /photo|realistic|real|camera|shot|scene|room|cubicle|desk|person|people|face|picture|portrait|4k|8k|hd/i.test(prompt);
     const size = context.args?.size || '1024x1024';
-    const quality = context.args?.quality || (isPhotoRequest ? 'hd' : 'standard');
+    const quality = context.args?.quality || 'hd'; // Best possible fidelity
     const style = context.args?.style || (isPhotoRequest ? 'natural' : 'vivid');
 
     try {
@@ -391,9 +391,10 @@ export class GenerateImageTool implements Tool {
             }
           }
 
-          // OpenAI ChatGPT model: strictly use chatgpt-image-latest
+          // OpenAI image models: use chatgpt-image-latest with fallback
           const editCandidates = [
-            'chatgpt-image-latest'
+            'chatgpt-image-latest',
+            'dall-e-2'
           ];
 
           for (const cand of editCandidates) {
@@ -463,8 +464,8 @@ export class GenerateImageTool implements Tool {
       // ══════════════════════════════════════════════════════════════════════════
       // PATH 2: TEXT-TO-IMAGE GENERATION — Strictly for brand new prompts without an image
       if (!b64Data && !generatedUrl) {
-        // Strictly use OpenAI's chatgpt-image-latest model as requested
-        const candidateModels = ['chatgpt-image-latest'];
+        // Strictly use OpenAI's best models for image and photo generation
+        const candidateModels = ['chatgpt-image-latest', 'dall-e-3'];
 
         for (const model of candidateModels) {
           let requestBody: Record<string, any>;

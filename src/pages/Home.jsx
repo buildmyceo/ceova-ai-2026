@@ -1888,6 +1888,13 @@ export default function Home({ session }) {
                 <TaskModal 
                     isOpen={isTaskModalOpen}
                     onClose={() => setIsTaskModalOpen(false)}
+                    userId={session?.user?.id}
+                    onAutomateTask={(task) => {
+                        setIsTaskModalOpen(false);
+                        const scheduleDetails = task.dueDate ? `Scheduled for: ${task.dueDate} ${task.dueTime || ''}` : '';
+                        const prompt = `Please automate and execute this scheduled task now:\n**Task**: ${task.title}\n${task.notes ? `**Instructions/Notes**: ${task.notes}\n` : ''}${scheduleDetails ? `**Timeline**: ${scheduleDetails}\n` : ''}\nPlease perform the necessary actions or prepare the deliverables.`;
+                        handleSend([], prompt);
+                    }}
                 />
             </main>
 

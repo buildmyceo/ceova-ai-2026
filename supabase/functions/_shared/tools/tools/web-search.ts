@@ -13,7 +13,7 @@ export interface SearchResultItem {
  */
 async function searchOpenAI(query: string, apiKey: string, limit = 5): Promise<SearchResultItem[]> {
   const items: SearchResultItem[] = [];
-  const lunaModels = ["gpt-5_6-luna", "gpt-5.6-luna"];
+  const lunaModels = ["gpt-6-luna", "gpt-6_6-luna", "gpt-5_6-luna", "gpt-5.6-luna"];
 
   // Helper to extract links and citations from content
   const extractItemsFromContent = (content: string, source: string) => {
