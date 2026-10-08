@@ -482,14 +482,29 @@ STRICT RULES:
                     // ── Intent Router: decide tools + memory categories before calling GPT ──
                     const intent = routeIntent(message || '', hasImage, hasDocument, has_local_folder, history, hasCloudProject, is_thinking, is_web_search);
 
-                    // ── Live Web Search / Deep Research Gathering ────────────────────────────
+                    // ── Gemini-style Autonomous Web Search Gathering ────────────────────────────
                     let webSearchResultsBlock = "";
-                    const isExplicitSearchOrResearch = /^(?:please\s+)?(?:do\s+(?:a\s+)?)?(?:research|reserch|search|find\s+information|look\s+up|google)\b/i.test((message || '').trim()) ||
-                        /\b(?:web\s*search|deep\s*research|latest\s*news|search\s+online|search\s+the\s+web)\b/i.test(message || '');
-                    const isSearchQuery = is_web_search || isExplicitSearchOrResearch || (is_thinking && (isQuestionOrInquiry(message || '') || /research|reserch|how|why|what|when|who|compare|latest|news|history|science|study|studies|explain/i.test(message || '')));
+                    const lowerMsg = (message || '').trim().toLowerCase();
 
-                    if (isSearchQuery && (message || '').trim().length > 3) {
-                        sendEvent({ type: 'status', stage: (is_web_search || isExplicitSearchOrResearch) ? 'Searching the web for latest research...' : 'Gathering research...' });
+                    // Check if query needs live web information (temporal, factual, current events, research, or explicit search)
+                    const isExplicitSearch = /^(?:please\s+)?(?:do\s+(?:a\s+)?)?(?:research|reserch|search|find\s+information|look\s*up|google|check)\b/i.test(lowerMsg) ||
+                        /\b(?:web\s*search|deep\s*research|latest\s*news|search\s+online|search\s+the\s+web|browse\s+the\s+web)\b/i.test(lowerMsg);
+
+                    const isCurrentOrRealTime = /\b(?:latest|recent|currently|current|today|tonight|yesterday|this\s+(?:week|month|year)|2025|2026|news|headlines|weather|stock|price|market|winner|election|score|release\s*date|changelog|roadmap|version\s+\d)\b/i.test(lowerMsg);
+
+                    const isFactualResearchQuery = /^(?:who\s+is|who\s+was|who\s+won|what\s+is\s+the\s+latest|what\s+happened|what\s+is\s+new|tell\s+me\s+about\s+the\s+latest|when\s+is|when\s+did|how\s+much\s+is|where\s+can\s+i\s+buy)\b/i.test(lowerMsg) ||
+                        (/\b(?:compare|vs|versus|difference\s+between|pros\s+and\s+cons|review|benchmark)\b/i.test(lowerMsg) && lowerMsg.length > 15);
+
+                    const isAutonomousSearch = is_web_search || isExplicitSearch || isCurrentOrRealTime || isFactualResearchQuery || (is_thinking && (isQuestionOrInquiry(message || '') || /research|reserch|how|why|what|when|who|explain/i.test(lowerMsg)));
+
+                    // Exclude casual greetings, simple affirmations, pure code requests (unless researching docs)
+                    const isCasualOrCodeSimple = /^(?:hi|hello|hey|yo|thanks|thank you|ok|okay|yes|no|cool|great|bye|good\s+morning|good\s+night)\b/i.test(lowerMsg) ||
+                        /^(?:write|create|generate|fix|debug|refactor)\s+(?:a\s+)?(?:simple\s+)?(?:function|script|css|html|regex|sql|python|react)\b/i.test(lowerMsg);
+
+                    const isSearchQuery = isAutonomousSearch && !isCasualOrCodeSimple && (message || '').trim().length > 3;
+
+                    if (isSearchQuery) {
+                        sendEvent({ type: 'status', stage: 'Searching the web for latest research...' });
                         try {
                             const searchQuery = (message || '')
                                 .replace(/^(?:please\s+)?(?:do\s+a\s+)?(?:research\s+(?:about|on)?|reserch\s+(?:about|on)?|search\s+(?:the\s+web\s+for|for)?|find\s+information\s+about)\s*/i, '')
