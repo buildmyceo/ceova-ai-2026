@@ -34,12 +34,15 @@ try {
 }
 
 // Track active build version & detect new server deployments
-const CURRENT_BUILD = typeof __APP_BUILD_TIME__ !== 'undefined' ? __APP_BUILD_TIME__ : '2.1.0';
+const CURRENT_BUILD = typeof __APP_BUILD_TIME__ !== 'undefined' ? __APP_BUILD_TIME__ : '2.1.2';
 try {
   const previousBuild = localStorage.getItem('ceova_active_build');
   if (previousBuild && previousBuild !== CURRENT_BUILD) {
     console.log(`[CEOVA] Upgraded client build: ${previousBuild} -> ${CURRENT_BUILD}`);
     sessionStorage.clear();
+    if ('caches' in window) {
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))));
+    }
   }
   localStorage.setItem('ceova_active_build', CURRENT_BUILD);
 } catch (e) {}

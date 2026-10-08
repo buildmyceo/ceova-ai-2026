@@ -18,7 +18,24 @@
         try {
           if ('serviceWorker' in navigator) {
             navigator.serviceWorker.getRegistrations().then(function(registrations) {
-              for (var reg of registrations) { reg.unregister(); }
+              if (registrations && registrations.length > 0) {
+                for (var reg of registrations) { reg.unregister(); }
+                if ('caches' in window) {
+                  caches.keys().then(function(names) {
+                    Promise.all(names.map(function(n) { return caches.delete(n); })).then(function() {
+                      if (!sessionStorage.getItem('ceova_sw_purged')) {
+                        sessionStorage.setItem('ceova_sw_purged', '1');
+                        window.location.reload();
+                      }
+                    });
+                  });
+                } else {
+                  if (!sessionStorage.getItem('ceova_sw_purged')) {
+                    sessionStorage.setItem('ceova_sw_purged', '1');
+                    window.location.reload();
+                  }
+                }
+              }
             }).catch(function() {});
           }
           if ('caches' in window) {

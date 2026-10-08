@@ -36,6 +36,23 @@
         {
           "key": "Expires",
           "value": "0"
+        },
+        {
+          "key": "Clear-Site-Data",
+          "value": "\"cache\""
+        }
+      ]
+    },
+    {
+      "source": "/(sw\\.js|registerSW\\.js)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/javascript"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate, max-age=0, s-maxage=0"
         }
       ]
     },
