@@ -525,7 +525,7 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
     const files = [];
     let m;
     while ((m = regex.exec(rawText)) !== null) {
-      const name = m[1].replace(/^[🔍📁\s*-]+/, '').trim();
+      const name = m[1].replace(/^[🔍📁\s*-]+/u, '').trim();
       const id = m[2].trim();
       const link = m[3] || `https://drive.google.com/file/d/${id}/view`;
       if (name && id && !files.some(f => f.id === id)) {

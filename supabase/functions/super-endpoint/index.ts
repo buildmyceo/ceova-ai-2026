@@ -561,11 +561,11 @@ STRICT RULES:
                     let memoryContext = '';
                     if (memoryEnabled) {
                         memoryContext = await MemoryRetriever.getRelevantContext(
-                            supabase,
+                            supabaseAdmin,
                             user.id,
                             message || '',
                             intent,
-                            { maxTokens: 300 }
+                            { maxTokens: 450 }
                         );
                     }
 

@@ -1,12 +1,12 @@
 /**
- * Modern AI Memory Retriever
+ * Ceova Memory Retriever (Gemini / ChatGPT Architecture)
  * 
- * Implements Just-In-Time (JIT) and Relevance-Gated memory retrieval.
- * Instead of dumping all 1,200 tokens of user summaries on every prompt,
- * it queries only targeted facts matching the current context, capped at < 100 tokens.
+ * Provides persistent memory across all conversations.
+ * If personalization / memory is enabled, key remembered facts (Profile, Business,
+ * Preferences, General facts) are seamlessly provided in the model's background context.
+ * Targeted FTS search is performed if the user query contains specific keywords.
  */
 
-import { MemoryGate, MemoryEvaluationResult } from "./memory-gate.ts";
 import { IntentRouterResult } from "./intent-router.ts";
 
 export interface MemoryRetrievalOptions {
@@ -17,66 +17,67 @@ export interface MemoryRetrievalOptions {
 export class MemoryRetriever {
   /**
    * Retrieves relevant memory context for a given message and user.
-   * Returns an empty string if memory is not relevant (0 tokens consumed).
+   * Returns formatted background facts if memory is enabled and facts exist.
    */
   static async getRelevantContext(
-    supabase: any,
+    supabaseAdmin: any,
     userId: string,
     message: string,
-    intent?: IntentRouterResult,
+    _intent?: IntentRouterResult,
     options: MemoryRetrievalOptions = {}
   ): Promise<string> {
-    if (!supabase || !userId || !message) return '';
+    if (!supabaseAdmin || !userId) return '';
 
-    const evaluation: MemoryEvaluationResult = MemoryGate.evaluate(message, intent);
-    if (!evaluation.shouldRetrieve) {
-      return '';
-    }
-
-    const maxTokens = options.maxTokens || 300;
-    const maxItems = options.maxItems || 6;
+    const maxTokens = options.maxTokens || 450;
+    const maxItems = options.maxItems || 12;
     const retrievedFacts: string[] = [];
+    const seenValues = new Set<string>();
 
-    // Strategy 1: Direct Category Query for Self-Referential / Identity Inquiries
-    // This is 100% resilient against typos (e.g. "whta is my name", "who am i")
-    if (evaluation.reason === 'self_referential') {
-      try {
-        const { data: directMemories, error: directErr } = await supabase
-          .from('user_memory_longterm')
-          .select('category, title, value')
-          .eq('user_id', userId)
-          .in('category', ['Profile', 'Business', 'Preference', 'General'])
-          .order('updated_at', { ascending: false })
-          .limit(maxItems);
+    const addFact = (category: string, title: string, value: string) => {
+      const normalized = (value || '').trim().toLowerCase();
+      if (!normalized || seenValues.has(normalized)) return;
+      seenValues.add(normalized);
+      retrievedFacts.push(`• [${category || 'General'}] ${title ? `${title}: ` : ''}${value.trim()}`);
+    };
 
-        if (!directErr && Array.isArray(directMemories) && directMemories.length > 0) {
-          for (const m of directMemories) {
-            if (m.title && m.value) {
-              retrievedFacts.push(`• [${m.category || 'Profile'}] ${m.title}: ${m.value}`);
-            }
+    // 1. Core Saved Facts from user_memory_longterm (Persistent cross-chat memory)
+    try {
+      const { data: directMemories, error: directErr } = await supabaseAdmin
+        .from('user_memory_longterm')
+        .select('category, title, value')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
+        .limit(maxItems);
+
+      if (!directErr && Array.isArray(directMemories) && directMemories.length > 0) {
+        for (const m of directMemories) {
+          if (m.value) {
+            addFact(m.category, m.title, m.value);
           }
         }
-      } catch (e: any) {
-        console.warn('[MemoryRetriever] Direct memory query skipped:', e.message);
       }
+    } catch (e: any) {
+      console.warn('[MemoryRetriever] Core memory query skipped:', e.message);
     }
 
-    // Strategy 2: Targeted Full-Text Search for specific search terms
-    if (evaluation.searchQuery && retrievedFacts.length < maxItems) {
+    // 2. Targeted Full-Text Search if message has specific search keywords
+    const trimmedMsg = (message || '').trim();
+    if (trimmedMsg.length >= 3 && retrievedFacts.length < maxItems) {
       try {
-        // Clean query to alphanumeric terms to prevent tsquery syntax errors
-        const cleanQuery = evaluation.searchQuery.replace(/[^a-zA-Z0-9\s]/g, ' ').trim();
-        if (cleanQuery.length > 2) {
-          const { data: ftsMatches, error: ftsErr } = await supabase.rpc('search_memory_longterm_fts', {
-            search_query: cleanQuery,
+        const cleanQuery = trimmedMsg.replace(/[^a-zA-Z0-9\s]/g, ' ').trim();
+        const words = cleanQuery.split(/\s+/).filter(w => w.length > 2);
+        if (words.length > 0) {
+          const searchTerm = words.slice(0, 3).join(' ');
+          const { data: ftsMatches, error: ftsErr } = await supabaseAdmin.rpc('search_memory_longterm_fts', {
+            search_query: searchTerm,
             user_id_filter: userId,
-            max_results: maxItems - retrievedFacts.length
+            max_results: 5
           });
 
           if (!ftsErr && Array.isArray(ftsMatches) && ftsMatches.length > 0) {
             for (const m of ftsMatches) {
-              if (m.title && m.value && !retrievedFacts.some(f => f.includes(m.title))) {
-                retrievedFacts.push(`• [${m.category || 'Profile'}] ${m.title}: ${m.value}`);
+              if (m.value) {
+                addFact(m.category, m.title, m.value);
               }
             }
           }
@@ -86,18 +87,17 @@ export class MemoryRetriever {
       }
     }
 
-    // Strategy 2: Category-Scoped Summaries for domain tasks (e.g. design preferences when building website)
-    if (retrievedFacts.length < maxItems && evaluation.targetCategories.length > 0) {
+    // 3. Category Summaries (if any exist in memory_summaries)
+    if (retrievedFacts.length < maxItems) {
       try {
-        const { data: summaryRows, error: sumErr } = await supabase
+        const { data: summaryRows } = await supabaseAdmin
           .from('memory_summaries')
           .select('category, summary')
           .eq('user_id', userId)
-          .in('category', evaluation.targetCategories)
           .order('updated_at', { ascending: false })
           .limit(2);
 
-        if (!sumErr && Array.isArray(summaryRows) && summaryRows.length > 0) {
+        if (Array.isArray(summaryRows) && summaryRows.length > 0) {
           const LABELS: Record<string, string> = {
             overview: 'Overview',
             current_projects: 'Active Project',
@@ -107,27 +107,25 @@ export class MemoryRetriever {
           };
 
           for (const row of summaryRows) {
-            if (row.summary && !retrievedFacts.some(f => f.includes(row.summary.slice(0, 20)))) {
-              const label = LABELS[row.category] || row.category;
-              retrievedFacts.push(`• [${label}] ${row.summary}`);
+            if (row.summary) {
+              const label = LABELS[row.category] || row.category || 'Context';
+              addFact('Summary', label, row.summary);
             }
           }
         }
-      } catch (e: any) {
-        console.warn('[MemoryRetriever] Category summary fetch skipped:', e.message);
-      }
+      } catch {}
     }
 
-    // Strategy 3: Check knowledge documents if query explicitly mentions documents or notes
-    if (retrievedFacts.length === 0 && /\b(document|note|docs|pdf|knowledge|file)\b/i.test(message)) {
+    // 4. Knowledge documents fallback if query explicitly asks about documents
+    if (/\b(document|note|docs|pdf|knowledge|file)\b/i.test(trimmedMsg)) {
       try {
-        const { data: docs } = await supabase.rpc('search_knowledge_memory_fts', {
-          search_query: message,
+        const { data: docs } = await supabaseAdmin.rpc('search_knowledge_memory_fts', {
+          search_query: trimmedMsg,
           user_id_filter: userId,
           max_results: 1
         });
         if (Array.isArray(docs) && docs.length > 0 && docs[0]?.content) {
-          retrievedFacts.push(`• [Document] ${docs[0].content.slice(0, 200)}`);
+          addFact('Document', 'Relevant Note', docs[0].content.slice(0, 200));
         }
       } catch {}
     }
@@ -136,27 +134,21 @@ export class MemoryRetriever {
       return '';
     }
 
-    // Assemble ultra-lean block respecting token budget
-    let block = 'RELEVANT USER CONTEXT (use only if directly relevant to user request):\n';
-    let charBudget = maxTokens * 4; // ~4 chars per token
-    let currentChars = block.length;
+    // Assemble clean block respecting token budget
+    const blockHeader = 'USER SAVED MEMORIES (Personal facts & context remembered across chats):\n';
+    const charBudget = maxTokens * 4; // ~4 chars per token
+    let currentChars = blockHeader.length;
 
     const includedLines: string[] = [];
     for (const fact of retrievedFacts) {
       const line = fact.trim();
-      if (currentChars + line.length + 1 > charBudget) {
-        // Truncate fact if budget reached
-        const allowed = charBudget - currentChars - 10;
-        if (allowed > 30) {
-          includedLines.push(line.slice(0, allowed) + '…');
-        }
-        break;
-      }
+      if (currentChars + line.length + 1 > charBudget) break;
       includedLines.push(line);
       currentChars += line.length + 1;
     }
 
     if (includedLines.length === 0) return '';
-    return `\n\n${block}${includedLines.join('\n')}\n`;
+
+    return `\n\n${blockHeader}${includedLines.join('\n')}\nMEMORY GUIDELINES:\n- You remember the above facts about the user across conversations.\n- When the user asks about their identity, startup, business, projects, preferences, or past context (e.g. "what's my startup?", "whats its name?", "who am I?"), always answer accurately using their saved facts.\n- Never state that you don't know or don't have records of information that is stored in their saved memories above.\n`;
   }
 }

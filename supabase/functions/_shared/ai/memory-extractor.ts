@@ -86,6 +86,31 @@ export class MemoryExtractor {
           if (/^(not to|no|nothing|that|it|them|this)$/i.test(val)) continue;
 
           const title = typeof rule.title === 'function' ? rule.title(match) : rule.title;
+          
+          // If a business name statement also describes what they build or do, split cleanly
+          if (title === 'Business Name' && /\s+(?:and\s+we\s+(?:build|make|create|do|sell)|which\s+builds)\s+/i.test(val)) {
+            const parts = val.split(/\s+(?:and\s+we\s+(?:build|make|create|do|sell)|which\s+builds)\s+/i);
+            const bName = parts[0]?.trim();
+            const bProd = parts[1]?.trim();
+            if (bName) {
+              facts.push({
+                category: 'Business',
+                title: 'Business Name',
+                value: bName.slice(0, 100),
+                confidence: 1.0
+              });
+            }
+            if (bProd) {
+              facts.push({
+                category: 'Business',
+                title: 'Startup Product / Focus',
+                value: bProd.slice(0, 300),
+                confidence: 1.0
+              });
+            }
+            continue;
+          }
+
           facts.push({
             category: rule.category,
             title: title.slice(0, 100),

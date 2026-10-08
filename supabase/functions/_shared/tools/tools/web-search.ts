@@ -195,6 +195,8 @@ async function searchOpenAI(query: string, apiKey: string, limit = 5): Promise<S
   }
 
   return items;
+}
+
 /**
  * Searches the live web using OpenAI's native Web Search tool via Responses API.
  * Uses GPT-6 Luna model.
