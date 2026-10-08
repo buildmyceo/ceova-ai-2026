@@ -779,7 +779,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                 <div className="data-controls-view">
                                     <div className="settings-section">
                                         <div className="settings-row clickable" onClick={() => setView('memories')}>
-                                            <div className="row-left"><Sparkles size={18} style={{ color: '#c084fc' }} /> <span>Saved info</span></div>
+                                            <div className="row-left"><Sparkles size={18} /> <span>Saved info</span></div>
                                             <div className="row-right"><span className="archive-count">{memories.length} facts</span><ChevronRight size={14} className="chevron" /></div>
                                         </div>
                                         <div className="settings-row clickable" onClick={handleExport}>
