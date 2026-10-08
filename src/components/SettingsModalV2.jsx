@@ -498,7 +498,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                 {view !== 'main' ? (
                                     <button 
                                         className="settings-back-btn" 
-                                        onClick={() => setView('main')}
+                                        onClick={() => setView(view === 'memories' ? 'data-controls' : 'main')}
                                         title="Back"
                                         style={{
                                             background: 'rgba(255, 255, 255, 0.05)',
@@ -638,21 +638,6 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                                 <span>Usage</span>
                                             </div>
                                             <ChevronRight size={14} className="chevron" />
-                                        </div>
-                                        <div className="settings-row clickable" onClick={() => setView('memories')}>
-                                            <div className="row-left">
-                                                <div className="settings-icon-squircle" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.18), rgba(59,130,246,0.15))' }}>
-                                                    <Sparkles size={16} style={{ color: '#c084fc' }} />
-                                                </div>
-                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                    <span>Saved info</span>
-                                                    <span style={{ fontSize: '11px', color: '#71717a' }}>Personalize responses with remembered facts</span>
-                                                </div>
-                                            </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span className="archive-count">{memories.length} facts</span>
-                                                <ChevronRight size={14} className="chevron" />
-                                            </div>
                                         </div>
                                         <div className="settings-row clickable" onClick={() => setView('data-controls')}>
                                             <div className="row-left">
@@ -794,8 +779,8 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                 <div className="data-controls-view">
                                     <div className="settings-section">
                                         <div className="settings-row clickable" onClick={() => setView('memories')}>
-                                            <div className="row-left"><Wand2 size={18} /> <span>Memory</span></div>
-                                            <div className="row-right"><span className="archive-count">{memories.length} entries</span><ChevronRight size={14} className="chevron" /></div>
+                                            <div className="row-left"><Sparkles size={18} style={{ color: '#c084fc' }} /> <span>Saved info</span></div>
+                                            <div className="row-right"><span className="archive-count">{memories.length} facts</span><ChevronRight size={14} className="chevron" /></div>
                                         </div>
                                         <div className="settings-row clickable" onClick={handleExport}>
                                             <div className="row-left"><Download size={18} /> <span>Export data</span></div>
