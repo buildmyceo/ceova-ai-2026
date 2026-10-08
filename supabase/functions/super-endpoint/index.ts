@@ -509,13 +509,14 @@ STRICT RULES:
                             const searchQuery = (message || '')
                                 .replace(/^(?:please\s+)?(?:do\s+a\s+)?(?:research\s+(?:about|on)?|reserch\s+(?:about|on)?|search\s+(?:the\s+web\s+for|for)?|find\s+information\s+about)\s*/i, '')
                                 .trim() || (message || '').trim();
-                            const searchResults = await performWebSearch(searchQuery, 6);
+                            const searchResults = await performWebSearch(message || searchQuery, 6);
                             if (searchResults && searchResults.length > 0) {
                                 webSearchResultsBlock = `\n\nLIVE WEB SEARCH RESULTS (Retrieved from Live Web for: "${searchQuery}"):\n` +
                                     searchResults.map((r, i) => `[${i+1}] Title: ${r.title}\nURL: ${r.url}\nExcerpt: ${r.snippet}\n`).join('\n') +
                                     `\nINSTRUCTIONS FOR USING WEB RESULTS:\n` +
-                                    `• Ground your answer in these live research sources.\n` +
-                                    `• Include clickable markdown links in the format [Source Title](URL) when citing facts, theories, studies, or statistics.\n` +
+                                    `• Thoroughly synthesize and present the real services, core offerings, platform capabilities, technologies, and purpose found in the web results.\n` +
+                                    `• Format your answer with clean headings (e.g. "Core Offerings & Services", "Technical & Infrastructure Setup", "Overview") and bullet points for maximum readability, just like Gemini.\n` +
+                                    `• Include clickable markdown links in the format [Source Title](URL) when citing facts.\n` +
                                     `• Add a structured "### References & Sources" section at the very end listing all consulted sources with clickable links.\n`;
                                 sendEvent({ type: 'status', stage: is_thinking ? 'Deep thinking & synthesizing research...' : 'Synthesizing research results...' });
                             }
