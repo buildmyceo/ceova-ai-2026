@@ -920,56 +920,46 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                     {/* Master Personalization Switch */}
                                     <div className="gemini-master-toggle-card">
                                         <div className="gemini-master-toggle-info">
-                                            <h3>Personalize with saved info</h3>
+                                            <div className="gemini-master-toggle-header">
+                                                <h3>Personalize with saved info</h3>
+                                                <span className={`gemini-status-tag ${isMemoryEnabled ? 'active' : 'paused'}`}>
+                                                    <span className="gemini-status-dot" />
+                                                    {isMemoryEnabled ? 'Active' : 'Paused'}
+                                                </span>
+                                            </div>
                                             <p>When enabled, Ceova references what it remembers about you to deliver tailored, context-rich responses across chats.</p>
                                         </div>
                                         <button
+                                            type="button"
                                             onClick={handleToggleMemoryEnabled}
-                                            className={`toggle-btn ${isMemoryEnabled ? 'active' : ''}`}
-                                            style={{
-                                                width: '42px',
-                                                height: '22px',
-                                                borderRadius: '22px',
-                                                background: isMemoryEnabled ? '#10b981' : '#27272a',
-                                                border: 'none',
-                                                position: 'relative',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.25s ease',
-                                                flexShrink: 0
-                                            }}
-                                            title={isMemoryEnabled ? "Memory enabled" : "Memory paused"}
+                                            className={`ceova-switch ${isMemoryEnabled ? 'active' : ''}`}
+                                            title={isMemoryEnabled ? "Memory enabled — click to pause" : "Memory paused — click to enable"}
+                                            aria-label="Toggle memory personalization"
                                         >
-                                            <div style={{
-                                                width: '18px',
-                                                height: '18px',
-                                                borderRadius: '50%',
-                                                background: '#ffffff',
-                                                position: 'absolute',
-                                                top: '2px',
-                                                left: isMemoryEnabled ? '22px' : '2px',
-                                                transition: 'all 0.25s ease'
-                                            }} />
+                                            <div className="ceova-switch-knob" />
                                         </button>
                                     </div>
 
                                     {/* Manual Add Info Input */}
                                     <div className="gemini-add-bar">
                                         <div className="gemini-add-input-row">
+                                            <Sparkles size={16} className="gemini-add-icon" />
                                             <input
                                                 type="text"
                                                 className="gemini-add-input"
-                                                placeholder="Add something for Ceova to remember (e.g. 'I prefer TypeScript', 'My company is Acme')..."
+                                                placeholder="Add something for Ceova to remember (e.g. 'I prefer TypeScript')..."
                                                 value={newMemoryInput}
                                                 onChange={(e) => setNewMemoryInput(e.target.value)}
                                                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddMemory(); }}
                                                 disabled={isAddingMemory}
                                             />
                                             <button
+                                                type="button"
                                                 className="gemini-add-btn"
                                                 onClick={handleAddMemory}
                                                 disabled={!newMemoryInput.trim() || isAddingMemory}
                                             >
-                                                {isAddingMemory ? <CircleDashed size={14} className="spinning" /> : <Plus size={14} />}
+                                                {isAddingMemory ? <CircleDashed size={14} className="spinning" /> : <Plus size={14} strokeWidth={2.5} />}
                                                 <span>Add info</span>
                                             </button>
                                         </div>
@@ -987,8 +977,10 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                             />
                                             {memorySearchQuery && (
                                                 <button 
+                                                    type="button"
                                                     onClick={() => setMemorySearchQuery("")}
-                                                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0 }}
+                                                    className="gemini-search-clear"
+                                                    title="Clear search"
                                                 >
                                                     <X size={14} />
                                                 </button>
@@ -997,187 +989,173 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
 
                                         <div className="gemini-category-chips">
                                             <button
+                                                type="button"
                                                 className={`gemini-category-chip ${selectedMemoryCategory === 'all' ? 'active' : ''}`}
                                                 onClick={() => setSelectedMemoryCategory('all')}
                                             >
-                                                All ({categoryCounts.all})
+                                                <span>All</span>
+                                                <span className="chip-count">{categoryCounts.all}</span>
                                             </button>
                                             <button
+                                                type="button"
                                                 className={`gemini-category-chip ${selectedMemoryCategory === 'profile' ? 'active' : ''}`}
                                                 onClick={() => setSelectedMemoryCategory('profile')}
                                             >
-                                                Profile ({categoryCounts.profile})
+                                                <span>Profile</span>
+                                                <span className="chip-count">{categoryCounts.profile}</span>
                                             </button>
                                             <button
+                                                type="button"
                                                 className={`gemini-category-chip ${selectedMemoryCategory === 'business' ? 'active' : ''}`}
                                                 onClick={() => setSelectedMemoryCategory('business')}
                                             >
-                                                Work & Projects ({categoryCounts.business})
+                                                <span>Work & Projects</span>
+                                                <span className="chip-count">{categoryCounts.business}</span>
                                             </button>
                                             <button
+                                                type="button"
                                                 className={`gemini-category-chip ${selectedMemoryCategory === 'preference' ? 'active' : ''}`}
                                                 onClick={() => setSelectedMemoryCategory('preference')}
                                             >
-                                                Preferences ({categoryCounts.preference})
+                                                <span>Preferences</span>
+                                                <span className="chip-count">{categoryCounts.preference}</span>
                                             </button>
                                             <button
+                                                type="button"
                                                 className={`gemini-category-chip ${selectedMemoryCategory === 'general' ? 'active' : ''}`}
                                                 onClick={() => setSelectedMemoryCategory('general')}
                                             >
-                                                General ({categoryCounts.general})
+                                                <span>General</span>
+                                                <span className="chip-count">{categoryCounts.general}</span>
                                             </button>
                                         </div>
                                     </div>
 
                                     {/* Fact Cards List */}
                                     {isLoadingMemories ? (
-                                        <div style={{ textAlign: 'center', padding: '36px 0', color: '#94a3b8' }}>
-                                            <CircleDashed size={28} className="spinning" style={{ margin: '0 auto 10px', display: 'block' }} />
+                                        <div className="gemini-saved-loading">
+                                            <CircleDashed size={28} className="spinning" />
                                             <span>Loading saved info...</span>
                                         </div>
                                     ) : filteredMemories.length === 0 ? (
-                                        <div style={{ textAlign: 'center', padding: '40px 20px', background: 'rgba(255,255,255,0.015)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '12px' }}>
-                                            <Sparkles size={32} style={{ color: '#a855f7', margin: '0 auto 10px', display: 'block', opacity: 0.7 }} />
-                                            <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#f1f5f9' }}>
+                                        <div className="gemini-saved-empty">
+                                            <div className="gemini-saved-empty-icon">
+                                                <Sparkles size={24} />
+                                            </div>
+                                            <h4>
                                                 {memorySearchQuery ? 'No matching memories found' : 'No saved info yet'}
                                             </h4>
-                                            <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: '#64748b', maxWidth: '380px', marginInline: 'auto', lineHeight: 1.5 }}>
+                                            <p>
                                                 {memorySearchQuery
                                                     ? `Try a different keyword or switch categories to find what you're looking for.`
                                                     : `Tell Ceova things to remember in chat (e.g. "Remember that I live in NYC") or add facts manually above.`}
                                             </p>
                                         </div>
                                     ) : (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            {filteredMemories.map(mem => (
-                                                <div key={mem.id} className="gemini-fact-card">
-                                                    <div className="gemini-fact-main">
-                                                        <div className="gemini-fact-sparkle">
-                                                            <Sparkles size={14} />
-                                                        </div>
-                                                        <div className="gemini-fact-content">
-                                                            {editingMemoryId === mem.id ? (
-                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', marginTop: '2px' }}>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={editContent}
-                                                                        onChange={(e) => setEditContent(e.target.value)}
-                                                                        style={{
-                                                                            background: 'rgba(0,0,0,0.3)',
-                                                                            border: '1px solid rgba(168,85,247,0.5)',
-                                                                            color: '#ffffff',
-                                                                            borderRadius: '6px',
-                                                                            padding: '6px 10px',
-                                                                            fontSize: '0.86rem',
-                                                                            outline: 'none'
-                                                                        }}
-                                                                        placeholder="Fact detail..."
-                                                                        autoFocus
-                                                                    />
-                                                                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                                                                        <button
-                                                                            onClick={() => setEditingMemoryId(null)}
-                                                                            style={{
-                                                                                background: 'transparent',
-                                                                                border: '1px solid rgba(255,255,255,0.1)',
-                                                                                color: '#94a3b8',
-                                                                                borderRadius: '6px',
-                                                                                padding: '4px 10px',
-                                                                                fontSize: '0.75rem',
-                                                                                cursor: 'pointer'
-                                                                            }}
-                                                                        >
-                                                                            Cancel
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => handleUpdateMemory(mem.id)}
-                                                                            style={{
-                                                                                background: '#3b82f6',
-                                                                                border: 'none',
-                                                                                color: '#ffffff',
-                                                                                borderRadius: '6px',
-                                                                                padding: '4px 12px',
-                                                                                fontSize: '0.75rem',
-                                                                                fontWeight: 600,
-                                                                                cursor: 'pointer'
-                                                                            }}
-                                                                        >
-                                                                            Save
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                <>
-                                                                    <span className="gemini-fact-val">{mem.value}</span>
-                                                                    <div className="gemini-fact-meta">
-                                                                        <span className="gemini-fact-pill">{mem.category || 'General'}</span>
-                                                                        {mem.title && mem.title !== 'Manual Note' && mem.title !== 'Fact' && (
-                                                                            <span>• {mem.title}</span>
-                                                                        )}
-                                                                        <span>• Saved {new Date(mem.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                                                                    </div>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </div>
+                                        <div className="gemini-facts-list">
+                                            {filteredMemories.map(mem => {
+                                                const catLower = (mem.category || 'general').toLowerCase();
+                                                const catClass = catLower.includes('profile') ? 'cat-profile' 
+                                                    : (catLower.includes('business') || catLower.includes('work') || catLower.includes('project')) ? 'cat-business'
+                                                    : catLower.includes('prefer') ? 'cat-preference' : 'cat-general';
 
-                                                    {editingMemoryId !== mem.id && (
-                                                        <div className="gemini-fact-actions">
-                                                            <button
-                                                                onClick={() => {
-                                                                    setEditingMemoryId(mem.id);
-                                                                    setEditContent(mem.value || '');
-                                                                    setEditTitle(mem.title || '');
-                                                                    setEditCategory(mem.category || 'General');
-                                                                }}
-                                                                title="Edit fact"
-                                                            >
-                                                                <Edit2 size={13} />
-                                                            </button>
-                                                            <button
-                                                                className="del"
-                                                                onClick={() => handleDeleteMemory(mem.id)}
-                                                                title="Delete fact"
-                                                            >
-                                                                <Trash2 size={13} />
-                                                            </button>
+                                                return (
+                                                    <div key={mem.id} className="gemini-fact-card">
+                                                        <div className="gemini-fact-main">
+                                                            <div className="gemini-fact-sparkle">
+                                                                <Sparkles size={14} />
+                                                            </div>
+                                                            <div className="gemini-fact-content">
+                                                                {editingMemoryId === mem.id ? (
+                                                                    <div className="gemini-edit-container">
+                                                                        <input
+                                                                            type="text"
+                                                                            value={editContent}
+                                                                            onChange={(e) => setEditContent(e.target.value)}
+                                                                            className="gemini-edit-input"
+                                                                            placeholder="Fact detail..."
+                                                                            autoFocus
+                                                                        />
+                                                                        <div className="gemini-edit-actions">
+                                                                            <button
+                                                                                type="button"
+                                                                                className="gemini-edit-cancel-btn"
+                                                                                onClick={() => setEditingMemoryId(null)}
+                                                                            >
+                                                                                Cancel
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                className="gemini-edit-save-btn"
+                                                                                onClick={() => handleUpdateMemory(mem.id)}
+                                                                            >
+                                                                                Save
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <>
+                                                                        <span className="gemini-fact-val">{mem.value}</span>
+                                                                        <div className="gemini-fact-meta">
+                                                                            <span className={`gemini-fact-pill ${catClass}`}>
+                                                                                {mem.category || 'General'}
+                                                                            </span>
+                                                                            {mem.title && mem.title !== 'Manual Note' && mem.title !== 'Fact' && (
+                                                                                <span className="gemini-fact-title-meta">• {mem.title}</span>
+                                                                            )}
+                                                                            <span className="gemini-fact-date-meta">
+                                                                                • Saved {new Date(mem.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                                            </span>
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                    )}
-                                                </div>
-                                            ))}
+
+                                                        {editingMemoryId !== mem.id && (
+                                                            <div className="gemini-fact-actions">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setEditingMemoryId(mem.id);
+                                                                        setEditContent(mem.value || '');
+                                                                        setEditTitle(mem.title || '');
+                                                                        setEditCategory(mem.category || 'General');
+                                                                    }}
+                                                                    title="Edit fact"
+                                                                >
+                                                                    <Edit2 size={13} />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="del"
+                                                                    onClick={() => handleDeleteMemory(mem.id)}
+                                                                    title="Delete fact"
+                                                                >
+                                                                    <Trash2 size={13} />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     )}
 
                                     {/* Footer info & Clear all */}
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        paddingTop: '12px',
-                                        borderTop: '1px solid rgba(255,255,255,0.06)',
-                                        marginTop: '8px'
-                                    }}>
+                                    <div className="gemini-saved-footer">
                                         <button
+                                            type="button"
+                                            className="gemini-clear-all-btn"
                                             onClick={handleClearAllMemories}
-                                            style={{
-                                                background: 'none',
-                                                border: 'none',
-                                                color: '#64748b',
-                                                cursor: 'pointer',
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '5px',
-                                                fontSize: '0.74rem',
-                                                transition: 'color 0.15s'
-                                            }}
-                                            onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                                            onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
                                         >
-                                            <Trash2 size={13} /> Clear all info
+                                            <Trash2 size={13} />
+                                            <span>Clear all info</span>
                                         </button>
-                                        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                                            🔒 Your saved info is private to your account.
-                                        </span>
+                                        <div className="gemini-privacy-note">
+                                            <Lock size={12} className="gemini-privacy-icon" />
+                                            <span>Your saved info is private to your account.</span>
+                                        </div>
                                     </div>
                                 </div>
                             )}

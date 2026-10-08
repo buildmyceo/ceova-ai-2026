@@ -13,9 +13,8 @@ export interface SearchResultItem {
  */
 async function searchOpenAI(query: string, apiKey: string, limit = 5): Promise<SearchResultItem[]> {
   const items: SearchResultItem[] = [];
-  const lunaModels = ["gpt-6-luna", "gpt-6_6-luna", "gpt-5_6-luna", "gpt-5.6-luna"];
+  const candidateModels = ["gpt-4o-mini", "gpt-4o"];
 
-  // Helper to extract links and citations from content
   const extractItemsFromContent = (content: string, source: string) => {
     if (!content) return;
     const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
@@ -34,12 +33,10 @@ async function searchOpenAI(query: string, apiKey: string, limit = 5): Promise<S
     }
   };
 
-  // 1. Primary: OpenAI Responses API with native web_search tool
-  // This explicitly registers in the OpenAI Dashboard under "Web Searches"
-  for (const model of lunaModels) {
+  for (const model of candidateModels) {
     if (items.length >= limit) break;
     try {
-      const res = await fetch("https://api.openai.com/v1/responses", {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
@@ -47,150 +44,25 @@ async function searchOpenAI(query: string, apiKey: string, limit = 5): Promise<S
         },
         body: JSON.stringify({
           model: model,
-          tools: [{ type: "web_search" }],
-          input: `Perform a comprehensive live web search for: "${query}". Provide the latest accurate information and cite all source URLs.`
+          messages: [
+            {
+              role: "user",
+              content: `Search the web or compile verified live findings for: "${query}". Provide the latest information and cite all sources with Markdown links [Title](URL).`
+            }
+          ],
+          max_completion_tokens: 1500
         }),
         signal: AbortSignal.timeout(12000)
       });
 
       if (res.ok) {
         const data = await res.json();
-        
-        // Extract from output array (annotations, citations, web_search_call outputs)
-        if (Array.isArray(data.output)) {
-          for (const item of data.output) {
-            // Check for annotations inside message content
-            if (item.content && Array.isArray(item.content)) {
-              for (const part of item.content) {
-                if (part.annotations && Array.isArray(part.annotations)) {
-                  for (const ann of part.annotations) {
-                    const url = ann.url_citation?.url || ann.web_search_result?.url || ann.url;
-                    const title = ann.url_citation?.title || ann.web_search_result?.title || ann.title || '';
-                    if (url && !items.some(r => r.url === url) && items.length < limit) {
-                      items.push({
-                        title: title || new URL(url).hostname,
-                        url,
-                        snippet: ann.url_citation?.snippet || ann.snippet || part.text?.slice(0, 200).replace(/\n+/g, ' ').trim() || '',
-                        source: 'openai_responses'
-                      });
-                    }
-                  }
-                }
-                if (part.text) {
-                  extractItemsFromContent(part.text, 'openai_responses');
-                }
-              }
-            }
-
-            // Check for web search tool results directly
-            if (item.type === 'web_search_call' || item.type === 'web_search_output') {
-              const searchResults = item.results || item.web_search_results || [];
-              for (const sr of searchResults) {
-                if (sr.url && !items.some(r => r.url === sr.url) && items.length < limit) {
-                  items.push({
-                    title: sr.title || new URL(sr.url).hostname,
-                    url: sr.url,
-                    snippet: sr.snippet || sr.text || '',
-                    source: 'openai_responses'
-                  });
-                }
-              }
-            }
-          }
-        }
-
-        const textOutput = data.output_text || (typeof data.output === 'string' ? data.output : '');
-        if (textOutput) {
-          extractItemsFromContent(textOutput, 'openai_responses');
-        }
-
-        if (items.length > 0) {
-          return items;
-        }
-
-        // If content was produced with live facts but without discrete markdown links
-        if (textOutput && textOutput.length > 40) {
-          items.push({
-            title: `Live Web Research: ${query.slice(0, 45)}`,
-            url: 'https://openai.com/search',
-            snippet: textOutput.slice(0, 350).replace(/\n+/g, ' ').trim(),
-            source: 'openai_responses'
-          });
-          return items;
-        }
-      } else {
-        const errText = await res.text();
-        console.warn(`[web-search] OpenAI responses API (${model}) status:`, res.status, errText.slice(0, 150));
+        const content = data.choices?.[0]?.message?.content || "";
+        extractItemsFromContent(content, 'openai_search');
+        if (items.length > 0) return items;
       }
     } catch (err: any) {
-      console.warn(`[web-search] OpenAI responses API (${model}) error:`, err?.message || err);
-    }
-  }
-
-  // 2. Secondary: Chat Completions with native web_search tool
-  if (items.length === 0) {
-    for (const model of lunaModels) {
-      if (items.length >= limit) break;
-      try {
-        const res = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: model,
-            tools: [{ type: "web_search" }],
-            messages: [
-              {
-                role: "user",
-                content: `Perform a live web search for: "${query}". Provide the latest accurate findings and all reference URLs formatted as [Source Name](url).`
-              }
-            ],
-            max_completion_tokens: 1500
-          }),
-          signal: AbortSignal.timeout(12000)
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          const choice = data.choices?.[0];
-          const message = choice?.message;
-          const content = message?.content || "";
-          const annotations = message?.annotations || [];
-
-          for (const ann of annotations) {
-            const url = ann.url_citation?.url || ann.web_search_result?.url || ann.url;
-            const title = ann.url_citation?.title || ann.web_search_result?.title || '';
-            if (url && !items.some(r => r.url === url) && items.length < limit) {
-              items.push({
-                title: title || new URL(url).hostname,
-                url,
-                snippet: ann.url_citation?.snippet || content.slice(0, 200).replace(/\n+/g, ' ').trim(),
-                source: 'openai_chat_search'
-              });
-            }
-          }
-
-          extractItemsFromContent(content, 'openai_chat_search');
-
-          if (items.length === 0 && content.length > 40) {
-            items.push({
-              title: `Live Web Research: ${query.slice(0, 45)}`,
-              url: 'https://openai.com/search',
-              snippet: content.slice(0, 350).replace(/\n+/g, ' ').trim(),
-              source: 'openai_chat_search'
-            });
-          }
-
-          if (items.length > 0) return items;
-        } else {
-          const errText = await res.text();
-          console.warn(`[web-search] OpenAI chat search (${model}) status:`, res.status, errText.slice(0, 150));
-        }
-      } catch (err: any) {
-        console.warn(`[web-search] OpenAI chat search (${model}) error:`, err?.message || err);
-      }
+      console.warn(`[web-search] OpenAI search (${model}) error:`, err?.message || err);
     }
   }
 
@@ -198,119 +70,130 @@ async function searchOpenAI(query: string, apiKey: string, limit = 5): Promise<S
 }
 
 /**
- * Searches the live web using OpenAI's native Web Search tool via Responses API.
- * Uses GPT-6 Luna model.
+ * Searches the live web using Tavily API (primary), DuckDuckGo (fallback), and OpenAI (tertiary).
  */
 export async function performWebSearch(query: string, limit = 5): Promise<SearchResultItem[]> {
   const cleanQuery = (query || '').trim();
   if (!cleanQuery) return [];
 
   const results: SearchResultItem[] = [];
+  const tavilyKey = Deno.env.get("TAVILY_API_KEY");
   const openAiKey = Deno.env.get("OPEN_AI") || Deno.env.get("OPENAI_API_KEY");
 
-  if (!openAiKey) {
-    console.warn("[web-search] Missing OPEN_AI API key.");
-    return [];
+  // 1. Primary: Tavily AI Search (fast, real-time, built for agentic search)
+  if (tavilyKey) {
+    try {
+      const res = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          api_key: tavilyKey,
+          query: cleanQuery,
+          search_depth: "basic",
+          include_answer: true,
+          max_results: Math.min(limit, 8)
+        }),
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.results && Array.isArray(data.results) && data.results.length > 0) {
+          for (const item of data.results) {
+            if (item.url && !results.some(r => r.url === item.url)) {
+              results.push({
+                title: item.title || new URL(item.url).hostname,
+                url: item.url,
+                snippet: item.content || item.snippet || '',
+                source: 'tavily'
+              });
+            }
+          }
+          if (results.length > 0) {
+            return results.slice(0, limit);
+          }
+        }
+      } else {
+        const errText = await res.text();
+        console.warn(`[web-search] Tavily API error status ${res.status}:`, errText.slice(0, 150));
+      }
+    } catch (err: any) {
+      console.warn("[web-search] Tavily search error:", err?.message || err);
+    }
   }
 
+  // 2. Secondary: DuckDuckGo Search (zero authentication key required, always available)
   try {
-    const res = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
+    const ddgRes = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQuery)}`, {
       headers: {
-        "Authorization": `Bearer ${openAiKey}`,
-        "Content-Type": "application/json"
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
       },
-      body: JSON.stringify({
-        model: "gpt-6-luna",
-        tools: [{ type: "web_search" }],
-        input: `Perform a comprehensive live web search for: "${cleanQuery}". Provide the latest accurate information and cite all source URLs.`
-      }),
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(8000)
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      
-      // Helper to extract markdown links from raw text if needed
-      const extractFromText = (text: string) => {
-        const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
-        let m: RegExpExecArray | null;
-        while ((m = linkRegex.exec(text)) !== null && results.length < limit) {
-          const title = m[1].trim();
-          const url = m[2].trim();
-          if (!results.some(r => r.url === url)) {
+    if (ddgRes.ok) {
+      const html = await ddgRes.text();
+      // Match result blocks
+      const linkRegex = /<a class="result__url"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+      let match: RegExpExecArray | null;
+      while ((match = linkRegex.exec(html)) !== null && results.length < limit) {
+        let rawUrl = match[1];
+        const uddgMatch = rawUrl.match(/[?&]uddg=([^&]+)/);
+        if (uddgMatch) {
+          try { rawUrl = decodeURIComponent(uddgMatch[1]); } catch {}
+        }
+        if (!rawUrl.startsWith('http')) rawUrl = 'https://' + rawUrl;
+
+        const title = match[2].replace(/<[^>]+>/g, '').trim();
+        const snippet = match[3].replace(/<[^>]+>/g, '').trim();
+
+        if (rawUrl && !results.some(r => r.url === rawUrl)) {
+          results.push({
+            title: title || new URL(rawUrl).hostname,
+            url: rawUrl,
+            snippet,
+            source: 'duckduckgo'
+          });
+        }
+      }
+
+      if (results.length === 0) {
+        const altRegex = /<a[^>]+class="result__snippet"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+        while ((match = altRegex.exec(html)) !== null && results.length < limit) {
+          let rawUrl = match[1];
+          const uddgMatch = rawUrl.match(/[?&]uddg=([^&]+)/);
+          if (uddgMatch) {
+            try { rawUrl = decodeURIComponent(uddgMatch[1]); } catch {}
+          }
+          if (!rawUrl.startsWith('http')) rawUrl = 'https://' + rawUrl;
+          const snippet = match[2].replace(/<[^>]+>/g, '').trim();
+          if (rawUrl && !results.some(r => r.url === rawUrl)) {
             results.push({
-              title,
-              url,
-              snippet: text.slice(Math.max(0, m.index - 50), m.index + 120).replace(/\n+/g, ' ').trim(),
-              source: 'openai_responses'
+              title: new URL(rawUrl).hostname,
+              url: rawUrl,
+              snippet,
+              source: 'duckduckgo'
             });
           }
         }
-      };
-
-      if (Array.isArray(data.output)) {
-        for (const item of data.output) {
-          // Extract from annotations
-          if (item.content && Array.isArray(item.content)) {
-            for (const part of item.content) {
-              if (part.annotations && Array.isArray(part.annotations)) {
-                for (const ann of part.annotations) {
-                  const url = ann.url_citation?.url || ann.web_search_result?.url || ann.url;
-                  const title = ann.url_citation?.title || ann.web_search_result?.title || '';
-                  if (url && !results.some(r => r.url === url) && results.length < limit) {
-                    results.push({
-                      title: title || new URL(url).hostname,
-                      url,
-                      snippet: ann.url_citation?.snippet || ann.snippet || part.text?.slice(0, 200).replace(/\n+/g, ' ').trim() || '',
-                      source: 'openai_responses'
-                    });
-                  }
-                }
-              }
-              if (part.text) {
-                extractFromText(part.text);
-              }
-            }
-          }
-
-          // Extract from web_search_call outputs directly
-          if (item.type === 'web_search_call' || item.type === 'web_search_output') {
-            const searchResults = item.results || item.web_search_results || [];
-            for (const sr of searchResults) {
-              if (sr.url && !results.some(r => r.url === sr.url) && results.length < limit) {
-                results.push({
-                  title: sr.title || new URL(sr.url).hostname,
-                  url: sr.url,
-                  snippet: sr.snippet || sr.text || '',
-                  source: 'openai_responses'
-                });
-              }
-            }
-          }
-        }
       }
 
-      const textOutput = data.output_text || (typeof data.output === 'string' ? data.output : '');
-      if (textOutput) {
-        extractFromText(textOutput);
+      if (results.length > 0) {
+        return results.slice(0, limit);
       }
-
-      // If we got raw text but no explicit sources, provide it as a single result
-      if (results.length === 0 && textOutput && textOutput.length > 40) {
-        results.push({
-          title: `Live Web Research: ${cleanQuery.slice(0, 45)}`,
-          url: 'https://openai.com/search',
-          snippet: textOutput.slice(0, 350).replace(/\n+/g, ' ').trim(),
-          source: 'openai_responses'
-        });
-      }
-    } else {
-      const errText = await res.text();
-      console.warn(`[web-search] OpenAI responses API error:`, res.status, errText.slice(0, 200));
     }
   } catch (err: any) {
-    console.warn(`[web-search] OpenAI responses API error:`, err?.message || err);
+    console.warn("[web-search] DuckDuckGo fallback error:", err?.message || err);
+  }
+
+  // 3. Tertiary: OpenAI Synthesis Search
+  if (openAiKey) {
+    const aiResults = await searchOpenAI(cleanQuery, openAiKey, limit);
+    if (aiResults && aiResults.length > 0) {
+      return aiResults.slice(0, limit);
+    }
   }
 
   return results.slice(0, limit);
