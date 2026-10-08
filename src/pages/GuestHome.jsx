@@ -67,13 +67,6 @@ export default function GuestHome() {
     const [inputPrompt, setInputPrompt] = useState('');
     const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
     const [selectedModel, setSelectedModel] = useState('CEOVA 3.0 Executive');
-    const [authModalMode, setAuthModalMode] = useState(null); // 'login' | 'signup' | null
-    const [authError, setAuthError] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [fullName, setFullName] = useState('');
-    const [isAuthLoading, setIsAuthLoading] = useState(false);
-
     const inputRef = useRef(null);
     const dropdownRef = useRef(null);
 
@@ -95,8 +88,7 @@ export default function GuestHome() {
         } else if (inputPrompt.trim()) {
             localStorage.setItem('pending_guest_prompt', inputPrompt.trim());
         }
-        setAuthModalMode('login');
-        setAuthError('');
+        navigate('/login');
     };
 
     const handleKeyDown = (e) => {
@@ -105,87 +97,6 @@ export default function GuestHome() {
             if (inputPrompt.trim()) {
                 handleTriggerAuth(inputPrompt.trim());
             }
-        }
-    };
-
-    // Google Sign-In with web/Tauri compatibility
-    const handleGoogleLogin = async () => {
-        setAuthError('Connecting to Google...');
-        setIsAuthLoading(true);
-        try {
-            const isTauri = typeof window !== 'undefined' && (
-                window.__TAURI__ !== undefined ||
-                window.__TAURI_INTERNALS__ !== undefined
-            );
-
-            if (isTauri && !import.meta.env.DEV) {
-                const { data, error } = await supabase.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: 'ceova://auth/callback',
-                        skipBrowserRedirect: true,
-                    }
-                });
-
-                if (error) throw error;
-                const { open } = await import('@tauri-apps/plugin-shell');
-                await open(data.url);
-                setAuthError('✓ Browser opened. Complete sign-in there.');
-            } else {
-                const { error } = await supabase.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: APP_CONFIG.getRedirectUrl('/auth/callback')
-                    }
-                });
-                if (error) throw error;
-            }
-        } catch (e) {
-            setAuthError(e.message || 'Failed to connect to Google');
-        } finally {
-            setIsAuthLoading(false);
-        }
-    };
-
-    // Email Sign In / Sign Up
-    const handleEmailAuthSubmit = async (e) => {
-        e.preventDefault();
-        setAuthError('');
-        setIsAuthLoading(true);
-
-        try {
-            if (authModalMode === 'login') {
-                if (!email || !password) {
-                    setAuthError('Please enter both email and password.');
-                    setIsAuthLoading(false);
-                    return;
-                }
-                const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-                if (error) throw error;
-                if (data?.session) {
-                    navigate('/dashboard');
-                }
-            } else {
-                if (!fullName || !email || !password) {
-                    setAuthError('Please fill in all fields.');
-                    setIsAuthLoading(false);
-                    return;
-                }
-                const { data, error } = await supabase.auth.signUp({
-                    email,
-                    password,
-                    options: {
-                        emailRedirectTo: window.location.origin,
-                        data: { full_name: fullName }
-                    }
-                });
-                if (error) throw error;
-                setAuthError('Verification email sent! Check your inbox.');
-            }
-        } catch (err) {
-            setAuthError(err.message || 'Authentication failed');
-        } finally {
-            setIsAuthLoading(false);
         }
     };
 
@@ -264,12 +175,13 @@ export default function GuestHome() {
                             <div className="guest-promo-desc">
                                 Log in to get answers based on saved chats, plus create images and upload files.
                             </div>
-                            <button 
+                            <Link 
+                                to="/login"
                                 className="guest-promo-login-btn"
-                                onClick={() => { setAuthModalMode('login'); setAuthError(''); }}
+                                style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             >
                                 Log in
-                            </button>
+                            </Link>
                         </div>
                     )}
 
@@ -352,18 +264,20 @@ export default function GuestHome() {
                     </div>
 
                     <div className="guest-topbar-right">
-                        <button 
+                        <Link 
+                            to="/login"
                             className="guest-login-btn-top"
-                            onClick={() => { setAuthModalMode('login'); setAuthError(''); }}
+                            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                             Log in
-                        </button>
-                        <button 
+                        </Link>
+                        <Link 
+                            to="/signup"
                             className="guest-signup-btn-top"
-                            onClick={() => { setAuthModalMode('signup'); setAuthError(''); }}
+                            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                             Sign up for free
-                        </button>
+                        </Link>
                     </div>
                 </header>
 
@@ -439,109 +353,6 @@ export default function GuestHome() {
                     <Link to="/legal/privacy-policy">Learn more</Link>
                 </footer>
             </main>
-
-            {/* Auth Modal */}
-            {authModalMode && (
-                <div className="guest-modal-backdrop" onClick={() => setAuthModalMode(null)}>
-                    <div className="guest-modal-dialog" onClick={(e) => e.stopPropagation()}>
-                        <button 
-                            className="guest-modal-close-btn"
-                            onClick={() => setAuthModalMode(null)}
-                        >
-                            <X size={20} />
-                        </button>
-
-                        <img src="/ceova logo dark.png" alt="CEOVA" className="guest-modal-logo" />
-
-                        <h2 className="guest-modal-title">
-                            {authModalMode === 'login' ? 'Welcome back to CEOVA' : 'Create your CEOVA account'}
-                        </h2>
-                        <p className="guest-modal-subtitle">
-                            {authModalMode === 'login' 
-                                ? 'Sign in to save your conversation, connect Gmail & Calendar, and unlock full executive powers.' 
-                                : 'Get started with your free AI executive assistant in seconds.'}
-                        </p>
-
-                        {authError && (
-                            <div className="guest-modal-error">
-                                {authError}
-                            </div>
-                        )}
-
-                        {/* Google Sign In */}
-                        <button 
-                            className="guest-modal-google-btn"
-                            onClick={handleGoogleLogin}
-                            disabled={isAuthLoading}
-                        >
-                            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="18" height="18" />
-                            Continue with Google
-                        </button>
-
-                        <div className="guest-modal-divider">
-                            <span>or</span>
-                        </div>
-
-                        {/* Email Form */}
-                        <form className="guest-modal-form" onSubmit={handleEmailAuthSubmit}>
-                            {authModalMode === 'signup' && (
-                                <input 
-                                    type="text" 
-                                    className="guest-modal-input"
-                                    placeholder="Full Name"
-                                    required
-                                    value={fullName}
-                                    onChange={(e) => setFullName(e.target.value)}
-                                />
-                            )}
-                            <input 
-                                type="email" 
-                                className="guest-modal-input"
-                                placeholder="Email address"
-                                required
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                            />
-                            <input 
-                                type="password" 
-                                className="guest-modal-input"
-                                placeholder="Password"
-                                required
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            />
-
-                            <button 
-                                type="submit" 
-                                className="guest-modal-submit-btn"
-                                disabled={isAuthLoading}
-                            >
-                                {isAuthLoading 
-                                    ? 'Processing...' 
-                                    : authModalMode === 'login' ? 'Sign in with email' : 'Sign up with email'}
-                            </button>
-                        </form>
-
-                        <div className="guest-modal-footer-switch">
-                            {authModalMode === 'login' ? (
-                                <>
-                                    Don't have an account?{' '}
-                                    <button onClick={() => { setAuthModalMode('signup'); setAuthError(''); }}>
-                                        Sign up
-                                    </button>
-                                </>
-                            ) : (
-                                <>
-                                    Already have an account?{' '}
-                                    <button onClick={() => { setAuthModalMode('login'); setAuthError(''); }}>
-                                        Sign in
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
