@@ -110,12 +110,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
     const [editingMemoryId, setEditingMemoryId] = useState(null);
     const [editContent, setEditContent] = useState("");
     const [editTitle, setEditTitle] = useState("");
-    const [editCategory, setEditCategory] = useState("General");
-    const [newMemoryInput, setNewMemoryInput] = useState("");
-    const [memorySearchQuery, setMemorySearchQuery] = useState("");
-    const [selectedMemoryCategory, setSelectedMemoryCategory] = useState("all");
     const [isLoadingMemories, setIsLoadingMemories] = useState(false);
-    const [isAddingMemory, setIsAddingMemory] = useState(false);
     const [isMemoryEnabled, setIsMemoryEnabled] = useState(() => {
         try {
             return localStorage.getItem('ceova_memory_enabled') !== 'false';
@@ -323,53 +318,6 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
         }
     };
 
-    const handleAddMemory = async () => {
-        if (!newMemoryInput.trim()) return;
-        setIsAddingMemory(true);
-        try {
-            // Check quota first
-            const { data: usageData, error: usageError } = await supabase.rpc('get_usage_and_limits', { p_user_id: userId });
-            if (!usageError && usageData) {
-                if (usageData.usage.memory_used >= usageData.limits.memory_limit) {
-                    alert("Memory limit reached. Please delete old memories or upgrade your plan to add new ones.");
-                    setIsAddingMemory(false);
-                    return;
-                }
-            }
-
-            const val = newMemoryInput.trim();
-            let cat = 'General';
-            let title = 'Saved Note';
-            if (/prefer|always use|never use|like/i.test(val)) {
-                cat = 'Preference';
-                title = 'User Preference';
-            } else if (/company|business|work|startup|role|project/i.test(val)) {
-                cat = 'Business';
-                title = 'Work & Business';
-            } else if (/name|live|from|location|city/i.test(val)) {
-                cat = 'Profile';
-                title = 'Profile';
-            }
-
-            const { error } = await supabase
-                .from('user_memory_longterm')
-                .insert({
-                    user_id: userId,
-                    category: cat,
-                    title: title,
-                    value: val,
-                    confidence: 1.0
-                });
-            if (error) throw error;
-            
-            setNewMemoryInput("");
-            setIsAddingMemory(false);
-            fetchMemories();
-        } catch (e) { 
-            console.error("Add Memory Error:", e);
-            setIsAddingMemory(false); 
-        }
-    };
 
     const handleDeleteMemory = async (id) => {
         try {
@@ -412,28 +360,6 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
         } catch (e) { console.error('Update Memory Error:', e); }
     };
 
-    const filteredMemories = useMemo(() => {
-        return memories.filter(m => {
-            const matchesCategory = selectedMemoryCategory === 'all' || 
-                (m.category && m.category.toLowerCase().includes(selectedMemoryCategory.toLowerCase()));
-            const matchesSearch = !memorySearchQuery.trim() || 
-                (m.value && m.value.toLowerCase().includes(memorySearchQuery.toLowerCase())) ||
-                (m.title && m.title.toLowerCase().includes(memorySearchQuery.toLowerCase()));
-            return matchesCategory && matchesSearch;
-        });
-    }, [memories, selectedMemoryCategory, memorySearchQuery]);
-
-    const categoryCounts = useMemo(() => {
-        const counts = { all: memories.length, profile: 0, business: 0, preference: 0, general: 0 };
-        memories.forEach(m => {
-            const cat = (m.category || 'General').toLowerCase();
-            if (cat.includes('profile')) counts.profile++;
-            else if (cat.includes('business') || cat.includes('work')) counts.business++;
-            else if (cat.includes('preference')) counts.preference++;
-            else counts.general++;
-        });
-        return counts;
-    }, [memories]);
 
     const handleExport = async () => {
         try {
@@ -940,120 +866,25 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                         </button>
                                     </div>
 
-                                    {/* Manual Add Info Input */}
-                                    <div className="gemini-add-bar">
-                                        <div className="gemini-add-input-row">
-                                            <Sparkles size={16} className="gemini-add-icon" />
-                                            <input
-                                                type="text"
-                                                className="gemini-add-input"
-                                                placeholder="Add something for Ceova to remember (e.g. 'I prefer TypeScript')..."
-                                                value={newMemoryInput}
-                                                onChange={(e) => setNewMemoryInput(e.target.value)}
-                                                onKeyDown={(e) => { if (e.key === 'Enter') handleAddMemory(); }}
-                                                disabled={isAddingMemory}
-                                            />
-                                            <button
-                                                type="button"
-                                                className="gemini-add-btn"
-                                                onClick={handleAddMemory}
-                                                disabled={!newMemoryInput.trim() || isAddingMemory}
-                                            >
-                                                {isAddingMemory ? <CircleDashed size={14} className="spinning" /> : <Plus size={14} strokeWidth={2.5} />}
-                                                <span>Add info</span>
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Search & Category Filter */}
-                                    <div className="gemini-search-filter-row">
-                                        <div className="gemini-search-box">
-                                            <Search size={15} />
-                                            <input
-                                                type="text"
-                                                placeholder="Search saved info..."
-                                                value={memorySearchQuery}
-                                                onChange={(e) => setMemorySearchQuery(e.target.value)}
-                                            />
-                                            {memorySearchQuery && (
-                                                <button 
-                                                    type="button"
-                                                    onClick={() => setMemorySearchQuery("")}
-                                                    className="gemini-search-clear"
-                                                    title="Clear search"
-                                                >
-                                                    <X size={14} />
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        <div className="gemini-category-chips">
-                                            <button
-                                                type="button"
-                                                className={`gemini-category-chip ${selectedMemoryCategory === 'all' ? 'active' : ''}`}
-                                                onClick={() => setSelectedMemoryCategory('all')}
-                                            >
-                                                <span>All</span>
-                                                <span className="chip-count">{categoryCounts.all}</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`gemini-category-chip ${selectedMemoryCategory === 'profile' ? 'active' : ''}`}
-                                                onClick={() => setSelectedMemoryCategory('profile')}
-                                            >
-                                                <span>Profile</span>
-                                                <span className="chip-count">{categoryCounts.profile}</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`gemini-category-chip ${selectedMemoryCategory === 'business' ? 'active' : ''}`}
-                                                onClick={() => setSelectedMemoryCategory('business')}
-                                            >
-                                                <span>Work & Projects</span>
-                                                <span className="chip-count">{categoryCounts.business}</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`gemini-category-chip ${selectedMemoryCategory === 'preference' ? 'active' : ''}`}
-                                                onClick={() => setSelectedMemoryCategory('preference')}
-                                            >
-                                                <span>Preferences</span>
-                                                <span className="chip-count">{categoryCounts.preference}</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`gemini-category-chip ${selectedMemoryCategory === 'general' ? 'active' : ''}`}
-                                                onClick={() => setSelectedMemoryCategory('general')}
-                                            >
-                                                <span>General</span>
-                                                <span className="chip-count">{categoryCounts.general}</span>
-                                            </button>
-                                        </div>
-                                    </div>
-
                                     {/* Fact Cards List */}
                                     {isLoadingMemories ? (
                                         <div className="gemini-saved-loading">
                                             <CircleDashed size={28} className="spinning" />
                                             <span>Loading saved info...</span>
                                         </div>
-                                    ) : filteredMemories.length === 0 ? (
+                                    ) : memories.length === 0 ? (
                                         <div className="gemini-saved-empty">
                                             <div className="gemini-saved-empty-icon">
                                                 <Sparkles size={24} />
                                             </div>
-                                            <h4>
-                                                {memorySearchQuery ? 'No matching memories found' : 'No saved info yet'}
-                                            </h4>
+                                            <h4>No saved info yet</h4>
                                             <p>
-                                                {memorySearchQuery
-                                                    ? `Try a different keyword or switch categories to find what you're looking for.`
-                                                    : `Tell Ceova things to remember in chat (e.g. "Remember that I live in NYC") or add facts manually above.`}
+                                                Tell Ceova things to remember in chat (e.g. &quot;Remember that I live in NYC&quot;) and they will appear here automatically.
                                             </p>
                                         </div>
                                     ) : (
                                         <div className="gemini-facts-list">
-                                            {filteredMemories.map(mem => {
+                                            {memories.map(mem => {
                                                 const catLower = (mem.category || 'general').toLowerCase();
                                                 const catClass = catLower.includes('profile') ? 'cat-profile' 
                                                     : (catLower.includes('business') || catLower.includes('work') || catLower.includes('project')) ? 'cat-business'
@@ -1120,7 +951,6 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                                                         setEditingMemoryId(mem.id);
                                                                         setEditContent(mem.value || '');
                                                                         setEditTitle(mem.title || '');
-                                                                        setEditCategory(mem.category || 'General');
                                                                     }}
                                                                     title="Edit fact"
                                                                 >
