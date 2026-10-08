@@ -465,11 +465,31 @@ function ClientCompressionWidget({ meta }) {
 }
 
 // ── MessageItem component ────────────────────────────────────────────────────
-function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onPreviewWebsite, onPreviewDriveFile }) {
+function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onPreviewWebsite, onPreviewDriveFile, onOpenSettings }) {
   const [showActions, setShowActions] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [hasProceeded, setHasProceeded] = useState(false);
+  const [showMemoryPopover, setShowMemoryPopover] = useState(false);
   const hideTimerRef = useRef(null);
+
+  const memorySavedFacts = useMemo(() => {
+    if (isUser) return [];
+    const events = msg.memoryEvents || msg.attachments?.find?.(a => a.type === 'memory_events')?.data || [];
+    const saved = events.filter(e => e.action === 'saved' && Array.isArray(e.memories));
+    const allFacts = [];
+    saved.forEach(s => {
+      s.memories.forEach(m => {
+        if (m && m.value) allFacts.push(m);
+      });
+    });
+    return allFacts;
+  }, [isUser, msg.memoryEvents, msg.attachments]);
+
+  const hasMemoryUsed = useMemo(() => {
+    if (isUser) return false;
+    const events = msg.memoryEvents || msg.attachments?.find?.(a => a.type === 'memory_events')?.data || [];
+    return events.some(e => e.action === 'used');
+  }, [isUser, msg.memoryEvents, msg.attachments]);
 
   let rawText = msg.text || '';
   let actionMeta = null;
@@ -979,6 +999,75 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
                 {actionMeta && actionMeta.type === 'client_media_converter' && (
                   <ClientMediaConverterWidget meta={actionMeta} />
                 )}
+                {/* ── Google Gemini-style Memory Badges ── */}
+                {!isUser && (memorySavedFacts.length > 0 || hasMemoryUsed) && (
+                  <div className="gemini-memory-bar">
+                    {memorySavedFacts.length > 0 && (
+                      <div style={{ position: 'relative' }}>
+                        <div 
+                          className="gemini-memory-chip saved"
+                          onClick={(e) => { e.stopPropagation(); setShowMemoryPopover(prev => !prev); }}
+                          title="Click to view what was remembered"
+                        >
+                          <Sparkles size={13} className="chip-sparkle" />
+                          <span>Memory updated</span>
+                          {memorySavedFacts.length === 1 && (
+                            <span style={{ opacity: 0.75, maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              • {memorySavedFacts[0].value}
+                            </span>
+                          )}
+                        </div>
+
+                        {showMemoryPopover && (
+                          <div className="gemini-memory-popover" onClick={(e) => e.stopPropagation()}>
+                            <div className="popover-header">
+                              <div className="popover-title">
+                                <Sparkles size={14} style={{ color: '#c084fc' }} />
+                                <span>Saved to your info</span>
+                              </div>
+                              <button 
+                                className="popover-close" 
+                                onClick={() => setShowMemoryPopover(false)}
+                                title="Close"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                            <ul className="popover-facts">
+                              {memorySavedFacts.map((fact, fIdx) => (
+                                <li key={fIdx} className="popover-fact-item">
+                                  <strong>{fact.title || fact.category || 'Fact'}:</strong>
+                                  <span>{fact.value}</span>
+                                </li>
+                              ))}
+                            </ul>
+                            <button 
+                              className="popover-manage-btn"
+                              onClick={() => {
+                                setShowMemoryPopover(false);
+                                if (onOpenSettings) onOpenSettings('memories');
+                              }}
+                            >
+                              Manage saved info →
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {hasMemoryUsed && (
+                      <div 
+                        className="gemini-memory-chip used"
+                        onClick={() => onOpenSettings && onOpenSettings('memories')}
+                        title="Ceova referenced your saved info to answer this. Click to manage saved info."
+                      >
+                        <Brain size={12} style={{ color: '#60a5fa' }} />
+                        <span>Used saved info</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className={`message-actions ${showActions ? 'visible' : ''}`}>
                   <button onClick={(e) => { e.stopPropagation(); handleCopy(rawText, msg.id || msg.tempId); }} title="Copy message">
                     {copiedId === (msg.id || msg.tempId) ? <Check size={14} /> : <Copy size={14} />}
@@ -1076,7 +1165,7 @@ const CyclingStatus = ({ defaultStatus }) => {
   );
 };
 
-export default function Chat({ messages, onSuggestionClick, userEmail, onRegenerate, onEditRequest, onFeedback, isTemporary, actionCard, progressMessages, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected }) {
+export default function Chat({ messages, onSuggestionClick, userEmail, onRegenerate, onEditRequest, onFeedback, isTemporary, actionCard, progressMessages, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onOpenSettings }) {
   const messagesEndRef = useRef(null);
   const [copiedId, setCopiedId] = React.useState(null);
   const [previewProject, setPreviewProject] = React.useState(null);
@@ -1127,6 +1216,7 @@ export default function Chat({ messages, onSuggestionClick, userEmail, onRegener
                 onFolderConnected={onFolderConnected}
                 onPreviewWebsite={setPreviewProject}
                 onPreviewDriveFile={setDrivePreviewFile}
+                onOpenSettings={onOpenSettings}
               />
             );
           })}

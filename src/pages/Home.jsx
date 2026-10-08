@@ -87,6 +87,13 @@ export default function Home({ session }) {
     const [isSidebarAnimating, setIsSidebarAnimating] = useState(false);
     
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [settingsInitialView, setSettingsInitialView] = useState('main');
+
+    const handleOpenSettings = (initialView = 'main') => {
+        setSettingsInitialView(initialView);
+        setIsSettingsOpen(true);
+    };
+
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
     const [isLibraryOpen, setIsLibraryOpen] = useState(() => Boolean(location?.state?.openLibrary));
@@ -237,6 +244,7 @@ export default function Home({ session }) {
                         const sortedCurrent = sortMessagesChronologically(currentChatMessages);
                         const formattedMessages = sortedCurrent.map(msg => {
                             const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
+                            const memoryEventsAttachment = msg.attachments?.find?.((a) => a.type === 'memory_events');
                             return {
                                 id: msg.id,
                                 sender: msg.role === 'user' ? 'user' : 'ai',
@@ -244,7 +252,8 @@ export default function Home({ session }) {
                                 time: msg.created_at,
                                 mode: msg.mode,
                                 attachments: msg.attachments || [],
-                                cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null
+                                cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null,
+                                memoryEvents: memoryEventsAttachment ? memoryEventsAttachment.data : null
                             };
                         });
                         setChats(prev => {
@@ -277,6 +286,7 @@ export default function Home({ session }) {
                         const grouped = sortedData.reduce((acc, msg) => {
                             if (!acc[msg.chat_id]) acc[msg.chat_id] = [];
                             const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
+                            const memoryEventsAttachment = msg.attachments?.find?.((a) => a.type === 'memory_events');
                             acc[msg.chat_id].push({
                                 id: msg.id,
                                 sender: msg.role === 'user' ? 'user' : 'ai',
@@ -284,7 +294,8 @@ export default function Home({ session }) {
                                 time: msg.created_at,
                                 mode: msg.mode,
                                 attachments: msg.attachments || [],
-                                cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null
+                                cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null,
+                                memoryEvents: memoryEventsAttachment ? memoryEventsAttachment.data : null
                             });
                             return acc;
                         }, {});
@@ -734,6 +745,7 @@ export default function Home({ session }) {
                     has_local_folder: !!localDirectoryHandleRef.current,
                     is_thinking: isThinking,
                     is_web_search: isWebSearch,
+                    memory_enabled: typeof window !== 'undefined' ? (localStorage.getItem('ceova_memory_enabled') !== 'false') : true,
                     google_token: effectiveGoogleToken,
                     user_context: {
                         date: new Date().toLocaleDateString(),
@@ -781,6 +793,7 @@ export default function Home({ session }) {
                     const reader = res.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = "";
+                    let currentMemoryEvents = [];
                     
                     while (true) {
                         const { done, value } = await reader.read();
@@ -801,7 +814,20 @@ export default function Home({ session }) {
                                 try {
                                     const parsed = JSON.parse(chunk.slice(6));
                                     
-                                    if (parsed.type === 'project_progress' || parsed.type === 'cloud_project_ready') {
+                                    if (parsed.type === 'memory_event') {
+                                        currentMemoryEvents.push(parsed);
+                                        setChats(prev => {
+                                            const messages = [...(prev[idToUse] || [])];
+                                            const aiIdx = messages.findIndex(m => m.tempId === tempId);
+                                            if (aiIdx !== -1) {
+                                                messages[aiIdx] = { 
+                                                    ...messages[aiIdx], 
+                                                    memoryEvents: [...currentMemoryEvents] 
+                                                };
+                                            }
+                                            return { ...prev, [idToUse]: messages };
+                                        });
+                                    } else if (parsed.type === 'project_progress' || parsed.type === 'cloud_project_ready') {
                                         currentCloudProject = {
                                             stage: parsed.stage || (parsed.type === 'cloud_project_ready' ? 'READY' : 'BUILDING'),
                                             projectId: parsed.projectId,
@@ -1129,7 +1155,8 @@ export default function Home({ session }) {
                                 isTyping: false, 
                                 isLive: true, 
                                 toolStatus: null,
-                                cloudProject: currentCloudProject
+                                cloudProject: currentCloudProject,
+                                memoryEvents: currentMemoryEvents.length > 0 ? currentMemoryEvents : (messages[aiIdx]?.memoryEvents || undefined)
                             };
                         }
                         return { ...prev, [idToUse]: messages };
@@ -1167,7 +1194,10 @@ export default function Home({ session }) {
                         role: 'assistant',
                         content: aiRawText,
                         mode: 'ceova',
-                        attachments: currentCloudProject ? [{ type: 'cloud_project', data: currentCloudProject }] : [],
+                        attachments: [
+                            ...(currentCloudProject ? [{ type: 'cloud_project', data: currentCloudProject }] : []),
+                            ...(currentMemoryEvents.length > 0 ? [{ type: 'memory_events', data: currentMemoryEvents }] : [])
+                        ],
                         created_at: new Date().toISOString()
                     };
                     
@@ -1369,6 +1399,7 @@ export default function Home({ session }) {
                     const sortedChatMsgs = sortMessagesChronologically(chatMsgs);
                     const formatted = sortedChatMsgs.map(msg => {
                         const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
+                        const memoryEventsAttachment = msg.attachments?.find?.((a) => a.type === 'memory_events');
                         return {
                             id: msg.id,
                             sender: msg.role === 'user' ? 'user' : 'ai',
@@ -1376,7 +1407,8 @@ export default function Home({ session }) {
                             time: msg.created_at,
                             mode: msg.mode,
                             attachments: msg.attachments || [],
-                            cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null
+                            cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null,
+                            memoryEvents: memoryEventsAttachment ? memoryEventsAttachment.data : null
                         };
                     });
                     setChats(prev => ({ ...prev, [id]: formatted }));
@@ -1743,6 +1775,7 @@ export default function Home({ session }) {
                     onSuggestionClick={(text) => handleSend([], text)}
                     localDirectoryHandle={localDirectoryHandle}
                     setLocalDirectoryHandle={setLocalDirectoryHandle}
+                    onOpenSettings={handleOpenSettings}
                     onEditRequest={(msg) => {
                         setInput(msg.text);
                         const currentMessages = chats[currentChatId] || [];
@@ -1903,6 +1936,7 @@ export default function Home({ session }) {
                     <SettingsModal 
                         isOpen={isSettingsOpen} 
                         onClose={() => setIsSettingsOpen(false)} 
+                        initialView={settingsInitialView}
                         session={session}
                         userEmail={session?.user?.email}
                         userId={session?.user?.id}

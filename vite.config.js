@@ -36,12 +36,37 @@ function ceovaDevServerBannerPlugin() {
 const DEV_PORT = parseInt(process.env.PORT || '12827', 10)
 const DEV_HOST = process.env.HOST || '0.0.0.0'
 
+const CURRENT_BUILD_TIME = Date.now().toString();
+
+function ceovaVersionPlugin() {
+  return {
+    name: 'ceova-version-plugin',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({
+          version: '2.1.0',
+          buildTime: CURRENT_BUILD_TIME,
+          releaseName: 'CEOVA-2026-v2.1.0-Memory-Luna',
+          updatedAt: new Date().toISOString()
+        }, null, 2)
+      })
+    }
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     ceovaDevServerBannerPlugin(),
+    ceovaVersionPlugin(),
   ],
+  define: {
+    __APP_BUILD_TIME__: JSON.stringify(CURRENT_BUILD_TIME),
+    __APP_VERSION__: JSON.stringify('2.1.0'),
+  },
   envPrefix: ['VITE_', 'NEXT_PUBLIC_', 'TAURI_'],
   clearScreen: false,
   server: {

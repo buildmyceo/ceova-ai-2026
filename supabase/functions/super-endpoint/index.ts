@@ -526,12 +526,25 @@ STRICT RULES:
                     }
 
                     // ── Instant Deterministic Memory Extraction (Synchronous <5ms) ───────────
+                    let savedMemories: any[] = [];
                     if (message && message.trim().length > 3) {
                         try {
-                            await MemoryExtractor.extractAndSaveSync(supabaseAdmin, user.id, message);
+                            savedMemories = await MemoryExtractor.extractAndSaveSync(supabaseAdmin, user.id, message);
                         } catch (e: any) {
                             console.warn('[super-endpoint] Deterministic memory extraction skipped:', e.message);
                         }
+                    }
+
+                    if (savedMemories && savedMemories.length > 0) {
+                        sendEvent({
+                            type: 'memory_event',
+                            action: 'saved',
+                            memories: savedMemories.map((m: any) => ({
+                                category: m.category,
+                                title: m.title,
+                                value: m.value
+                            }))
+                        });
                     }
 
                     // ── User Account Identity Context ────────────────────────────────────────
@@ -543,14 +556,26 @@ STRICT RULES:
 
                     // ── Modern Relevance-Gated Memory Retrieval (JIT) ───────────────────────
                     // Only retrieves memory if message is self-referential or requires domain preferences.
-                    // Generic questions & casual messages consume 0 memory tokens.
-                    const memoryContext = await MemoryRetriever.getRelevantContext(
-                        supabase,
-                        user.id,
-                        message || '',
-                        intent,
-                        { maxTokens: 300 }
-                    );
+                    // Respects memory_enabled flag if user turned personalization off in Saved Info.
+                    const memoryEnabled = (reqBody as any)?.memory_enabled !== false;
+                    let memoryContext = '';
+                    if (memoryEnabled) {
+                        memoryContext = await MemoryRetriever.getRelevantContext(
+                            supabase,
+                            user.id,
+                            message || '',
+                            intent,
+                            { maxTokens: 300 }
+                        );
+                    }
+
+                    if (memoryContext && memoryContext.trim().length > 0) {
+                        sendEvent({
+                            type: 'memory_event',
+                            action: 'used',
+                            count: 1
+                        });
+                    }
 
                     // ── Cloud Development Fast Path & Follow-up Iteration ────────────────────
                     // ── Cloud Development Fast Path & Follow-up Iteration ────────────────────

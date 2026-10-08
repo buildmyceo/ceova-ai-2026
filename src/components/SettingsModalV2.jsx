@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -8,7 +8,7 @@ import {
     Settings2, Bell, LayoutGrid, Database, Archive, Shield,
     ArrowLeft, RotateCcw, Trash2, Download, UserMinus, Plus, Edit2, Save, Zap,
     Power, Check, Calendar, HardDrive, Scissors, Scan, Eye, Key, Palette, Film, Minimize2, RefreshCw, Receipt, Megaphone, BookOpen, Terminal, FolderOpen, Code,
-    Smartphone, User, Cookie
+    Smartphone, User, Cookie, Search
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import UsageSection from './UsageSection';
@@ -32,9 +32,15 @@ const legalDocuments = [
     { id: 'contact-support', title: 'Contact & Support', icon: Mail }
 ];
 
-export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, session, onOpenPhoneModal, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange }) {
+export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, session, onOpenPhoneModal, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange, initialView = 'main' }) {
     const { themePref, setThemePref } = useTheme();
-    const [view, setView] = useState('main'); // 'main', 'archived', 'terms', 'privacy', 'data-controls', 'memories', 'personalization'
+    const [view, setView] = useState(initialView || 'main'); // 'main', 'archived', 'terms', 'privacy', 'data-controls', 'memories', 'personalization'
+
+    useEffect(() => {
+        if (isOpen && initialView) {
+            setView(initialView);
+        }
+    }, [isOpen, initialView]);
     const [personalization, setPersonalization] = useState({
         user_message_color: '#3373E8',
         base_tone: 'professional',
@@ -103,9 +109,20 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
     const [summaryUpdatedAt, setSummaryUpdatedAt] = useState(null);
     const [editingMemoryId, setEditingMemoryId] = useState(null);
     const [editContent, setEditContent] = useState("");
+    const [editTitle, setEditTitle] = useState("");
+    const [editCategory, setEditCategory] = useState("General");
     const [newMemoryInput, setNewMemoryInput] = useState("");
+    const [memorySearchQuery, setMemorySearchQuery] = useState("");
+    const [selectedMemoryCategory, setSelectedMemoryCategory] = useState("all");
     const [isLoadingMemories, setIsLoadingMemories] = useState(false);
     const [isAddingMemory, setIsAddingMemory] = useState(false);
+    const [isMemoryEnabled, setIsMemoryEnabled] = useState(() => {
+        try {
+            return localStorage.getItem('ceova_memory_enabled') !== 'false';
+        } catch {
+            return true;
+        }
+    });
     const [showRawMemories, setShowRawMemories] = useState(false); // toggle between summary and raw list
     const navigate = useNavigate();
     const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
@@ -290,6 +307,22 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
         }
     };
 
+    const handleToggleMemoryEnabled = async () => {
+        const nextVal = !isMemoryEnabled;
+        setIsMemoryEnabled(nextVal);
+        try {
+            localStorage.setItem('ceova_memory_enabled', nextVal ? 'true' : 'false');
+            if (userId) {
+                await supabase.from('user_preferences').upsert({
+                    user_id: userId,
+                    memory_enabled: nextVal
+                });
+            }
+        } catch (e) {
+            console.error('Failed to toggle memory:', e);
+        }
+    };
+
     const handleAddMemory = async () => {
         if (!newMemoryInput.trim()) return;
         setIsAddingMemory(true);
@@ -304,13 +337,27 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                 }
             }
 
+            const val = newMemoryInput.trim();
+            let cat = 'General';
+            let title = 'Saved Note';
+            if (/prefer|always use|never use|like/i.test(val)) {
+                cat = 'Preference';
+                title = 'User Preference';
+            } else if (/company|business|work|startup|role|project/i.test(val)) {
+                cat = 'Business';
+                title = 'Work & Business';
+            } else if (/name|live|from|location|city/i.test(val)) {
+                cat = 'Profile';
+                title = 'Profile';
+            }
+
             const { error } = await supabase
                 .from('user_memory_longterm')
                 .insert({
                     user_id: userId,
-                    category: 'General',
-                    title: 'Manual Note',
-                    value: newMemoryInput.trim(),
+                    category: cat,
+                    title: title,
+                    value: val,
                     confidence: 1.0
                 });
             if (error) throw error;
@@ -348,10 +395,15 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
     };
 
     const handleUpdateMemory = async (id) => {
+        if (!editContent.trim()) return;
         try {
             const { error } = await supabase
                 .from('user_memory_longterm')
-                .update({ value: editContent.trim(), updated_at: new Date().toISOString() })
+                .update({ 
+                    value: editContent.trim(), 
+                    title: editTitle.trim() || 'Saved Info',
+                    updated_at: new Date().toISOString() 
+                })
                 .eq('id', id)
                 .eq('user_id', userId);
             if (error) throw error;
@@ -359,6 +411,29 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
             fetchMemories();
         } catch (e) { console.error('Update Memory Error:', e); }
     };
+
+    const filteredMemories = useMemo(() => {
+        return memories.filter(m => {
+            const matchesCategory = selectedMemoryCategory === 'all' || 
+                (m.category && m.category.toLowerCase().includes(selectedMemoryCategory.toLowerCase()));
+            const matchesSearch = !memorySearchQuery.trim() || 
+                (m.value && m.value.toLowerCase().includes(memorySearchQuery.toLowerCase())) ||
+                (m.title && m.title.toLowerCase().includes(memorySearchQuery.toLowerCase()));
+            return matchesCategory && matchesSearch;
+        });
+    }, [memories, selectedMemoryCategory, memorySearchQuery]);
+
+    const categoryCounts = useMemo(() => {
+        const counts = { all: memories.length, profile: 0, business: 0, preference: 0, general: 0 };
+        memories.forEach(m => {
+            const cat = (m.category || 'General').toLowerCase();
+            if (cat.includes('profile')) counts.profile++;
+            else if (cat.includes('business') || cat.includes('work')) counts.business++;
+            else if (cat.includes('preference')) counts.preference++;
+            else counts.general++;
+        });
+        return counts;
+    }, [memories]);
 
     const handleExport = async () => {
         try {
@@ -394,7 +469,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
             case 'terms': return 'Terms of Use';
             case 'privacy': return 'Privacy Policy';
             case 'data-controls': return 'Data Controls';
-            case 'memories': return 'Memory';
+            case 'memories': return 'Saved info';
             case 'personalization': return 'Personalization';
             case 'notifications': return 'Notifications';
             case 'advanced': return 'Advanced Settings';
@@ -563,6 +638,21 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                                 <span>Usage</span>
                                             </div>
                                             <ChevronRight size={14} className="chevron" />
+                                        </div>
+                                        <div className="settings-row clickable" onClick={() => setView('memories')}>
+                                            <div className="row-left">
+                                                <div className="settings-icon-squircle" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.18), rgba(59,130,246,0.15))' }}>
+                                                    <Sparkles size={16} style={{ color: '#c084fc' }} />
+                                                </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                    <span>Saved info</span>
+                                                    <span style={{ fontSize: '11px', color: '#71717a' }}>Personalize responses with remembered facts</span>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span className="archive-count">{memories.length} facts</span>
+                                                <ChevronRight size={14} className="chevron" />
+                                            </div>
                                         </div>
                                         <div className="settings-row clickable" onClick={() => setView('data-controls')}>
                                             <div className="row-left">
@@ -841,153 +931,268 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                             )}
 
                             {view === 'memories' && (
-                                <div className="memories-view">
-                                    {isLoadingMemories ? (
-                                        <div className="empty-memories">
-                                            <CircleDashed size={32} className="spinning" />
-                                            <p>Fetching memories...</p>
+                                <div className="gemini-saved-info-container">
+                                    {/* Master Personalization Switch */}
+                                    <div className="gemini-master-toggle-card">
+                                        <div className="gemini-master-toggle-info">
+                                            <h3>Personalize with saved info</h3>
+                                            <p>When enabled, Ceova references what it remembers about you to deliver tailored, context-rich responses across chats.</p>
                                         </div>
-                                    ) : !showRawMemories ? (
-                                        // ── ChatGPT-style Summary View ────────────────────────────────
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-                                            {/* Header */}
-                                            <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                                                    <div>
-                                                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f3f4f6' }}>
-                                                            Memory Summary
-                                                        </h3>
-                                                        <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#6b7280' }}>
-                                                            {summaryUpdatedAt
-                                                                ? `Updated ${new Date(summaryUpdatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-                                                                : 'Updated automatically after each conversation'}
-                                                        </p>
-                                                    </div>
-                                                    <button
-                                                        onClick={handleClearAllMemories}
-                                                        title="Clear all memories"
-                                                        style={{
-                                                            background: 'none', border: 'none', cursor: 'pointer',
-                                                            color: '#6b7280', padding: '4px', borderRadius: '6px',
-                                                            display: 'flex', alignItems: 'center', gap: '4px',
-                                                            fontSize: '0.72rem', transition: 'color 0.15s'
-                                                        }}
-                                                        onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                                                        onMouseLeave={e => e.currentTarget.style.color = '#6b7280'}
-                                                    >
-                                                        <Trash2 size={13} /> Clear all
-                                                    </button>
-                                                </div>
-                                            </div>
+                                        <button
+                                            onClick={handleToggleMemoryEnabled}
+                                            className={`toggle-btn ${isMemoryEnabled ? 'active' : ''}`}
+                                            style={{
+                                                width: '42px',
+                                                height: '22px',
+                                                borderRadius: '22px',
+                                                background: isMemoryEnabled ? '#10b981' : '#27272a',
+                                                border: 'none',
+                                                position: 'relative',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.25s ease',
+                                                flexShrink: 0
+                                            }}
+                                            title={isMemoryEnabled ? "Memory enabled" : "Memory paused"}
+                                        >
+                                            <div style={{
+                                                width: '18px',
+                                                height: '18px',
+                                                borderRadius: '50%',
+                                                background: '#ffffff',
+                                                position: 'absolute',
+                                                top: '2px',
+                                                left: isMemoryEnabled ? '22px' : '2px',
+                                                transition: 'all 0.25s ease'
+                                            }} />
+                                        </button>
+                                    </div>
 
-                                            {/* Summary sections */}
-                                            {summarySections.length > 0 ? (
-                                                <div style={{ padding: '4px 0 8px' }}>
-                                                    {summarySections.map(sec => {
-                                                        const LABELS = {
-                                                            overview: 'Overview',
-                                                            current_projects: 'Current Projects',
-                                                            design_preferences: 'Design Preferences',
-                                                            development_tools: 'Development Tools',
-                                                            learning_goals: 'Learning Goals',
-                                                            business_context: 'Business Context',
-                                                        };
-                                                        const label = LABELS[sec.category] || sec.category;
-                                                        return (
-                                                            <div key={sec.category} style={{
-                                                                padding: '14px 20px',
-                                                                borderBottom: '1px solid rgba(255,255,255,0.04)',
-                                                            }}>
-                                                                <p style={{ margin: '0 0 5px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#6b7280' }}>
-                                                                    {label}
-                                                                </p>
-                                                                <p style={{ margin: 0, fontSize: '0.88rem', color: '#d1d5db', lineHeight: 1.6 }}>
-                                                                    {sec.summary}
-                                                                </p>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            ) : memories.length > 0 ? (
-                                                // Summaries not generated yet but raw memories exist
-                                                <div style={{ padding: '24px 20px', textAlign: 'center' }}>
-                                                    <CircleDashed size={28} style={{ color: '#6b7280', marginBottom: '8px' }} />
-                                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#9ca3af' }}>
-                                                        Summary is being generated...
-                                                    </p>
-                                                    <p style={{ margin: '4px 0 0', fontSize: '0.76rem', color: '#6b7280' }}>
-                                                        It will appear here after your next conversation.
-                                                    </p>
-                                                </div>
-                                            ) : (
-                                                <div className="empty-memories">
-                                                    <div className="empty-icon-stack">
-                                                        <Sparkles size={32} />
-                                                        <Wand2 size={16} className="sparkle-mini" />
-                                                    </div>
-                                                    <p>No memories yet. Chat with Ceova and it will automatically remember important things about you.</p>
-                                                </div>
-                                            )}
+                                    {/* Manual Add Info Input */}
+                                    <div className="gemini-add-bar">
+                                        <div className="gemini-add-input-row">
+                                            <input
+                                                type="text"
+                                                className="gemini-add-input"
+                                                placeholder="Add something for Ceova to remember (e.g. 'I prefer TypeScript', 'My company is Acme')..."
+                                                value={newMemoryInput}
+                                                onChange={(e) => setNewMemoryInput(e.target.value)}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') handleAddMemory(); }}
+                                                disabled={isAddingMemory}
+                                            />
+                                            <button
+                                                className="gemini-add-btn"
+                                                onClick={handleAddMemory}
+                                                disabled={!newMemoryInput.trim() || isAddingMemory}
+                                            >
+                                                {isAddingMemory ? <CircleDashed size={14} className="spinning" /> : <Plus size={14} />}
+                                                <span>Add info</span>
+                                            </button>
+                                        </div>
+                                    </div>
 
-                                            {/* Footer toggle to raw list */}
-                                            {memories.length > 0 && (
-                                                <div style={{ padding: '10px 20px', borderTop: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}>
-                                                    <button
-                                                        onClick={() => setShowRawMemories(true)}
-                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60a5fa', fontSize: '0.78rem' }}
-                                                    >
-                                                        View all {memories.length} raw entries →
-                                                    </button>
-                                                </div>
+                                    {/* Search & Category Filter */}
+                                    <div className="gemini-search-filter-row">
+                                        <div className="gemini-search-box">
+                                            <Search size={15} />
+                                            <input
+                                                type="text"
+                                                placeholder="Search saved info..."
+                                                value={memorySearchQuery}
+                                                onChange={(e) => setMemorySearchQuery(e.target.value)}
+                                            />
+                                            {memorySearchQuery && (
+                                                <button 
+                                                    onClick={() => setMemorySearchQuery("")}
+                                                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0 }}
+                                                >
+                                                    <X size={14} />
+                                                </button>
                                             )}
+                                        </div>
+
+                                        <div className="gemini-category-chips">
+                                            <button
+                                                className={`gemini-category-chip ${selectedMemoryCategory === 'all' ? 'active' : ''}`}
+                                                onClick={() => setSelectedMemoryCategory('all')}
+                                            >
+                                                All ({categoryCounts.all})
+                                            </button>
+                                            <button
+                                                className={`gemini-category-chip ${selectedMemoryCategory === 'profile' ? 'active' : ''}`}
+                                                onClick={() => setSelectedMemoryCategory('profile')}
+                                            >
+                                                Profile ({categoryCounts.profile})
+                                            </button>
+                                            <button
+                                                className={`gemini-category-chip ${selectedMemoryCategory === 'business' ? 'active' : ''}`}
+                                                onClick={() => setSelectedMemoryCategory('business')}
+                                            >
+                                                Work & Projects ({categoryCounts.business})
+                                            </button>
+                                            <button
+                                                className={`gemini-category-chip ${selectedMemoryCategory === 'preference' ? 'active' : ''}`}
+                                                onClick={() => setSelectedMemoryCategory('preference')}
+                                            >
+                                                Preferences ({categoryCounts.preference})
+                                            </button>
+                                            <button
+                                                className={`gemini-category-chip ${selectedMemoryCategory === 'general' ? 'active' : ''}`}
+                                                onClick={() => setSelectedMemoryCategory('general')}
+                                            >
+                                                General ({categoryCounts.general})
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Fact Cards List */}
+                                    {isLoadingMemories ? (
+                                        <div style={{ textAlign: 'center', padding: '36px 0', color: '#94a3b8' }}>
+                                            <CircleDashed size={28} className="spinning" style={{ margin: '0 auto 10px', display: 'block' }} />
+                                            <span>Loading saved info...</span>
+                                        </div>
+                                    ) : filteredMemories.length === 0 ? (
+                                        <div style={{ textAlign: 'center', padding: '40px 20px', background: 'rgba(255,255,255,0.015)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '12px' }}>
+                                            <Sparkles size={32} style={{ color: '#a855f7', margin: '0 auto 10px', display: 'block', opacity: 0.7 }} />
+                                            <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#f1f5f9' }}>
+                                                {memorySearchQuery ? 'No matching memories found' : 'No saved info yet'}
+                                            </h4>
+                                            <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: '#64748b', maxWidth: '380px', marginInline: 'auto', lineHeight: 1.5 }}>
+                                                {memorySearchQuery
+                                                    ? `Try a different keyword or switch categories to find what you're looking for.`
+                                                    : `Tell Ceova things to remember in chat (e.g. "Remember that I live in NYC") or add facts manually above.`}
+                                            </p>
                                         </div>
                                     ) : (
-                                        // ── Raw memory card list (legacy) ─────────────────────────────
-                                        <div className="settings-section">
-                                            <div style={{ padding: '10px 20px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                <button
-                                                    onClick={() => setShowRawMemories(false)}
-                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60a5fa', fontSize: '0.78rem' }}
-                                                >
-                                                    ← Back to summary
-                                                </button>
-                                            </div>
-                                            {Object.entries(
-                                                memories.reduce((acc, mem) => {
-                                                    const cat = mem.category || 'Other';
-                                                    if (!acc[cat]) acc[cat] = [];
-                                                    acc[cat].push(mem);
-                                                    return acc;
-                                                }, {})
-                                            ).map(([category, catMemories]) => (
-                                                <div key={category} style={{ marginBottom: '16px' }}>
-                                                    <h4 style={{ margin: '16px 20px 8px', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#9ca3af' }}>
-                                                        {category}
-                                                    </h4>
-                                                    {catMemories.map(mem => (
-                                                        <div key={mem.id} className="memory-item">
-                                                            <div className="memory-text" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                    <img src="/ceova logo dark.png" alt="Ceova" style={{ width: 16, height: 16, objectFit: 'contain', flexShrink: 0 }} />
-                                                                    <span><strong>{mem.title}:</strong> {mem.value}</span>
-                                                                </div>
-                                                                <span className="memory-date" style={{ marginLeft: '26px' }}>
-                                                                    Saved on: {new Date(mem.created_at).toLocaleDateString()}
-                                                                </span>
-                                                            </div>
-                                                            <div className="memory-actions">
-                                                                <button className="del-btn" onClick={() => handleDeleteMemory(mem.id)} title="Delete memory">
-                                                                    <Trash2 size={16} />
-                                                                </button>
-                                                            </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {filteredMemories.map(mem => (
+                                                <div key={mem.id} className="gemini-fact-card">
+                                                    <div className="gemini-fact-main">
+                                                        <div className="gemini-fact-sparkle">
+                                                            <Sparkles size={14} />
                                                         </div>
-                                                    ))}
+                                                        <div className="gemini-fact-content">
+                                                            {editingMemoryId === mem.id ? (
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', marginTop: '2px' }}>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={editContent}
+                                                                        onChange={(e) => setEditContent(e.target.value)}
+                                                                        style={{
+                                                                            background: 'rgba(0,0,0,0.3)',
+                                                                            border: '1px solid rgba(168,85,247,0.5)',
+                                                                            color: '#ffffff',
+                                                                            borderRadius: '6px',
+                                                                            padding: '6px 10px',
+                                                                            fontSize: '0.86rem',
+                                                                            outline: 'none'
+                                                                        }}
+                                                                        placeholder="Fact detail..."
+                                                                        autoFocus
+                                                                    />
+                                                                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                                                        <button
+                                                                            onClick={() => setEditingMemoryId(null)}
+                                                                            style={{
+                                                                                background: 'transparent',
+                                                                                border: '1px solid rgba(255,255,255,0.1)',
+                                                                                color: '#94a3b8',
+                                                                                borderRadius: '6px',
+                                                                                padding: '4px 10px',
+                                                                                fontSize: '0.75rem',
+                                                                                cursor: 'pointer'
+                                                                            }}
+                                                                        >
+                                                                            Cancel
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleUpdateMemory(mem.id)}
+                                                                            style={{
+                                                                                background: '#3b82f6',
+                                                                                border: 'none',
+                                                                                color: '#ffffff',
+                                                                                borderRadius: '6px',
+                                                                                padding: '4px 12px',
+                                                                                fontSize: '0.75rem',
+                                                                                fontWeight: 600,
+                                                                                cursor: 'pointer'
+                                                                            }}
+                                                                        >
+                                                                            Save
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <>
+                                                                    <span className="gemini-fact-val">{mem.value}</span>
+                                                                    <div className="gemini-fact-meta">
+                                                                        <span className="gemini-fact-pill">{mem.category || 'General'}</span>
+                                                                        {mem.title && mem.title !== 'Manual Note' && mem.title !== 'Fact' && (
+                                                                            <span>• {mem.title}</span>
+                                                                        )}
+                                                                        <span>• Saved {new Date(mem.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {editingMemoryId !== mem.id && (
+                                                        <div className="gemini-fact-actions">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingMemoryId(mem.id);
+                                                                    setEditContent(mem.value || '');
+                                                                    setEditTitle(mem.title || '');
+                                                                    setEditCategory(mem.category || 'General');
+                                                                }}
+                                                                title="Edit fact"
+                                                            >
+                                                                <Edit2 size={13} />
+                                                            </button>
+                                                            <button
+                                                                className="del"
+                                                                onClick={() => handleDeleteMemory(mem.id)}
+                                                                title="Delete fact"
+                                                            >
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>
                                     )}
-                                    <div className="memory-footer-note">
-                                        Ceova automatically remembers important details to serve you better.
+
+                                    {/* Footer info & Clear all */}
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        paddingTop: '12px',
+                                        borderTop: '1px solid rgba(255,255,255,0.06)',
+                                        marginTop: '8px'
+                                    }}>
+                                        <button
+                                            onClick={handleClearAllMemories}
+                                            style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                color: '#64748b',
+                                                cursor: 'pointer',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '5px',
+                                                fontSize: '0.74rem',
+                                                transition: 'color 0.15s'
+                                            }}
+                                            onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                                            onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
+                                        >
+                                            <Trash2 size={13} /> Clear all info
+                                        </button>
+                                        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                            🔒 Your saved info is private to your account.
+                                        </span>
                                     </div>
                                 </div>
                             )}
