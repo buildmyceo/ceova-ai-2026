@@ -1055,16 +1055,7 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
                       </div>
                     )}
 
-                    {hasMemoryUsed && (
-                      <div 
-                        className="gemini-memory-chip used"
-                        onClick={() => onOpenSettings && onOpenSettings('memories')}
-                        title="Ceova referenced your saved info to answer this. Click to manage saved info."
-                      >
-                        <Brain size={12} style={{ color: '#60a5fa' }} />
-                        <span>Used saved info</span>
-                      </div>
-                    )}
+
                   </div>
                 )}
 
