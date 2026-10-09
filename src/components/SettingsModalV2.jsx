@@ -33,7 +33,8 @@ const legalDocuments = [
 ];
 
 export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, session, onOpenPhoneModal, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange, initialView = 'main' }) {
-    const { themePref, setThemePref } = useTheme();
+    const { themePref, setThemePref, resolvedTheme } = useTheme();
+    const isLight = resolvedTheme === 'light';
     const [view, setView] = useState(initialView || 'main'); // 'main', 'archived', 'terms', 'privacy', 'data-controls', 'memories', 'personalization'
 
     useEffect(() => {
@@ -427,8 +428,8 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                         onClick={() => setView(view === 'memories' ? 'data-controls' : 'main')}
                                         title="Back"
                                         style={{
-                                            background: 'rgba(255, 255, 255, 0.05)',
-                                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                                            background: isLight ? '#f4f4f5' : 'rgba(255, 255, 255, 0.05)',
+                                            border: isLight ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.08)',
                                             borderRadius: '8px',
                                             width: '32px',
                                             height: '32px',
@@ -436,24 +437,24 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                             cursor: 'pointer',
-                                            color: '#e5e7eb',
+                                            color: isLight ? '#09090b' : '#e5e7eb',
                                             padding: 0,
                                             margin: 0,
                                             transition: 'all 0.15s ease'
                                         }}
                                         onMouseOver={e => {
-                                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                                            e.currentTarget.style.color = '#ffffff';
+                                            e.currentTarget.style.background = isLight ? '#e4e4e7' : 'rgba(255, 255, 255, 0.1)';
+                                            e.currentTarget.style.color = isLight ? '#09090b' : '#ffffff';
                                         }}
                                         onMouseOut={e => {
-                                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                                            e.currentTarget.style.color = '#e5e7eb';
+                                            e.currentTarget.style.background = isLight ? '#f4f4f5' : 'rgba(255, 255, 255, 0.05)';
+                                            e.currentTarget.style.color = isLight ? '#09090b' : '#e5e7eb';
                                         }}
                                     >
                                         <ArrowLeft size={16} />
                                     </button>
                                 ) : null}
-                                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#f3f4f6', letterSpacing: '-0.01em' }}>
+                                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: isLight ? '#09090b' : '#f3f4f6', letterSpacing: '-0.01em' }}>
                                     {getTitle()}
                                 </h3>
                             </div>
@@ -470,8 +471,8 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                     onClick={handleClose} 
                                     title="Close"
                                     style={{
-                                        background: 'rgba(255, 255, 255, 0.05)',
-                                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                                        background: isLight ? '#f4f4f5' : 'rgba(255, 255, 255, 0.05)',
+                                        border: isLight ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.08)',
                                         borderRadius: '8px',
                                         width: '32px',
                                         height: '32px',
@@ -479,17 +480,17 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         cursor: 'pointer',
-                                        color: 'rgba(255, 255, 255, 0.65)',
+                                        color: isLight ? '#09090b' : 'rgba(255, 255, 255, 0.65)',
                                         padding: 0,
                                         transition: 'all 0.15s ease'
                                     }}
                                     onMouseOver={e => {
-                                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                                        e.currentTarget.style.color = '#ffffff';
+                                        e.currentTarget.style.background = isLight ? '#e4e4e7' : 'rgba(255, 255, 255, 0.1)';
+                                        e.currentTarget.style.color = isLight ? '#09090b' : '#ffffff';
                                     }}
                                     onMouseOut={e => {
-                                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                                        e.currentTarget.style.color = 'rgba(255, 255, 255, 0.65)';
+                                        e.currentTarget.style.background = isLight ? '#f4f4f5' : 'rgba(255, 255, 255, 0.05)';
+                                        e.currentTarget.style.color = isLight ? '#09090b' : 'rgba(255, 255, 255, 0.65)';
                                     }}
                                 >
                                     <X size={16} />
@@ -506,7 +507,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                                 {session?.user?.user_metadata?.avatar_url ? (
                                                     <img src={session.user.user_metadata.avatar_url} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                                 ) : (
-                                                    <User size={18} color="#ffffff" />
+                                                    <User size={18} color={isLight ? "#18181B" : "#ffffff"} />
                                                 )}
                                             </div>
                                             <div className="settings-profile-info">
@@ -703,7 +704,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                             {view === 'about' && (
                                 <div className="about-view">
                                     <div style={{ textAlign: 'center', padding: '20px 0 16px' }}>
-                                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: '#ffffff', letterSpacing: '-0.01em' }}>CEOVA AI</h3>
+                                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: isLight ? '#09090b' : '#ffffff', letterSpacing: '-0.01em' }}>CEOVA AI</h3>
                                         <p style={{ color: '#71717a', fontSize: '12px', marginTop: '4px' }}>Version 1.2.6 (Production)</p>
                                     </div>
 
