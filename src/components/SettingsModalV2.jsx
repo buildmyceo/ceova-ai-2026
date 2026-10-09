@@ -640,6 +640,42 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
 
                                     <h4 className="section-label">General</h4>
                                     <div className="settings-section">
+                                        <div className="settings-row no-hover">
+                                            <div className="row-left">
+                                                <div className="settings-icon-squircle">
+                                                    <Palette size={16} />
+                                                </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                    <span>Theme</span>
+                                                    <span style={{ fontSize: '11px', color: '#71717a' }}>
+                                                        {themePref === 'system' ? 'Follows system appearance' : (themePref === 'light' ? 'Light white mode' : 'Dark mode')}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="theme-toggle-group">
+                                                <button 
+                                                    type="button"
+                                                    className={`theme-option-btn ${themePref === 'system' ? 'active' : ''}`}
+                                                    onClick={() => setThemePref('system')}
+                                                >
+                                                    System
+                                                </button>
+                                                <button 
+                                                    type="button"
+                                                    className={`theme-option-btn ${themePref === 'light' ? 'active' : ''}`}
+                                                    onClick={() => setThemePref('light')}
+                                                >
+                                                    Light
+                                                </button>
+                                                <button 
+                                                    type="button"
+                                                    className={`theme-option-btn ${themePref === 'dark' ? 'active' : ''}`}
+                                                    onClick={() => setThemePref('dark')}
+                                                >
+                                                    Dark
+                                                </button>
+                                            </div>
+                                        </div>
                                         <div className="settings-row clickable" onClick={() => setView('about')}>
                                             <div className="row-left">
                                                 <div className="settings-icon-squircle">
