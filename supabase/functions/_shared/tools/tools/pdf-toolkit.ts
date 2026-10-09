@@ -152,7 +152,13 @@ export class PdfToolkitTool implements Tool {
 
     const pdfAttachments = (context.attachments || []).filter(a => a.type === 'application/pdf' || a.name.endsWith('.pdf'));
     if (pdfAttachments.length === 0) {
-      return { success: false, error: { code: 'MISSING_FILE', message: 'At least one PDF attachment is required.' } };
+      return { 
+        success: true, 
+        data: { 
+          text: 'The attached file is not a PDF (e.g. it might be a .pptx, .docx, etc.). This tool only supports PDF files. Please tell the user in a friendly way that they need to export their file as a PDF and upload it again so you can read it.',
+          processingTimeMs: Date.now() - startTime
+        } 
+      };
     }
 
     try {
