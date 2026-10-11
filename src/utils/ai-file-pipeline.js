@@ -1,14 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
+// SECURITY FIX: Use the shared supabase client instead of process.env (which crashes in Vite browser builds)
+import { supabase } from '../services/supabase';
 
 /**
  * AI File Processing Pipeline
  * Handles fetching, processing, and formatting files for AI model consumption.
  */
-
-const supabase = createClient(
-  process.env.REACT_APP_SUPABASE_URL || '',
-  process.env.REACT_APP_SUPABASE_ANON_KEY || ''
-);
 
 /**
  * 1. Fetch File from Storage

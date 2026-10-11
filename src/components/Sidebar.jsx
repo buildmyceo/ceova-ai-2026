@@ -388,6 +388,32 @@ export default function Sidebar({
                         </>
                     )}
                 </button>
+
+                <button 
+                    className={`icon-nav-btn ${!isSidebarOpen ? 'ceova-tooltip-container' : ''}`} 
+                    onClick={() => handleAction(onTaskClick)}
+                    title={isSidebarOpen ? "Task" : undefined}
+                    style={{ 
+                        padding: isSidebarOpen ? '10px 14px' : '12px', 
+                        width: isSidebarOpen ? '100%' : 'max-content',
+                        display: 'flex',
+                        justifyContent: isSidebarOpen ? 'flex-start' : 'center',
+                        alignItems: 'center',
+                        gap: '12px'
+                    }}
+                >
+                    {isSidebarOpen ? (
+                        <>
+                            <SquareCheck size={18} />
+                            <span>Task</span>
+                        </>
+                    ) : (
+                        <>
+                            <SquareCheck size={20} />
+                            <div className="ceova-tooltip">Task</div>
+                        </>
+                    )}
+                </button>
             </div>
 
             {isSidebarOpen && (

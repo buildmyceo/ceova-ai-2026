@@ -6,6 +6,7 @@ import Chat from '../components/Chat';
 import InputBox from '../components/InputBox';
 import SettingsModal from '../components/SettingsModalV2';
 import SearchModal from '../components/SearchModal';
+import TaskModal from '../components/TaskModal';
 import Library from './Library';
 import { cacheManager } from '../services/CacheManager';
 import { Search, MoreVertical, Menu, Share2, Check, Camera, BarChart3, Zap, Brain, Link, Send, Glasses, Edit, ChevronDown, Compass, Image, Globe, MessageCircleDashed, CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
@@ -87,6 +88,7 @@ export default function Home({ session }) {
     
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+    const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
     const [isLibraryOpen, setIsLibraryOpen] = useState(() => Boolean(location?.state?.openLibrary));
     const [shareCopied, setShareCopied] = useState(false);
     const [shareStatus, setShareStatus] = useState("");
@@ -322,7 +324,7 @@ export default function Home({ session }) {
         fetchChats();
     }, [session?.user?.id]);
 
-    const handleSend = async (files = [], overrideText = null, isHidden = false, isThinking = false) => {
+    const handleSend = async (files = [], overrideText = null, isHidden = false, isThinking = false, isWebSearch = false) => {
         const textToUse = overrideText !== null ? overrideText : input;
         if (!textToUse.trim() && files.length === 0) return;
         if (isLoading) return;
@@ -415,16 +417,63 @@ export default function Home({ session }) {
 
             for (let file of files) {
                 if (file.isLibraryItem || (file.url && !((file instanceof Blob) || (file instanceof File)))) {
+                    let libraryContent = file.content || file.snippet || null;
+                    let libraryData = file.data || null;
+                    const driveId = file.drive_id || (file.id && !String(file.id).includes('-') ? file.id : null);
+                    const isLibPdf = (file.type && file.type.includes('pdf')) || (file.name && file.name.toLowerCase().endsWith('.pdf'));
+
+                    // If it's a PDF from Google Drive or library and content hasn't been extracted yet, fetch and extract it!
+                    if (!libraryContent && isLibPdf) {
+                        try {
+                            const { extractPdfContent } = await import('../utils/pdfExtractor.js');
+                            let blob = null;
+
+                            // If it's from Google Drive, use Google access token
+                            const googleToken = localStorage.getItem('google_provider_token');
+                            if (driveId && googleToken) {
+                                const driveRes = await fetch(`https://www.googleapis.com/drive/v3/files/${driveId}?alt=media`, {
+                                    headers: { Authorization: `Bearer ${googleToken}` }
+                                });
+                                if (driveRes.ok) {
+                                    blob = await driveRes.blob();
+                                }
+                            }
+
+                            // If not Google Drive or token fetch failed, try direct file.url
+                            if (!blob && file.url) {
+                                const pdfRes = await fetch(file.url);
+                                if (pdfRes.ok) {
+                                    blob = await pdfRes.blob();
+                                }
+                            }
+
+                            if (blob) {
+                                const extracted = await extractPdfContent(blob);
+                                if (extracted?.text) {
+                                    libraryContent = extracted.text;
+                                }
+                                if (!libraryData && extracted?.pageImages?.length > 0) {
+                                    libraryData = extracted.pageImages[0];
+                                }
+                            }
+                        } catch (libPdfErr) {
+                            console.warn("Failed to extract library PDF text:", libPdfErr);
+                        }
+                    }
+
                     currentAttachments.push({
                         name: file.name,
                         url: file.url || file.web_view_link || '',
-                        data: file.data || null,
-                        content: file.content || null,
-                        type: file.type || 'application/octet-stream',
+                        drive_id: driveId,
+                        data: libraryData,
+                        content: libraryContent,
+                        type: file.type || (isLibPdf ? 'application/pdf' : 'application/octet-stream'),
                         size: file.size || 0,
-                        source: file.source,
+                        source: file.source || (driveId ? 'gdrive' : undefined),
                         snippet: file.snippet,
-                        from_sender: file.from_sender
+                        from_sender: file.from_sender,
+                        thread_id: file.thread_id || null,
+                        gmail_id: file.gmail_id || null
                     });
                     continue;
                 }
@@ -470,6 +519,23 @@ export default function Home({ session }) {
                         }
                     }
 
+                    // 2.5. Extract text & visual renders from PDF documents under 25MB
+                    const isPdf = (file.type && file.type.includes('pdf')) || (file.name && file.name.toLowerCase().endsWith('.pdf'));
+                    if (isPdf && file.size < 25 * 1024 * 1024) {
+                        try {
+                            const { extractPdfContent } = await import('../utils/pdfExtractor.js');
+                            const extracted = await extractPdfContent(file);
+                            if (extracted.text) {
+                                textContent = extracted.text;
+                            }
+                            if (!dataUrl && extracted.pageImages && extracted.pageImages.length > 0) {
+                                dataUrl = extracted.pageImages[0];
+                            }
+                        } catch (pdfErr) {
+                            console.warn("Failed to extract PDF content:", pdfErr);
+                        }
+                    }
+
                     const { error: uploadError } = await supabase.storage
                         .from('attachments')
                         .upload(filePath, file);
@@ -493,19 +559,20 @@ export default function Home({ session }) {
                         // ignore and use publicUrl
                     }
 
-                    const fileCategory = file.type.startsWith('image/') ? 'images' 
-                                       : file.type.startsWith('video/') ? 'videos' 
-                                       : file.type.startsWith('audio/') ? 'audio' 
-                                       : file.type.includes('pdf') ? 'pdfs' 
+                    const fileCategory = file.type?.startsWith('image/') ? 'images' 
+                                       : file.type?.startsWith('video/') ? 'videos' 
+                                       : file.type?.startsWith('audio/') ? 'audio' 
+                                       : isPdf ? 'pdfs' 
                                        : 'documents';
                                        
                     const { error: dbError } = await supabase.from('files').insert({
                         user_id: session.user.id,
                         storage_source: 'local',
                         name: file.name,
-                        mime_type: file.type,
+                        mime_type: file.type || (isPdf ? 'application/pdf' : 'application/octet-stream'),
                         category: fileCategory,
                         size: file.size,
+                        ocr_text: textContent ? textContent.slice(0, 10000) : null,
                         web_download_link: effectiveUrl,
                         web_view_link: effectiveUrl,
                     });
@@ -520,7 +587,7 @@ export default function Home({ session }) {
                         public_url: publicUrl,
                         data: dataUrl,
                         content: textContent,
-                        type: file.type,
+                        type: file.type || (isPdf ? 'application/pdf' : 'application/octet-stream'),
                         size: file.size,
                         path: filePath
                     });
@@ -649,7 +716,13 @@ export default function Home({ session }) {
             let aiRawText = "";
             let autoFollowUpText = null;
             let currentCloudProject = null;
-            let activeToolStatus = files.length > 0 ? "Uploading files..." : "Thinking...";
+            let activeToolStatus = files.length > 0 
+                ? "Uploading files..." 
+                : (isWebSearch ? "Searching the web..." : (isThinking ? "Thinking deeply..." : "Thinking..."));
+
+            // Retrieve cached or session Google OAuth token so super-endpoint can sync/use it
+            const cachedGoogleToken = typeof window !== 'undefined' ? (localStorage.getItem('google_provider_token') || sessionStorage.getItem('google_provider_token')) : null;
+            const effectiveGoogleToken = cachedGoogleToken || session?.provider_token || null;
 
             // Cloud fetch directly to super-endpoint
                 const reqBody = {
@@ -660,11 +733,14 @@ export default function Home({ session }) {
                     is_temporary: isTemporary,
                     has_local_folder: !!localDirectoryHandleRef.current,
                     is_thinking: isThinking,
+                    is_web_search: isWebSearch,
+                    google_token: effectiveGoogleToken,
                     user_context: {
                         date: new Date().toLocaleDateString(),
                         time: new Date().toLocaleTimeString(),
                         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                        dayOfWeek: new Date().toLocaleDateString(undefined, { weekday: 'long' })
+                        dayOfWeek: new Date().toLocaleDateString(undefined, { weekday: 'long' }),
+                        google_token: effectiveGoogleToken
                     }
                 };
 
@@ -829,6 +905,29 @@ export default function Home({ session }) {
                                          activeToolStatus = "Executing terminal command...";
                                          const cmdStr = parsed.args?.command || parsed.args?.cmd || "";
                                          
+                                         // SECURITY FIX: Block dangerous shell commands to prevent destructive operations
+                                         const dangerousPatterns = [
+                                             /\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|--recursive|--force)\b/i,  // rm -rf
+                                             /\brm\s+(-[a-zA-Z]*f[a-zA-Z]*r)\b/i,                       // rm -fr
+                                             /\bformat\b/i,                                                // format drive
+                                             /\bmkfs\b/i,                                                  // make filesystem
+                                             /\bdd\s+if=/i,                                                // disk destroyer
+                                             /\b:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;/,                          // fork bomb
+                                             /\bshutdown\b/i,                                              // shutdown system
+                                             /\breboot\b/i,                                                // reboot
+                                             /\bsudo\s+rm\b/i,                                             // sudo rm
+                                             /\bchmod\s+777\s+\//,                                         // chmod 777 /
+                                             /\bcurl\b.*\|\s*(ba)?sh/i,                                    // pipe to shell
+                                             /\bwget\b.*\|\s*(ba)?sh/i,                                    // pipe to shell
+                                             />\s*\/dev\/[sh]da/i,                                         // overwrite disk
+                                         ];
+                                         
+                                         const isDangerous = dangerousPatterns.some(p => p.test(cmdStr));
+                                         if (isDangerous) {
+                                             aiRawText += `\n\n🛡️ **Command Blocked!** This command was flagged as potentially dangerous and was NOT executed.\n\n\`\`\`bash\n$ ${cmdStr}\n\`\`\`\n\n🤖 *"I'm an AI, not a chaos agent! I won't rm -rf your life away!"* 😎`;
+                                             activeToolStatus = null;
+                                         } else {
+                                         
                                          aiRawText += `\n\n\`\`\`bash\n$ ${cmdStr}\n\`\`\`\n\n⚡ Executed in terminal!`;
                                          
                                          let currentFolderHandle = localDirectoryHandleRef.current;
@@ -865,6 +964,7 @@ export default function Home({ session }) {
                                          } finally {
                                              activeToolStatus = null;
                                          }
+                                         } // end else (not dangerous)
                                      } else if (parsed.type === 'tool_call' && parsed.tool === 'read_local_files') {
                                          activeToolStatus = "Reading local files...";
                                          let currentFolderHandle = localDirectoryHandleRef.current;
@@ -1078,14 +1178,16 @@ export default function Home({ session }) {
                 }
 
                 // Dynamic AI Title Generation using gpt-4o-mini (Turn 1 & Turn 2)
+                const currentMetaTitle = (chatMetadata[idToUse]?.title || '').trim();
+                const isGenericTitle = !currentMetaTitle || currentMetaTitle === 'New Chat' || currentMetaTitle === 'Telegram Chat' || currentMetaTitle.startsWith('Topic ');
                 if (!isTemporary && !localStorage.getItem('user_renamed_' + idToUse)) {
-                    if (initialMessageCount === 0) {
-                        // Turn 1: Generate clean 3-4 word title right after 1st chat exchange
+                    if (initialMessageCount === 0 || isGenericTitle) {
+                        // Turn 1 / Generic: Generate clean 3-4 word title right after chat exchange
                         generateChatTitle([
                             { role: 'user', content: text },
                             { role: 'assistant', content: aiRawText }
                         ], session?.access_token, userMemories).then(async (newTitle) => {
-                            if (newTitle && newTitle !== 'New Chat') {
+                            if (newTitle && newTitle !== 'New Chat' && !newTitle.startsWith('Topic ')) {
                                 await supabase.from('chats').update({ title: newTitle }).eq('id', idToUse);
                                 const cached = await cacheManager.getChat(idToUse);
                                 if (cached) await cacheManager.setChat({ ...cached, title: newTitle });
@@ -1298,6 +1400,25 @@ export default function Home({ session }) {
                         };
                     });
                     setChats(prev => ({ ...prev, [id]: formatted }));
+
+                    const curTitle = (chatMetadata[id]?.title || '').trim();
+                    if (!curTitle || curTitle === 'New Chat' || curTitle === 'Telegram Chat' || curTitle.startsWith('Topic ')) {
+                        generateChatTitle(
+                            sortedChatMsgs.slice(0, 4).map(m => ({ role: m.role || (m.sender === 'user' ? 'user' : 'assistant'), content: m.content || m.text || '' })),
+                            session?.access_token,
+                            userMemories
+                        ).then(async (newTitle) => {
+                            if (newTitle && newTitle !== 'New Chat' && !newTitle.startsWith('Topic ')) {
+                                await supabase.from('chats').update({ title: newTitle }).eq('id', id);
+                                const cached = await cacheManager.getChat(id);
+                                if (cached) await cacheManager.setChat({ ...cached, title: newTitle });
+                                setChatMetadata(prev => ({
+                                    ...prev,
+                                    [id]: { ...(prev[id] || {}), title: newTitle }
+                                }));
+                            }
+                        }).catch(console.error);
+                    }
                 }
             } catch (e) {
                 console.error("Error switching chat:", e);
@@ -1564,6 +1685,7 @@ export default function Home({ session }) {
                     onToggleSettings={() => setIsSettingsOpen(true)}
                     onOpenSearch={() => setIsSearchModalOpen(true)}
                     onOpenLibrary={() => { setIsLibraryOpen(true); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}
+                    onTaskClick={() => { setIsTaskModalOpen(true); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}
                     togglePinChat={togglePinChat}
                     deleteChat={deleteChat}
                     renameChat={renameChat}
@@ -1782,6 +1904,17 @@ export default function Home({ session }) {
                     chatMetadata={chatMetadata}
                     switchChat={switchChat}
                     currentChatId={currentChatId}
+                />
+                <TaskModal 
+                    isOpen={isTaskModalOpen}
+                    onClose={() => setIsTaskModalOpen(false)}
+                    userId={session?.user?.id}
+                    onAutomateTask={(task) => {
+                        setIsTaskModalOpen(false);
+                        const scheduleDetails = task.dueDate ? `Scheduled for: ${task.dueDate} ${task.dueTime || ''}` : '';
+                        const prompt = `Please automate and execute this scheduled task now:\n**Task**: ${task.title}\n${task.notes ? `**Instructions/Notes**: ${task.notes}\n` : ''}${scheduleDetails ? `**Timeline**: ${scheduleDetails}\n` : ''}\nPlease perform the necessary actions or prepare the deliverables.`;
+                        handleSend([], prompt);
+                    }}
                 />
             </main>
 

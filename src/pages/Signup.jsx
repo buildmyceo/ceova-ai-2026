@@ -24,10 +24,45 @@ export default function Signup({ onClose, onSwitchToLogin }) {
         return () => mediaQuery.removeEventListener('change', handleChange);
     }, []);
 
+    const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+    // Cooldown countdown timer
+    useEffect(() => {
+        if (cooldownSeconds <= 0) return;
+        const timer = setInterval(() => setCooldownSeconds((prev) => prev - 1), 1000);
+        return () => clearInterval(timer);
+    }, [cooldownSeconds]);
+
     const handleEmailSignup = async () => {
         if (!name || !email || !password) return setAuthError("Fill in all fields.");
+        if (cooldownSeconds > 0) {
+            return setAuthError(`Too many attempts. Please wait ${cooldownSeconds}s before trying again.`);
+        }
+
+        // Per-user / per-email rate limiter
+        const normalizedEmail = email.trim().toLowerCase();
+        const rateLimitKey = `signup_attempts_${normalizedEmail}`;
+        const now = Date.now();
+        let userAttempts = [];
+        try {
+            userAttempts = JSON.parse(localStorage.getItem(rateLimitKey) || '[]')
+                .filter((timestamp) => now - timestamp < 60000); // 1-minute rolling window
+        } catch (e) {
+            userAttempts = [];
+        }
+
+        if (userAttempts.length >= 3) {
+            setCooldownSeconds(60);
+            return setAuthError("Too many signup attempts for this email. Please wait 60 seconds.");
+        }
+
+        userAttempts.push(now);
+        try {
+            localStorage.setItem(rateLimitKey, JSON.stringify(userAttempts));
+        } catch (e) {}
+
         setAuthError("Signing up...");
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: { 
@@ -35,8 +70,19 @@ export default function Signup({ onClose, onSwitchToLogin }) {
                 data: { full_name: name }
             }
         });
-        if (error) setAuthError(error.message);
-        else setAuthError("Check your email verification link!");
+        if (error) {
+            const msg = error.message || "";
+            if (msg.toLowerCase().includes("rate limit")) {
+                setAuthError("Email verification limit reached on server. Try 'Sign up with Google' or try again in a few minutes.");
+            } else {
+                setAuthError(msg);
+            }
+        } else if (data?.session) {
+            setAuthError("");
+            // Session established immediately
+        } else {
+            setAuthError("Check your email verification link!");
+        }
     };
 
     // Listen for the oauth-callback deep link event from Tauri (ceova://auth/callback#access_token=...)

@@ -4,7 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default [
-  { ignores: ['dist', 'node_modules', 'build', 'supabase', '.vercel', 'api', 'public', 'scripts', '*.js', '*.py', '*.mjs'] },
+  { ignores: ['dist', 'node_modules', 'build', 'supabase', '.vercel', 'api', 'public', 'scripts', 'src-tauri', '*.js', '*.py', '*.mjs'] },
   {
     files: ['src/**/*.{js,jsx}'],
     languageOptions: {

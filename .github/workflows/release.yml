@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - 'desktop'
   workflow_dispatch:
     inputs:
       target:
@@ -21,7 +19,7 @@ on:
 jobs:
   build-windows:
     if: github.event_name == 'push' || github.event.inputs.target == 'windows' || github.event.inputs.target == 'all'
-    name: Build Windows App (.exe)
+    name: Build Windows App (.exe & .msix)
     runs-on: windows-latest
     permissions:
       contents: write
@@ -51,11 +49,62 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v1.2.7
-          releaseName: 'CEOVA Desktop v1.2.7'
-          releaseBody: 'Official CEOVA Desktop Release for macOS and Windows.'
+          tagName: v1.3.0
+          releaseName: 'CEOVA Desktop v1.3.0'
+          releaseBody: 'Official CEOVA Desktop Release v1.3.0 (with MSIX package for Microsoft Store).'
           releaseDraft: false
           prerelease: false
+
+      - name: Build MSIX Package
+        shell: pwsh
+        run: |
+          Write-Host "Locating MakeAppx.exe..."
+          $makeAppx = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Filter "makeappx.exe" -Recurse | Select-Object -Last 1).FullName
+          if (-not $makeAppx) {
+            throw "MakeAppx.exe not found in Windows Kits!"
+          }
+          Write-Host "Found MakeAppx at: $makeAppx"
+
+          Write-Host "Staging files for MSIX..."
+          New-Item -ItemType Directory -Force -Path "msix-staging\Assets" | Out-Null
+          Copy-Item "windows-msix\AppxManifest.xml" "msix-staging\AppxManifest.xml" -Force
+          Copy-Item "windows-msix\Assets\*" "msix-staging\Assets\" -Force
+
+          # Find the built executable
+          $targetExe = "src-tauri\target\release\CEOVA.exe"
+          if (-not (Test-Path $targetExe)) {
+            $fallback = Get-ChildItem -Path "src-tauri\target\release" -Filter "*.exe" | Where-Object { $_.Name -notlike "*setup*" -and $_.Name -notlike "*build*" } | Select-Object -First 1
+            if ($fallback) {
+              $targetExe = $fallback.FullName
+            }
+          }
+          Write-Host "Using executable: $targetExe"
+          Copy-Item $targetExe "msix-staging\CEOVA.exe" -Force
+
+          # Copy any DLLs if present
+          Get-ChildItem -Path "src-tauri\target\release" -Filter "*.dll" | ForEach-Object {
+            Copy-Item $_.FullName "msix-staging\" -Force
+          }
+
+          Write-Host "Packaging MSIX..."
+          & $makeAppx pack /d "msix-staging" /p "CEOVA_1.3.0_x64.msix" /nv
+          if ($LASTEXITCODE -ne 0) {
+            throw "MakeAppx packaging failed with exit code $LASTEXITCODE"
+          }
+          Write-Host "Successfully built CEOVA_1.3.0_x64.msix!"
+
+      - name: Upload MSIX Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CEOVA-MSIX-v1.3.0
+          path: CEOVA_1.3.0_x64.msix
+
+      - name: Attach MSIX to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release upload v1.3.0 CEOVA_1.3.0_x64.msix --clobber
 
   build-macos:
     if: github.event.inputs.target == 'macos' || github.event.inputs.target == 'all'
@@ -91,8 +140,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v1.2.7
-          releaseName: 'CEOVA Desktop v1.2.7'
+          tagName: v1.3.0
+          releaseName: 'CEOVA Desktop v1.3.0'
           releaseBody: 'Official CEOVA Desktop Release for macOS and Windows.'
           releaseDraft: false
           prerelease: false

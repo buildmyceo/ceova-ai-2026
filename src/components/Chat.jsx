@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { Edit2, RotateCcw, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Download, Image as ImageIcon, ArrowRight, Loader, Sparkles, HardDrive, Folder, Code } from 'lucide-react';
+import { Edit2, RotateCcw, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Download, Image as ImageIcon, ArrowRight, Loader, Sparkles, HardDrive, Folder, Code, Brain, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import imageCompression from 'browser-image-compression';
 import { PDFDocument } from 'pdf-lib';
@@ -13,6 +13,9 @@ import ClientInvoiceWidget from './ClientInvoiceWidget';
 import ClientMediaConverterWidget from './ClientMediaConverterWidget';
 import CloudProjectCard from './CloudProjectCard';
 import WebsitePreviewModal from './WebsitePreviewModal';
+import DriveFilesCard from './DriveFilesCard';
+import DriveFilePreviewModal from './DriveFilePreviewModal';
+import CalendarEventCard from './CalendarEventCard';
 async function forceDownloadImage(url, filename = 'ceova-image.png') {
   try {
     const res = await fetch(url, { mode: 'cors' });
@@ -195,6 +198,68 @@ function renderHtml(text) {
   return `<div style="margin:0;">${processed}</div>`;
 }
 
+// ── Thought Process Component (ChatGPT / DeepSeek style) ───────────────────
+function ThoughtProcess({ thought, isThinking }) {
+  const [isExpanded, setIsExpanded] = useState(isThinking);
+  const [elapsedSeconds, setElapsedSeconds] = useState(1);
+  const timerRef = useRef(null);
+  const hasFinishedRef = useRef(false);
+
+  useEffect(() => {
+    if (isThinking) {
+      setIsExpanded(true);
+      const start = Date.now();
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds(Math.max(1, Math.round((Date.now() - start) / 1000)));
+      }, 1000);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (!hasFinishedRef.current) {
+        hasFinishedRef.current = true;
+        setIsExpanded(false);
+      }
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isThinking]);
+
+  if (!thought && !isThinking) return null;
+
+  return (
+    <div className={`thought-process-card ${isThinking ? 'is-thinking' : 'is-complete'}`}>
+      <button 
+        type="button" 
+        className="thought-process-toggle"
+        onClick={() => setIsExpanded(prev => !prev)}
+        title={isExpanded ? "Collapse thought process" : "Expand thought process"}
+      >
+        <div className="thought-process-label">
+          <Brain size={15} className={`thought-brain-icon ${isThinking ? 'pulsing' : ''}`} />
+          <span className="thought-status-text">
+            {isThinking 
+              ? `Thinking (${elapsedSeconds}s)...` 
+              : `Thought for ${elapsedSeconds} second${elapsedSeconds === 1 ? '' : 's'}`
+            }
+          </span>
+        </div>
+        <span className={`thought-chevron ${isExpanded ? 'open' : ''}`}>▾</span>
+      </button>
+
+      {isExpanded && (
+        <div className="thought-process-content">
+          <div className="thought-process-inner">
+            {thought || 'Analyzing query, researching domain concepts, and structuring detailed reasoning...'}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TypewriterRenderer({ text, isTyping, onZoom }) {
   const [displayed, setDisplayed] = useState(isTyping ? '' : text);
   const rafRef = React.useRef(null);
@@ -209,7 +274,7 @@ function TypewriterRenderer({ text, isTyping, onZoom }) {
 
     // Use requestAnimationFrame instead of setTimeout for smoother rendering
     // and to respect the browser's rendering budget (60fps)
-    const FRAME_INTERVAL_MS = 32; // ~30fps max — fast enough to feel live, cheap enough for mobile
+    const FRAME_INTERVAL_MS = 24;
 
     const animate = (timestamp) => {
       if (timestamp - lastUpdateRef.current >= FRAME_INTERVAL_MS) {
@@ -230,7 +295,32 @@ function TypewriterRenderer({ text, isTyping, onZoom }) {
     };
   }, [text, isTyping, displayed]);
 
-  return <MarkdownRenderer text={displayed + (isTyping ? ' ▋' : '')} onZoom={onZoom} />;
+  // Extract <think>...</think> block if present
+  const fullText = displayed;
+  const thinkMatch = fullText.match(/<think>([\s\S]*?)(?:<\/think>|$)/i);
+  const hasThink = !!thinkMatch;
+  const thoughtText = hasThink ? thinkMatch[1].trim() : '';
+  const isThoughtStillOpen = hasThink && !/<\/think>/i.test(fullText);
+  const mainContent = hasThink 
+    ? fullText.replace(/<think>[\s\S]*?(?:<\/think>|$)/i, '').trim()
+    : fullText;
+
+  return (
+    <div className="message-content-wrapper">
+      {hasThink && (
+        <ThoughtProcess 
+          thought={thoughtText} 
+          isThinking={isThoughtStillOpen && isTyping} 
+        />
+      )}
+      {(mainContent || (!hasThink && isTyping)) && (
+        <MarkdownRenderer 
+          text={mainContent + (isTyping && !isThoughtStillOpen ? ' ▋' : '')} 
+          onZoom={onZoom} 
+        />
+      )}
+    </div>
+  );
 }
 
 function formatBytes(bytes) {
@@ -375,7 +465,7 @@ function ClientCompressionWidget({ meta }) {
 }
 
 // ── MessageItem component ────────────────────────────────────────────────────
-function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onPreviewWebsite }) {
+function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onPreviewWebsite, onPreviewDriveFile }) {
   const [showActions, setShowActions] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [hasProceeded, setHasProceeded] = useState(false);
@@ -390,6 +480,119 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
       rawText = rawText.replace(metaMatch[0], '').trim();
     } catch(e) {}
   }
+
+  // Check for drive files tag :::drive_files [...] :::
+  let driveFilesFromTag = null;
+  const driveTagMatch = rawText.match(/:::drive_files\s*(\[.*?\])\s*:::/s);
+  if (driveTagMatch) {
+    try {
+      driveFilesFromTag = JSON.parse(driveTagMatch[1]);
+      rawText = rawText.replace(driveTagMatch[0], '').trim();
+    } catch(e) {}
+  }
+
+  // Parse Drive files either from metadata, tag block, or raw text output
+  const parsedDriveFiles = useMemo(() => {
+    if (isUser || !rawText) return [];
+    if (actionMeta && actionMeta.type === 'drive_files' && Array.isArray(actionMeta.files) && actionMeta.files.length > 0) {
+      return actionMeta.files;
+    }
+    if (driveFilesFromTag && Array.isArray(driveFilesFromTag) && driveFilesFromTag.length > 0) {
+      return driveFilesFromTag;
+    }
+    // Fallback: parse raw text with Type: File/Folder and ID: ...
+    const regex = /(?:^|\n)(?:[-*•]\s*)?(?:\*\*)?([^\n*`]+?)(?:\*\*)?\s*\n\s*Type:\s*(?:Folder|File)[^\n]*\n\s*ID:\s*`?([a-zA-Z0-9_-]{20,})`?(?:[^\n]*\n\s*\[?View\]?(?:\((https?:\/\/[^\s)]+)\))?)?/gi;
+    const files = [];
+    let m;
+    while ((m = regex.exec(rawText)) !== null) {
+      const name = m[1].replace(/^[🔍📁\s*-]+/u, '').trim();
+      const id = m[2].trim();
+      const link = m[3] || `https://drive.google.com/file/d/${id}/view`;
+      if (name && id && !files.some(f => f.id === id)) {
+        files.push({
+          id,
+          name,
+          webViewLink: link,
+          thumbnailLink: `https://drive.google.com/thumbnail?id=${id}&sz=w600`
+        });
+      }
+    }
+    return files;
+  }, [isUser, rawText, actionMeta, driveFilesFromTag]);
+
+  // Check for calendar event tag :::calendar_event {...} :::
+  let calendarEventFromTag = null;
+  const calTagMatch = rawText.match(/:::calendar_event\s*(\{.*?\})\s*:::/s);
+  if (calTagMatch) {
+    try {
+      calendarEventFromTag = JSON.parse(calTagMatch[1]);
+      rawText = rawText.replace(calTagMatch[0], '').trim();
+    } catch(e) {}
+  }
+
+  // Parse Calendar event either from actionMeta, tag block, or raw text output
+  const resolvedCalendarEvent = useMemo(() => {
+    if (isUser || !rawText) return null;
+    if (actionMeta && actionMeta.type === 'calendar_event' && actionMeta.event) {
+      return actionMeta.event;
+    }
+    if (calendarEventFromTag) {
+      return calendarEventFromTag;
+    }
+
+    // Fallback: match text output like:
+    // ✅ Event created successfully.
+    // Event: Meeting with Harshit
+    // View on Google Calendar
+    const match = rawText.match(/(?:✅\s*)?Event created successfully[\s\S]*?(?:\*\*Event:\*\*|Event:)\s*([^\n\r\[]+)(?:[\s\S]*?(?:\[View on Google Calendar\]\((https?:\/\/[^\s)]+)\)|View on Google Calendar))?/i);
+    if (!match) return null;
+
+    const title = match[1].replace(/\*\*/g, '').trim();
+    const htmlLink = match[2] || 'https://calendar.google.com';
+
+    // Retrieve previous user prompt for time/date extraction
+    const userPrompt = messages && idx > 0
+      ? (messages.slice(0, idx).reverse().find(m => m.sender === 'user')?.text || '')
+      : '';
+
+    const combined = `${userPrompt} ${rawText}`;
+    let start = null;
+    let end = null;
+
+    const timeMatch = combined.match(/(?:from\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*(?:to|-)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i) ||
+                      combined.match(/\b(?:at|from)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i);
+
+    const isTomorrow = /\btomorrow\b/i.test(combined);
+    const baseDate = new Date();
+    if (isTomorrow) baseDate.setDate(baseDate.getDate() + 1);
+
+    if (timeMatch) {
+      const parseTime = (tStr, d) => {
+        const m = tStr.trim().match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+        if (!m) return null;
+        let h = parseInt(m[1], 10);
+        const min = m[2] ? parseInt(m[2], 10) : 0;
+        const meridiem = m[3].toLowerCase();
+        if (meridiem === 'pm' && h < 12) h += 12;
+        if (meridiem === 'am' && h === 12) h = 0;
+        const res = new Date(d);
+        res.setHours(h, min, 0, 0);
+        return res.toISOString();
+      };
+      start = parseTime(timeMatch[1], baseDate);
+      if (timeMatch[2]) {
+        end = parseTime(timeMatch[2], baseDate);
+      }
+    }
+
+    return {
+      title,
+      summary: title,
+      start: start || (isTomorrow ? baseDate.toISOString() : new Date().toISOString()),
+      end: end,
+      htmlLink
+    };
+  }, [isUser, rawText, actionMeta, calendarEventFromTag, messages, idx]);
 
   const resolvedCloudProject = useMemo(() => {
     if (msg.cloudProject) return msg.cloudProject;
@@ -435,18 +638,33 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
       .replace(/Tech Stack:[^\n]+/gi, '')
       .trim();
 
+    if (parsedDriveFiles.length > 0) {
+      // Strip raw repetitive text blocks and redundant header since DriveFilesCard renders them cleanly
+      text = text
+        .replace(/(?:^|\n)(?:[-*•]\s*)?(?:\*\*)?[^\n*`]+?(?:\*\*)?\s*\n\s*Type:\s*(?:Folder|File)[^\n]*\n\s*ID:\s*`?[a-zA-Z0-9_-]{20,}`?(?:[^\n]*\n\s*\[?View\]?(?:\(https?:\/\/[^\s)]+\))?)?/gi, '')
+        .replace(/(?:^|\n)\s*🔍?\s*\*\*?Search Results:?\*\*?\s*/gi, '')
+        .replace(/(?:^|\n)\s*📁?\s*\*\*?Recent Files:?\*\*?\s*/gi, '')
+        .replace(/(?:^|\n)\s*📁?\s*\*\*?Google Drive Files:?\*\*?\s*/gi, '')
+        .trim();
+    }
+
+    if (resolvedCalendarEvent) {
+      // Strip bare confirmation text since CalendarEventCard will render a rich UI card
+      text = text.replace(/(?:✅\s*)?Event created successfully[\s\S]*?(?:\*\*Event:\*\*|Event:)\s*[^\n\r\[]+(?:[\s\S]*?(?:\[View on Google Calendar\]\([^\s)]+\)|View on Google Calendar))?/gi, '').trim();
+    }
+
     if (resolvedCloudProject && (text.includes('https://ceova.online/') || text.includes('.ceova.online'))) {
       if (text.startsWith('🎉') || text.startsWith('✨') || text.includes('**Your website is live') || text.includes('Edge Network') || text.includes('Deploying')) {
         return '';
       }
     }
 
-    if (!text && rawText && !resolvedCloudProject) {
+    if (!text && rawText && !resolvedCloudProject && parsedDriveFiles.length === 0 && !resolvedCalendarEvent) {
       return 'Action completed.';
     }
 
     return text;
-  }, [rawText, resolvedCloudProject]);
+  }, [rawText, resolvedCloudProject, parsedDriveFiles, resolvedCalendarEvent]);
 
   const isPlanMessage = useMemo(() => {
     if (isUser || !rawText || resolvedCloudProject) return false;
@@ -575,8 +793,20 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
               <CyclingStatus defaultStatus={displayText || "Processing..."} />
             ) : null}
 
-            {(displayText || !msg.isTyping) && (
-              <TypewriterRenderer text={displayText.replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
+            {(displayText || (msg.isTyping && !parsedDriveFiles.length && !resolvedCalendarEvent)) ? (
+              <TypewriterRenderer text={(displayText || '').replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
+            ) : null}
+
+            {parsedDriveFiles && parsedDriveFiles.length > 0 && (
+              <DriveFilesCard
+                files={parsedDriveFiles}
+                title={actionMeta?.title || (rawText.includes('Search Results') ? 'Search Results' : 'Google Drive Files')}
+                onPreview={onPreviewDriveFile}
+              />
+            )}
+
+            {resolvedCalendarEvent && (
+              <CalendarEventCard event={resolvedCalendarEvent} />
             )}
 
             {resolvedCloudProject && (
@@ -850,6 +1080,7 @@ export default function Chat({ messages, onSuggestionClick, userEmail, onRegener
   const messagesEndRef = useRef(null);
   const [copiedId, setCopiedId] = React.useState(null);
   const [previewProject, setPreviewProject] = React.useState(null);
+  const [drivePreviewFile, setDrivePreviewFile] = React.useState(null);
 
   const handleCopy = (text, id) => {
     navigator.clipboard.writeText(text);
@@ -895,6 +1126,7 @@ export default function Chat({ messages, onSuggestionClick, userEmail, onRegener
                 setLocalDirectoryHandle={setLocalDirectoryHandle}
                 onFolderConnected={onFolderConnected}
                 onPreviewWebsite={setPreviewProject}
+                onPreviewDriveFile={setDrivePreviewFile}
               />
             );
           })}
@@ -906,6 +1138,14 @@ export default function Chat({ messages, onSuggestionClick, userEmail, onRegener
         <WebsitePreviewModal
           project={previewProject}
           onClose={() => setPreviewProject(null)}
+        />
+      )}
+
+      {drivePreviewFile && (
+        <DriveFilePreviewModal
+          file={drivePreviewFile}
+          isOpen={!!drivePreviewFile}
+          onClose={() => setDrivePreviewFile(null)}
         />
       )}
     </div>

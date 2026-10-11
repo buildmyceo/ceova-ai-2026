@@ -8,14 +8,30 @@ import {
     Settings2, Bell, LayoutGrid, Database, Archive, Shield,
     ArrowLeft, RotateCcw, Trash2, Download, UserMinus, Plus, Edit2, Save, Zap,
     Power, Check, Calendar, HardDrive, Scissors, Scan, Eye, Key, Palette, Film, Minimize2, RefreshCw, Receipt, Megaphone, BookOpen, Terminal, FolderOpen, Code,
-    Smartphone
+    Smartphone, User, Cookie
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import UsageSection from './UsageSection';
 import { useTheme } from '../contexts/ThemeContext';
-import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
 import GoogleConnectModal from './GoogleConnectModal';
 import TelegramConnectModal from './TelegramConnectModal';
+import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
+
+const legalDocuments = [
+    { id: 'privacy-policy', title: 'Privacy Policy', icon: Shield },
+    { id: 'terms-conditions', title: 'Terms & Conditions', icon: FileText },
+    { id: 'refund-cancellation', title: 'Refund & Cancellation', icon: RotateCcw },
+    { id: 'cookie-policy', title: 'Cookie Policy', icon: Cookie },
+    { id: 'acceptable-use', title: 'Acceptable Use Policy', icon: Check },
+    { id: 'ai-usage-disclaimer', title: 'AI Usage & Disclaimer', icon: Sparkles },
+    { id: 'data-retention', title: 'Data Retention', icon: Database },
+    { id: 'security-policy', title: 'Security Policy', icon: Lock },
+    { id: 'copyright-ip', title: 'Copyright & IP', icon: BookOpen },
+    { id: 'third-party-services', title: 'Third-Party Services', icon: AppWindow },
+    { id: 'childrens-privacy', title: "Children's Privacy", icon: Eye },
+    { id: 'community-guidelines', title: 'Community Guidelines', icon: Megaphone },
+    { id: 'contact-support', title: 'Contact & Support', icon: Mail }
+];
 
 export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, session, onOpenPhoneModal, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange }) {
     const { themePref, setThemePref } = useTheme();
@@ -31,6 +47,37 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
     const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
     const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
     const [isTelegramConnected, setIsTelegramConnected] = useState(false);
+    const [planName, setPlanName] = useState(() => {
+        try {
+            if (userId) {
+                const cached = localStorage.getItem(`usage_userSub_${userId}`);
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    return parsed?.subscription_plans?.name || 'Spark';
+                }
+            }
+        } catch (e) {}
+        return 'Spark';
+    });
+
+    useEffect(() => {
+        if (isOpen && userId) {
+            supabase
+                .from('user_subscriptions')
+                .select('*, subscription_plans(*)')
+                .eq('user_id', userId)
+                .in('status', ['active', 'trialing'])
+                .maybeSingle()
+                .then(({ data }) => {
+                    if (data?.subscription_plans?.name) {
+                        setPlanName(data.subscription_plans.name);
+                    } else {
+                        setPlanName('Spark');
+                    }
+                })
+                .catch(() => {});
+        }
+    }, [isOpen, userId]);
 
     useEffect(() => {
         if (isOpen && userId) {
@@ -453,19 +500,38 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                         <div className="settings-body">
                             {view === 'main' && (
                                 <>
+                                    <div className="settings-profile-card">
+                                        <div className="settings-profile-left">
+                                            <div className="settings-avatar-circle">
+                                                {session?.user?.user_metadata?.avatar_url ? (
+                                                    <img src={session.user.user_metadata.avatar_url} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                ) : (
+                                                    <User size={18} color="#ffffff" />
+                                                )}
+                                            </div>
+                                            <div className="settings-profile-info">
+                                                <span className="settings-profile-email">{userEmail || session?.user?.email || "Account"}</span>
+                                                <span className="settings-profile-sub">
+                                                    {session?.user?.phone ? `${session.user.phone} linked` : "Personal Workspace"}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="settings-plan-pill">
+                                            {planName.toUpperCase()}
+                                        </div>
+                                    </div>
+
                                     <h4 className="section-label">Account</h4>
                                     <div className="settings-section">
-                                        <div className="settings-row no-hover">
-                                            <div className="row-left"><Mail size={18} /> <span>Email</span></div>
-                                            <span className="version-info">{userEmail || "not logged in"}</span>
-                                        </div>
                                         <div className="settings-row clickable" onClick={() => onOpenPhoneModal?.()}>
                                             <div className="row-left">
-                                                <Smartphone size={18} /> 
+                                                <div className="settings-icon-squircle">
+                                                    <Smartphone size={16} />
+                                                </div>
                                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                                                     <span>Phone Login</span>
-                                                    <span style={{ fontSize: '10px', opacity: 0.7 }}>
-                                                        {session?.user?.phone ? `${session.user.phone} linked to ${userEmail || session?.user?.email || "your account"}` : "Not linked — click to add"}
+                                                    <span style={{ fontSize: '11px', color: '#71717a' }}>
+                                                        {session?.user?.phone ? `${session.user.phone} linked` : "Not linked — click to add"}
                                                     </span>
                                                 </div>
                                             </div>
@@ -477,26 +543,55 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                             </div>
                                         </div>
                                         <div className="settings-row clickable" onClick={() => { navigate('/subscription'); handleClose(); }}>
-                                            <div className="row-left"><CreditCard size={18} /> <span>Subscription & Billing</span></div>
-                                            <ChevronRight size={14} className="chevron" />
+                                            <div className="row-left">
+                                                <div className="settings-icon-squircle">
+                                                    <CreditCard size={16} />
+                                                </div>
+                                                <span>Subscription & Billing</span>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span className="plan-sub-tag">
+                                                    {planName}
+                                                </span>
+                                                <ChevronRight size={14} className="chevron" />
+                                            </div>
                                         </div>
                                         <div className="settings-row clickable" onClick={() => setView('usage')}>
-                                            <div className="row-left"><Receipt size={18} /> <span>Usage</span></div>
+                                            <div className="row-left">
+                                                <div className="settings-icon-squircle">
+                                                    <Receipt size={16} />
+                                                </div>
+                                                <span>Usage</span>
+                                            </div>
                                             <ChevronRight size={14} className="chevron" />
                                         </div>
                                         <div className="settings-row clickable" onClick={() => setView('data-controls')}>
-                                            <div className="row-left"><Database size={18} /> <span>Data controls</span></div>
+                                            <div className="row-left">
+                                                <div className="settings-icon-squircle">
+                                                    <Database size={16} />
+                                                </div>
+                                                <span>Data controls</span>
+                                            </div>
                                             <ChevronRight size={14} className="chevron" />
                                         </div>
                                         <div className="settings-row clickable" onClick={() => setView('connectors')}>
-                                            <div className="row-left"><AppWindow size={18} /> <span>Connectors</span></div>
+                                            <div className="row-left">
+                                                <div className="settings-icon-squircle">
+                                                    <AppWindow size={16} />
+                                                </div>
+                                                <span>Connectors</span>
+                                            </div>
                                             <ChevronRight size={14} className="chevron" />
                                         </div>
                                         <div className="settings-row clickable" onClick={() => setView('tools')}>
-                                            <div className="row-left"><Zap size={18} /> <span>Tools</span></div>
+                                            <div className="row-left">
+                                                <div className="settings-icon-squircle">
+                                                    <Zap size={16} />
+                                                </div>
+                                                <span>Tools</span>
+                                            </div>
                                             <ChevronRight size={14} className="chevron" />
                                         </div>
-
                                     </div>
 
                                     {isTauri && (
@@ -505,10 +600,12 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                             <div className="settings-section">
                                                 <div className="settings-row no-hover">
                                                     <div className="row-left">
-                                                        <Power size={18} /> 
+                                                        <div className="settings-icon-squircle">
+                                                            <Power size={16} />
+                                                        </div>
                                                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                                                             <span>Launch at Login</span>
-                                                            <span style={{ fontSize: '10px', opacity: 0.5 }}>Automatically start CEOVA on system startup.</span>
+                                                            <span style={{ fontSize: '11px', color: '#71717a' }}>Automatically start CEOVA on system startup.</span>
                                                         </div>
                                                     </div>
                                                     <button 
@@ -518,7 +615,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                                             width: '40px',
                                                             height: '20px',
                                                             borderRadius: '20px',
-                                                            background: autoStartEnabled ? '#10b981' : 'rgba(255,255,255,0.1)',
+                                                            background: autoStartEnabled ? '#10b981' : '#27272a',
                                                             border: 'none',
                                                             position: 'relative',
                                                             cursor: 'pointer',
@@ -541,36 +638,59 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                         </>
                                     )}
 
-
-
+                                    <h4 className="section-label">General</h4>
                                     <div className="settings-section">
                                         <div className="settings-row clickable" onClick={() => setView('about')}>
-                                            <div className="row-left"><HelpCircle size={18} /> <span>About</span></div>
+                                            <div className="row-left">
+                                                <div className="settings-icon-squircle">
+                                                    <HelpCircle size={16} />
+                                                </div>
+                                                <span>About</span>
+                                            </div>
                                             <ChevronRight size={14} className="chevron" />
                                         </div>
                                     </div>
 
-
-
                                     <div className="settings-section logout-section" onClick={onLogout}>
-                                        <div className="settings-row clickable"><div className="row-left logout-text"><LogOut size={18} /> <span>Log out</span></div></div>
+                                        <div className="settings-row clickable">
+                                            <div className="row-left logout-text">
+                                                <div className="settings-icon-squircle logout-squircle">
+                                                    <LogOut size={16} />
+                                                </div>
+                                                <span>Log out</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </>
                             )}
 
                             {view === 'about' && (
                                 <div className="about-view">
-                                    <div style={{ textAlign: 'center', padding: '30px 0' }}>
-                                        <h3 style={{ marginTop: '16px', fontSize: '20px', fontWeight: '600' }}>CEOVA AI</h3>
-                                        <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>Version 1.2.6 (Production)</p>
+                                    <div style={{ textAlign: 'center', padding: '20px 0 16px' }}>
+                                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: '#ffffff', letterSpacing: '-0.01em' }}>CEOVA AI</h3>
+                                        <p style={{ color: '#71717a', fontSize: '12px', marginTop: '4px' }}>Version 1.2.6 (Production)</p>
                                     </div>
 
                                     <h4 className="section-label">Legal Center</h4>
                                     <div className="settings-section">
-                                        <div className="settings-row clickable" onClick={() => { navigate('/legal/privacy-policy'); handleClose(); }}>
-                                            <div className="row-left"><Shield size={18} /> <span>Legal Documents & Policies</span></div>
-                                            <ChevronRight size={14} className="chevron" />
-                                        </div>
+                                        {legalDocuments.map((doc) => {
+                                            const IconComponent = doc.icon;
+                                            return (
+                                                <div 
+                                                    key={doc.id}
+                                                    className="settings-row clickable" 
+                                                    onClick={() => { navigate(`/legal/${doc.id}`); handleClose(); }}
+                                                >
+                                                    <div className="row-left">
+                                                        <div className="settings-icon-squircle">
+                                                            <IconComponent size={16} />
+                                                        </div>
+                                                        <span>{doc.title}</span>
+                                                    </div>
+                                                    <ChevronRight size={14} className="chevron" />
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}

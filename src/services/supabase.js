@@ -27,6 +27,48 @@ function getAuthDB() {
     return idbPromise;
 }
 
+const isTauriEnv = () => typeof window !== 'undefined' && (
+    window.__TAURI__ !== undefined ||
+    window.__TAURI_INTERNALS__ !== undefined
+);
+
+async function loadFromDesktopDisk() {
+    if (!isTauriEnv()) return null;
+    try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const token = await invoke('load_desktop_session');
+        if (token && typeof token === 'string' && token.trim()) {
+            console.log("[Auth Storage] Successfully restored session from ~/.ceova/session.json!");
+            return token.trim();
+        }
+    } catch (e) {
+        console.warn("[Auth Storage] load_desktop_session error:", e);
+    }
+    return null;
+}
+
+async function saveToDesktopDisk(token) {
+    if (!isTauriEnv() || !token) return;
+    try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('save_desktop_session', { token: String(token) });
+        console.log("[Auth Storage] Mirrored session to ~/.ceova/session.json");
+    } catch (e) {
+        console.warn("[Auth Storage] save_desktop_session error:", e);
+    }
+}
+
+async function clearFromDesktopDisk() {
+    if (!isTauriEnv()) return;
+    try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('clear_desktop_session');
+        console.log("[Auth Storage] Cleared ~/.ceova/session.json on explicit logout");
+    } catch (e) {
+        console.warn("[Auth Storage] clear_desktop_session error:", e);
+    }
+}
+
 export const persistentAuthStorage = {
     async getItem(key) {
         if (typeof window === 'undefined') return null;
@@ -35,6 +77,8 @@ export const persistentAuthStorage = {
         try {
             const val = window.localStorage.getItem(key);
             if (val) {
+                // Ensure desktop disk is kept in sync
+                saveToDesktopDisk(val);
                 return val;
             }
         } catch (e) {
@@ -51,11 +95,23 @@ export const persistentAuthStorage = {
                     try {
                         window.localStorage.setItem(key, storedVal);
                     } catch (e) {}
+                    saveToDesktopDisk(storedVal);
                     return storedVal;
                 }
             }
         } catch (e) {
             console.warn("[Auth Storage] IndexedDB getItem error:", e);
+        }
+
+        // 3. Fallback to native OS disk (~/.ceova/session.json) - survives app deletion & reinstallation!
+        const desktopDiskVal = await loadFromDesktopDisk();
+        if (desktopDiskVal) {
+            try {
+                window.localStorage.setItem(key, desktopDiskVal);
+                const db = await getAuthDB();
+                if (db) await db.put(AUTH_STORE_NAME, desktopDiskVal, key);
+            } catch (e) {}
+            return desktopDiskVal;
         }
 
         return null;
@@ -80,6 +136,9 @@ export const persistentAuthStorage = {
         } catch (e) {
             console.warn("[Auth Storage] IndexedDB setItem error:", e);
         }
+
+        // 3. Mirror into native OS disk ~/.ceova/session.json
+        await saveToDesktopDisk(value);
     },
 
     async removeItem(key) {
@@ -101,6 +160,9 @@ export const persistentAuthStorage = {
         } catch (e) {
             console.warn("[Auth Storage] IndexedDB removeItem error:", e);
         }
+
+        // 3. Remove from native OS disk ~/.ceova/session.json
+        await clearFromDesktopDisk();
     }
 };
 
