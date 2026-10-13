@@ -707,13 +707,8 @@ export default function Home({ session }) {
         const activeProjectId = activeCloudProject?.cloudProject?.projectId || 
             activeCloudProject?.attachments?.find(a => a.type === 'cloud_project')?.data?.projectId;
 
-        // Check if user is approving a new website implementation plan
-        const lastAssistantMsg = currentMessages.slice().reverse().find(m => m.sender === 'assistant');
-        const isApprovingNewSitePlan = lastAssistantMsg && 
-            typeof lastAssistantMsg.text === 'string' &&
-            /Website Implementation Plan/i.test(lastAssistantMsg.text) &&
-            !/Revised Website Implementation Plan/i.test(lastAssistantMsg.text) &&
-            /^(?:proceed|yes|build it|go ahead|approved|approve|sure|ok|start|do it|let's do it|lets do it)\b/i.test(text.trim());
+        // Website development tool is paused
+        const isApprovingNewSitePlan = false;
 
         // Check if user explicitly requests or describes creating a brand-new website
         const isNewWebsiteRequest = /^\s*(?:please\s+)?(?:creat|create|build|make|start|generate|design)\s+(?:a\s+)?(?:completely\s+)?(?:new\s+)?(?:website|web\s*app|site|landing|portfolio|restaurant|resturent|store|bakery|project|page)/i.test(text)

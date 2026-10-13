@@ -341,7 +341,7 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                     type="connector"
                                     icon={<img src="/telegram.png" alt="Telegram" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />} 
                                     title="Telegram" 
-                                    desc={connections.telegram ? "Connected to CEOVA Telegram Bot" : "Build websites, run tools & chat from Telegram."} 
+                                    desc={connections.telegram ? "Connected to CEOVA Telegram Bot" : "Run tools, sync workspace & chat from Telegram."} 
                                     isConnected={connections.telegram}
                                     isChecking={connections.checking}
                                     onConnect={() => setIsTelegramModalOpen(true)}

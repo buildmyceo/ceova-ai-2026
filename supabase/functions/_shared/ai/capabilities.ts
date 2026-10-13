@@ -50,7 +50,7 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "cloud_dev",
-    description: "Build, test, update, and deploy production web applications, landing pages, SaaS apps, portfolios, and websites to https://<project>.ceova.online in isolated cloud workspaces. For new sites or major structural changes, present an implementation plan first and wait for approval. For tiny changes on existing sites (text edits, styling tweaks), execute directly.",
+    description: "PAUSED: Website development and hosting is currently paused. If the user asks to build, create, design, or update websites, inform them that the website development tool is currently paused and temporarily unavailable.",
     keywords: [
       // Website creation
       "website", "build website", "create website", "make website", "develop website", "design website",
@@ -62,14 +62,10 @@ export const CAPABILITIES: Capability[] = [
       // Plan/approval flow
       "implementation plan", "proceed with website", "build the website", "website plan",
       "start building", "use placeholders", "placeholder content",
-      // UI component keywords (specific)
-      "navbar", "change navbar", "update navbar", "hero section", "header section", "footer section",
-      // Technical specification terms
-      "index.html", "style.css", "app.js", "tailwind css", "responsive layout", "three.js", "chart.js",
       // Specific creation triggers
       "please create a website", "please build a website", "build a website", "create a website", "design a website"
     ],
-    toolIds: ["create_project"],
+    toolIds: [],
     memoryCategories: ["coding", "projects", "design_preferences"],
   },
   {

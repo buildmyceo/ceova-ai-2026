@@ -254,7 +254,7 @@ export default function TelegramConnectModal({ isOpen, onClose, onStatusChange }
                         {/* Title & Description */}
                         <h2 style={{ margin: '0 0 8px 0', fontSize: '1.25rem', fontWeight: 600, color: '#fff' }}>Telegram</h2>
                         <p style={{ color: '#a1a1aa', fontSize: '0.9rem', lineHeight: '1.5', margin: '0 0 24px 0', textAlign: 'center', maxWidth: '480px' }}>
-                            Talk to CEOVA right from Telegram. Build websites, run utility tools, manage your Google Workspace, and get instant answers anywhere on any device.
+                            Talk to CEOVA right from Telegram. Run utility tools, manage your Google Workspace, and get instant answers anywhere on any device.
                         </p>
 
                         {/* Connection State Actions */}
@@ -423,9 +423,9 @@ export default function TelegramConnectModal({ isOpen, onClose, onStatusChange }
                                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                                     {[
                                         {
-                                            icon: <Globe size={16} color="#38bdf8" />,
-                                            title: "Build & Deploy Websites",
-                                            desc: "Say 'Build a sushi bar website' and CEOVA codes and deploys it live on ceova.online."
+                                            icon: <Globe size={16} color="#94a3b8" />,
+                                            title: "Build Websites (Paused)",
+                                            desc: "Website development is temporarily paused for upgrades. Check back soon for updates."
                                         },
                                         {
                                             icon: <Wrench size={16} color="#f59e0b" />,
@@ -467,7 +467,7 @@ export default function TelegramConnectModal({ isOpen, onClose, onStatusChange }
                                 <h3 style={{ margin: '0 0 16px 0', fontSize: '0.95rem', fontWeight: 600, color: '#fff' }}>Example prompts</h3>
                                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                                     {[
-                                        "Build a modern portfolio website for a photographer.",
+                                        "Create a business proposal for a new client project.",
                                         "Generate a QR code for https://mybusiness.com",
                                         "Create an invoice for $650 for UX design services.",
                                         "Summarize my unread emails from today."

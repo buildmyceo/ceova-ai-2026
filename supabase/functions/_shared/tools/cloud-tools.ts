@@ -54,12 +54,12 @@ export class CreateProjectTool implements Tool {
   metadata: ToolMetadata = {
     id: 'create_project',
     name: 'Create Cloud Project',
-    description: 'Creates and deploys a cloud website project workspace on ceova.online. For new websites or major/structural changes on existing sites (new pages, redesigns, major features, navigation changes), present or revise the implementation plan first and wait for user approval. For small/isolated changes on existing sites ("Change the navbar", "Change the restaurant name", "Make button text Order Now", "Change hero heading", "Change image", "Make button smaller", "Change contact number"), modify directly with project_id, identifying the exact part, preserving everything else, and avoiding full-site regeneration.',
+    description: 'PAUSED: Cloud website creation and hosting is currently paused and unavailable.',
     category: 'CloudDev',
     icon: 'FolderPlus',
     requiresImage: false,
     requiresAuth: true,
-    enabled: true,
+    enabled: false,
     parameters: {
       type: 'object',
       properties: {
@@ -72,92 +72,14 @@ export class CreateProjectTool implements Tool {
     },
   };
 
-  async execute(context: ToolContext): Promise<ToolResult> {
-    try {
-      // Determine the richest, most detailed specification/prompt available:
-      let prompt = '';
-      const currentMsg = (context.message || '').trim();
-      const argsDesc = (context.args?.description || '').trim();
-
-      // Check if current user message or recent history contains a rich spec
-      let richestUserPrompt = currentMsg;
-      if (context.history && Array.isArray(context.history)) {
-        for (const m of context.history.slice().reverse()) {
-          if (m.role === 'user' && typeof m.content === 'string') {
-            const userText = m.content.trim();
-            // If current message is brief (e.g. "try again", "proceed", "build it") or previous was much more detailed
-            if (userText.length > richestUserPrompt.length && (currentMsg.length < 300 || userText.length > 500)) {
-              richestUserPrompt = userText;
-              break;
-            }
-          }
-        }
-      }
-
-      // If user prompt is substantive (e.g. CSS, requirements, long prompt), prefer it over the AI's 1-line summary
-      if (richestUserPrompt.length > 100 || richestUserPrompt.length > argsDesc.length) {
-        prompt = richestUserPrompt;
-      } else if (argsDesc) {
-        prompt = argsDesc;
-      } else {
-        prompt = richestUserPrompt || context.args?.name || 'Create web project';
-      }
-
-      let projectId: string | undefined = context.args?.project_id;
-      let approvedPlan = context.args?.approved_plan;
-
-      // If approved_plan was not passed in args, check if the assistant proposed a plan in recent history
-      if (!approvedPlan && context.history && Array.isArray(context.history)) {
-        const lastPlanMsg = context.history.slice().reverse().find((m: any) =>
-          m.role === 'assistant' && typeof m.content === 'string' &&
-          (/plan/i.test(m.content) || /sections?:/i.test(m.content) || /hero section/i.test(m.content))
-        );
-        if (lastPlanMsg) {
-          approvedPlan = lastPlanMsg.content;
-        }
-      }
-
-      // Respect the AI's decision:
-      // If the AI specified a project name or omitted project_id to create a new site, leave projectId undefined.
-      // Only fallback to context.existingProjectId if no new project name was given.
-      if (!projectId && !context.args?.name && context.existingProjectId) {
-        projectId = context.existingProjectId;
-      }
-      
-      const onProgress = context.sendEvent || ((event: any) => {
-        if (context.onStatusUpdate && event.stage) {
-          context.onStatusUpdate(event.stage);
-        }
-      });
-
-      const result = await CloudDevOrchestrator.buildAndDeployProject(
-        prompt,
-        context.userId,
-        onProgress,
-        projectId,
-        approvedPlan
-      );
-
-      // Record audit log
-      await supabaseAdmin.from('project_audit_logs').insert({
-        project_id: result.projectId,
-        user_id: context.userId,
-        event_type: 'project.created',
-        details: { slug: result.slug, url: result.deploymentUrl },
-      });
-
-      return {
-        success: true,
-        data: {
-          project_id: result.projectId,
-          slug: result.slug,
-          deployment_url: result.deploymentUrl,
-          message: `Successfully created and deployed website. URL: ${result.deploymentUrl}`,
-        },
-      };
-    } catch (e: any) {
-      return { success: false, error: { code: 'EXEC_ERROR', message: e.message } };
-    }
+  async execute(_context: ToolContext): Promise<ToolResult> {
+    return {
+      success: false,
+      error: {
+        code: 'TOOL_PAUSED',
+        message: 'The website development tool is currently paused and temporarily unavailable.',
+      },
+    };
   }
 }
 
@@ -168,64 +90,25 @@ export class WriteProjectFileTool implements Tool {
   metadata: ToolMetadata = {
     id: 'write_project_file',
     name: 'Write Project File',
-    description: 'Writes or updates source code files inside the isolated project sandbox.',
+    description: 'PAUSED: Cloud website development tools are paused.',
     category: 'CloudDev',
     icon: 'FileCode',
     requiresImage: false,
     requiresAuth: true,
-    enabled: true,
+    enabled: false,
     parameters: {
       type: 'object',
       properties: {
         project_id: { type: 'string', description: 'The project UUID' },
-        path: { type: 'string', description: 'Relative path of the file (e.g. "index.html", "src/App.jsx")' },
+        path: { type: 'string', description: 'Relative path of the file' },
         content: { type: 'string', description: 'Complete file content' },
-        files: {
-          type: 'array',
-          description: 'Optional batch array of files [{path, content}]',
-          items: {
-            type: 'object',
-            properties: {
-              path: { type: 'string' },
-              content: { type: 'string' },
-            },
-            required: ['path', 'content'],
-          },
-        },
       },
       required: ['project_id'],
     },
   };
 
-  async execute(context: ToolContext): Promise<ToolResult> {
-    try {
-      const projectId = context.args?.project_id;
-      await verifyProjectOwnership(projectId, context.userId);
-
-      let filesToWrite: Array<{ path: string; content: string }> = [];
-
-      if (Array.isArray(context.args?.files) && context.args.files.length > 0) {
-        filesToWrite = context.args.files;
-      } else if (context.args?.path) {
-        filesToWrite = [{ path: context.args.path, content: context.args.content || '' }];
-      } else {
-        return { success: false, error: { code: 'INVALID_ARGS', message: 'Missing file path or files array.' } };
-      }
-
-      const result = await CloudWorkerService.writeProjectFiles(projectId, filesToWrite);
-
-      return {
-        success: true,
-        data: {
-          project_id: projectId,
-          written_files: result.paths,
-          count: result.written,
-          message: `Successfully written ${result.written} file(s) to project workspace.`,
-        },
-      };
-    } catch (e: any) {
-      return { success: false, error: { code: 'WRITE_ERROR', message: e.message } };
-    }
+  async execute(_context: ToolContext): Promise<ToolResult> {
+    return { success: false, error: { code: 'TOOL_PAUSED', message: 'The website development tool is currently paused and temporarily unavailable.' } };
   }
 }
 
@@ -236,61 +119,24 @@ export class ReadProjectFileTool implements Tool {
   metadata: ToolMetadata = {
     id: 'read_project_file',
     name: 'Read Project File',
-    description: 'Reads the content of a file from the project workspace. Optionally specify start_line and end_line.',
+    description: 'PAUSED: Cloud website development tools are paused.',
     category: 'CloudDev',
     icon: 'FileText',
     requiresImage: false,
     requiresAuth: true,
-    enabled: true,
+    enabled: false,
     parameters: {
       type: 'object',
       properties: {
         project_id: { type: 'string', description: 'The project UUID' },
         path: { type: 'string', description: 'Relative path of the file to read' },
-        start_line: { type: 'number', description: 'Optional 1-indexed start line number' },
-        end_line: { type: 'number', description: 'Optional 1-indexed end line number' },
       },
       required: ['project_id', 'path'],
     },
   };
 
-  async execute(context: ToolContext): Promise<ToolResult> {
-    try {
-      const projectId = context.args?.project_id;
-      const path = CloudWorkerService.sanitizePath(context.args?.path);
-      await verifyProjectOwnership(projectId, context.userId);
-
-      const { data: file, error } = await supabaseAdmin
-        .from('project_files')
-        .select('content, size_bytes, updated_at')
-        .eq('project_id', projectId)
-        .eq('path', path)
-        .single();
-
-      if (error || !file) {
-        return { success: false, error: { code: 'FILE_NOT_FOUND', message: `File "${path}" not found.` } };
-      }
-
-      let content = file.content;
-      const lines = content.split('\n');
-      if (context.args?.start_line || context.args?.end_line) {
-        const startLine = Math.max(1, parseInt(context.args.start_line || '1', 10));
-        const endLine = Math.min(lines.length, parseInt(context.args.end_line || `${lines.length}`, 10));
-        content = lines.slice(startLine - 1, endLine).map((l: string, i: number) => `${startLine + i}: ${l}`).join('\n');
-      }
-
-      return {
-        success: true,
-        data: {
-          path,
-          content,
-          total_lines: lines.length,
-          size_bytes: file.size_bytes,
-        },
-      };
-    } catch (e: any) {
-      return { success: false, error: { code: 'READ_ERROR', message: e.message } };
-    }
+  async execute(_context: ToolContext): Promise<ToolResult> {
+    return { success: false, error: { code: 'TOOL_PAUSED', message: 'The website development tool is currently paused and temporarily unavailable.' } };
   }
 }
 
@@ -301,75 +147,26 @@ export class EditProjectFileTool implements Tool {
   metadata: ToolMetadata = {
     id: 'edit_project_file',
     name: 'Edit Project File',
-    description: 'Surgically replaces a unique substring of code within an existing project file without rewriting the whole file.',
+    description: 'PAUSED: Cloud website development tools are paused.',
     category: 'CloudDev',
     icon: 'Edit3',
     requiresImage: false,
     requiresAuth: true,
-    enabled: true,
+    enabled: false,
     parameters: {
       type: 'object',
       properties: {
         project_id: { type: 'string', description: 'The project UUID' },
         path: { type: 'string', description: 'Relative path of the file to edit' },
-        target_content: { type: 'string', description: 'Exact string to replace (must match existing content uniquely)' },
+        target_content: { type: 'string', description: 'Exact string to replace' },
         replacement_content: { type: 'string', description: 'Replacement string' },
       },
       required: ['project_id', 'path', 'target_content', 'replacement_content'],
     },
   };
 
-  async execute(context: ToolContext): Promise<ToolResult> {
-    try {
-      const projectId = context.args?.project_id;
-      const path = CloudWorkerService.sanitizePath(context.args?.path);
-      const targetContent = context.args?.target_content;
-      const replacementContent = context.args?.replacement_content;
-      await verifyProjectOwnership(projectId, context.userId);
-
-      const { data: file, error } = await supabaseAdmin
-        .from('project_files')
-        .select('content')
-        .eq('project_id', projectId)
-        .eq('path', path)
-        .single();
-
-      if (error || !file) {
-        return { success: false, error: { code: 'FILE_NOT_FOUND', message: `File "${path}" not found.` } };
-      }
-
-      if (!file.content.includes(targetContent) || file.content.split(targetContent).length - 1 > 1) {
-        // Delegate to CloudDevOrchestrator / AgenticCodingEngine to handle surgical edit via multi-turn loop
-        const result = await CloudDevOrchestrator.buildAndDeployProject(
-          context.message || `Replace ${targetContent} with ${replacementContent} in ${path}`,
-          context.userId,
-          context.sendEvent,
-          projectId
-        );
-        return {
-          success: true,
-          data: {
-            path,
-            message: `Successfully edited "${path}" and verified build.`,
-            deployment_url: result.deploymentUrl,
-          },
-        };
-      }
-
-      const updated = file.content.replace(targetContent, replacementContent);
-      await CloudWorkerService.writeProjectFiles(projectId, [{ path, content: updated }]);
-      await CloudWorkerService.runBuild(projectId, context.userId, `Edited ${path}`);
-
-      return {
-        success: true,
-        data: {
-          path,
-          message: `Successfully edited "${path}".`,
-        },
-      };
-    } catch (e: any) {
-      return { success: false, error: { code: 'EDIT_ERROR', message: e.message } };
-    }
+  async execute(_context: ToolContext): Promise<ToolResult> {
+    return { success: false, error: { code: 'TOOL_PAUSED', message: 'The website development tool is currently paused and temporarily unavailable.' } };
   }
 }
 
@@ -380,12 +177,12 @@ export class ListProjectFilesTool implements Tool {
   metadata: ToolMetadata = {
     id: 'list_project_files',
     name: 'List Project Files',
-    description: 'Lists all files in the project workspace.',
+    description: 'PAUSED: Cloud website development tools are paused.',
     category: 'CloudDev',
     icon: 'List',
     requiresImage: false,
     requiresAuth: true,
-    enabled: true,
+    enabled: false,
     parameters: {
       type: 'object',
       properties: {
@@ -395,31 +192,8 @@ export class ListProjectFilesTool implements Tool {
     },
   };
 
-  async execute(context: ToolContext): Promise<ToolResult> {
-    try {
-      const projectId = context.args?.project_id;
-      await verifyProjectOwnership(projectId, context.userId);
-
-      const { data: files, error } = await supabaseAdmin
-        .from('project_files')
-        .select('path, size_bytes, updated_at')
-        .eq('project_id', projectId)
-        .order('path', { ascending: true });
-
-      if (error) {
-        return { success: false, error: { code: 'DB_ERROR', message: error.message } };
-      }
-
-      return {
-        success: true,
-        data: {
-          project_id: projectId,
-          files: files || [],
-        },
-      };
-    } catch (e: any) {
-      return { success: false, error: { code: 'LIST_ERROR', message: e.message } };
-    }
+  async execute(_context: ToolContext): Promise<ToolResult> {
+    return { success: false, error: { code: 'TOOL_PAUSED', message: 'The website development tool is currently paused and temporarily unavailable.' } };
   }
 }
 
@@ -430,78 +204,24 @@ export class InstallProjectDependencyTool implements Tool {
   metadata: ToolMetadata = {
     id: 'install_project_dependency',
     name: 'Install Project Dependency',
-    description: 'Requests and verifies approved packages in package.json.',
+    description: 'PAUSED: Cloud website development tools are paused.',
     category: 'CloudDev',
     icon: 'Package',
     requiresImage: false,
     requiresAuth: true,
-    enabled: true,
+    enabled: false,
     parameters: {
       type: 'object',
       properties: {
         project_id: { type: 'string', description: 'The project UUID' },
-        package_name: { type: 'string', description: 'Name of approved package (e.g. "lucide-react")' },
-        version: { type: 'string', description: 'Package version (default: "latest")' },
+        package_name: { type: 'string', description: 'Name of approved package' },
       },
       required: ['project_id', 'package_name'],
     },
   };
 
-  async execute(context: ToolContext): Promise<ToolResult> {
-    try {
-      const projectId = context.args?.project_id;
-      const pkgName = (context.args?.package_name || '').trim().toLowerCase();
-      const version = context.args?.version || '^latest';
-      await verifyProjectOwnership(projectId, context.userId);
-
-      if (!ALLOWED_DEPENDENCIES.has(pkgName)) {
-        return {
-          success: false,
-          error: {
-            code: 'PACKAGE_NOT_ALLOWED',
-            message: `Package "${pkgName}" is not in the approved UI dependency list. Approved packages: [${Array.from(ALLOWED_DEPENDENCIES).join(', ')}].`,
-          },
-        };
-      }
-
-      // Fetch or create package.json
-      let pkgJson: any = {
-        name: 'ceova-cloud-project',
-        private: true,
-        version: '1.0.0',
-        dependencies: {},
-      };
-
-      const { data: existingPkg } = await supabaseAdmin
-        .from('project_files')
-        .select('content')
-        .eq('project_id', projectId)
-        .eq('path', 'package.json')
-        .maybeSingle();
-
-      if (existingPkg) {
-        try { pkgJson = JSON.parse(existingPkg.content); } catch {}
-      }
-
-      pkgJson.dependencies = pkgJson.dependencies || {};
-      pkgJson.dependencies[pkgName] = version;
-
-      await CloudWorkerService.writeProjectFiles(projectId, [{
-        path: 'package.json',
-        content: JSON.stringify(pkgJson, null, 2),
-      }]);
-
-      return {
-        success: true,
-        data: {
-          package_name: pkgName,
-          version: version,
-          message: `Installed "${pkgName}@${version}" into project dependencies.`,
-        },
-      };
-    } catch (e: any) {
-      return { success: false, error: { code: 'INSTALL_ERROR', message: e.message } };
-    }
+  async execute(_context: ToolContext): Promise<ToolResult> {
+    return { success: false, error: { code: 'TOOL_PAUSED', message: 'The website development tool is currently paused and temporarily unavailable.' } };
   }
 }
 
@@ -512,12 +232,12 @@ export class RunProjectBuildTool implements Tool {
   metadata: ToolMetadata = {
     id: 'run_project_build',
     name: 'Run Project Build',
-    description: 'Triggers the isolated build worker to compile, bundle, and test the project.',
+    description: 'PAUSED: Cloud website development tools are paused.',
     category: 'CloudDev',
     icon: 'Play',
     requiresImage: false,
     requiresAuth: true,
-    enabled: true,
+    enabled: false,
     parameters: {
       type: 'object',
       properties: {
@@ -527,43 +247,8 @@ export class RunProjectBuildTool implements Tool {
     },
   };
 
-  async execute(context: ToolContext): Promise<ToolResult> {
-    try {
-      const projectId = context.args?.project_id;
-      await verifyProjectOwnership(projectId, context.userId);
-
-      context.onStatusUpdate?.("Starting isolated cloud worker build...");
-      const commitMessage = context.args?.commit_message || 'Manual build execution';
-      const buildResult = await CloudWorkerService.runBuild(projectId, context.userId, commitMessage);
-
-      if (!buildResult.success) {
-        return {
-          success: false,
-          error: {
-            code: 'BUILD_FAILED',
-            message: `Build failed: ${buildResult.errors?.[0]?.message || 'Compilation error'}`,
-          },
-          data: {
-            build_id: buildResult.buildId,
-            logs: buildResult.logs,
-            errors: buildResult.errors,
-          },
-        };
-      }
-
-      return {
-        success: true,
-        data: {
-          build_id: buildResult.buildId,
-          duration_ms: buildResult.durationMs,
-          deployment_url: buildResult.deploymentUrl,
-          logs: buildResult.logs,
-          message: `Build and tests passed! Deployed live at ${buildResult.deploymentUrl}`,
-        },
-      };
-    } catch (e: any) {
-      return { success: false, error: { code: 'BUILD_ERROR', message: e.message } };
-    }
+  async execute(_context: ToolContext): Promise<ToolResult> {
+    return { success: false, error: { code: 'TOOL_PAUSED', message: 'The website development tool is currently paused and temporarily unavailable.' } };
   }
 }
 
@@ -574,53 +259,23 @@ export class GetProjectBuildLogsTool implements Tool {
   metadata: ToolMetadata = {
     id: 'get_build_logs',
     name: 'Get Build Logs',
-    description: 'Fetches recent build and compiler logs for debugging.',
+    description: 'PAUSED: Cloud website development tools are paused.',
     category: 'CloudDev',
     icon: 'FileText',
     requiresImage: false,
     requiresAuth: true,
-    enabled: true,
+    enabled: false,
     parameters: {
       type: 'object',
       properties: {
         project_id: { type: 'string', description: 'The project UUID' },
-        build_id: { type: 'string', description: 'Optional specific build UUID' },
       },
       required: ['project_id'],
     },
   };
 
-  async execute(context: ToolContext): Promise<ToolResult> {
-    try {
-      const projectId = context.args?.project_id;
-      await verifyProjectOwnership(projectId, context.userId);
-
-      let query = supabaseAdmin
-        .from('project_builds')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false });
-
-      if (context.args?.build_id) {
-        query = query.eq('id', context.args.build_id);
-      }
-
-      const { data: builds, error } = await query.limit(3);
-
-      if (error || !builds || builds.length === 0) {
-        return { success: false, error: { code: 'NO_LOGS', message: 'No build records found.' } };
-      }
-
-      return {
-        success: true,
-        data: {
-          latest_build: builds[0],
-          all_builds: builds,
-        },
-      };
-    } catch (e: any) {
-      return { success: false, error: { code: 'LOGS_ERROR', message: e.message } };
-    }
+  async execute(_context: ToolContext): Promise<ToolResult> {
+    return { success: false, error: { code: 'TOOL_PAUSED', message: 'The website development tool is currently paused and temporarily unavailable.' } };
   }
 }
 
@@ -631,12 +286,12 @@ export class DeployProjectTool implements Tool {
   metadata: ToolMetadata = {
     id: 'deploy_project',
     name: 'Deploy Project',
-    description: 'Ensures the latest successful build is active on https://<slug>.ceova.online.',
+    description: 'PAUSED: Cloud website development tools are paused.',
     category: 'CloudDev',
     icon: 'UploadCloud',
     requiresImage: false,
     requiresAuth: true,
-    enabled: true,
+    enabled: false,
     parameters: {
       type: 'object',
       properties: {
@@ -646,34 +301,8 @@ export class DeployProjectTool implements Tool {
     },
   };
 
-  async execute(context: ToolContext): Promise<ToolResult> {
-    try {
-      const projectId = context.args?.project_id;
-      const project = await verifyProjectOwnership(projectId, context.userId);
-
-      // Trigger build and deployment through worker
-      const releaseSummary = context.args?.release_summary || 'Deployment release';
-      const buildResult = await CloudWorkerService.runBuild(projectId, context.userId, releaseSummary);
-
-      if (!buildResult.success) {
-        return {
-          success: false,
-          error: { code: 'DEPLOY_FAILED', message: `Deployment failed during build: ${buildResult.errors?.[0]?.message}` },
-        };
-      }
-
-      return {
-        success: true,
-        data: {
-          project_id: projectId,
-          slug: project.slug,
-          deployment_url: buildResult.deploymentUrl,
-          message: `Project is now live at ${buildResult.deploymentUrl}`,
-        },
-      };
-    } catch (e: any) {
-      return { success: false, error: { code: 'DEPLOY_ERROR', message: e.message } };
-    }
+  async execute(_context: ToolContext): Promise<ToolResult> {
+    return { success: false, error: { code: 'TOOL_PAUSED', message: 'The website development tool is currently paused and temporarily unavailable.' } };
   }
 }
 
@@ -681,35 +310,15 @@ export class GetProjectVersionHistoryTool implements Tool {
   metadata: ToolMetadata = {
     id: 'get_project_version_history',
     name: 'get_project_version_history',
-    description: 'Retrieves concise project version history (version number, change description, timestamp) without full source code dumps.',
+    description: 'PAUSED: Cloud website development tools are paused.',
+    enabled: false,
     parameters: [
       { name: 'project_id', type: 'string', description: 'The project ID to get version history for', required: true },
-      { name: 'limit', type: 'number', description: 'Maximum number of versions to return (default 10, max 25)', required: false },
-      { name: 'version', type: 'number', description: 'Specific version number to inspect', required: false },
     ],
   };
 
-  async execute(context: ToolContext): Promise<ToolResult> {
-    try {
-      const projectId = context.args?.project_id;
-      await verifyProjectOwnership(projectId, context.userId);
-      const limit = Math.min(Math.max(1, parseInt(context.args?.limit || '10', 10)), 25);
-      const targetVersion = context.args?.version ? parseInt(context.args?.version, 10) : undefined;
-      const history = await CloudWorkerService.getVersionHistory(projectId, { limit, version: targetVersion });
-      return {
-        success: true,
-        data: {
-          project_id: projectId,
-          versions: history.map(h => ({
-            version: h.version,
-            description: h.description,
-            created_at: h.created_at,
-          })),
-        },
-      };
-    } catch (e: any) {
-      return { success: false, error: { code: 'HISTORY_FETCH_ERROR', message: e.message } };
-    }
+  async execute(_context: ToolContext): Promise<ToolResult> {
+    return { success: false, error: { code: 'TOOL_PAUSED', message: 'The website development tool is currently paused and temporarily unavailable.' } };
   }
 }
 
