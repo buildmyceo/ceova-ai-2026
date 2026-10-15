@@ -16,8 +16,8 @@ cp -R src-tauri/target/release/bundle/macos/CEOVA.app "$DMG_STAGING/"
 ln -s /Applications "$DMG_STAGING/Applications"
 
 echo "==> Creating DMG..."
-mkdir -p src-tauri/target/release/bundle/dmg
-DMG_OUT="src-tauri/target/release/bundle/dmg/CEOVA_1.2.7_aarch64.dmg"
+VERSION=$(node -p "require('./package.json').version")
+DMG_OUT="src-tauri/target/release/bundle/dmg/CEOVA_${VERSION}_aarch64.dmg"
 rm -f "$DMG_OUT"
 hdiutil create -volname "CEOVA" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_OUT"
 

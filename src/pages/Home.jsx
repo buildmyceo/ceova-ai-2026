@@ -16,6 +16,8 @@ import { buildSystemPrompt } from '../lib/systemPromptBuilder';
 import { generateChatTitle, renameLegacyChats } from '../services/titleGenerator';
 import { getGreetingName, getGreetingHeadline, getTimePeriod, getGreetingSubtitle } from '../constants/greetings';
 import PhoneLinkModal from '../components/PhoneLinkModal';
+import { cctvAgent } from '../services/cctvAgentService';
+import { openCctvApp } from '../utils/cctvLauncher';
 
 const CURRENT_CHAT_KEY = "chat_id";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -696,13 +698,8 @@ export default function Home({ session }) {
         const activeProjectId = activeCloudProject?.cloudProject?.projectId || 
             activeCloudProject?.attachments?.find(a => a.type === 'cloud_project')?.data?.projectId;
 
-        // Check if user is approving a new website implementation plan
-        const lastAssistantMsg = currentMessages.slice().reverse().find(m => m.sender === 'assistant');
-        const isApprovingNewSitePlan = lastAssistantMsg && 
-            typeof lastAssistantMsg.text === 'string' &&
-            /Website Implementation Plan/i.test(lastAssistantMsg.text) &&
-            !/Revised Website Implementation Plan/i.test(lastAssistantMsg.text) &&
-            /^(?:proceed|yes|build it|go ahead|approved|approve|sure|ok|start|do it|let's do it|lets do it)\b/i.test(text.trim());
+        // Website development tool is paused
+        const isApprovingNewSitePlan = false;
 
         // Check if user explicitly requests or describes creating a brand-new website
         const isNewWebsiteRequest = /^\s*(?:please\s+)?(?:creat|create|build|make|start|generate|design)\s+(?:a\s+)?(?:completely\s+)?(?:new\s+)?(?:website|web\s*app|site|landing|portfolio|restaurant|resturent|store|bakery|project|page)/i.test(text)
@@ -724,9 +721,68 @@ export default function Home({ session }) {
             const cachedGoogleToken = typeof window !== 'undefined' ? (localStorage.getItem('google_provider_token') || sessionStorage.getItem('google_provider_token')) : null;
             const effectiveGoogleToken = cachedGoogleToken || session?.provider_token || null;
 
+            // Fetch live local CCTV system context if message is CCTV-related, follow-up recheck, or service is queried
+            const isCctvQuery = /\b(?:cctv|camera|cameras|cammera|cammeras|cam|cams|surveillance|nvr|dvr|security cam|webcam|ip cam|footage|live feed|recordings?|stream|who is at the door|people (?:inside|in (?:my )?(?:store|shop|office|room|building))|occupancy|security alerts?|reports?|connected|connection|disconnect|disconnecting|reconnecting|is (?:cctv|camera|cammera)|recheck|check again|check now|refresh status|refresh cctv|status now|check camera|how is it now|is it fixed|is it working|verify status)\b/i.test(text);
+            const isOpenCctv = /^\s*(?:please\s+)?(?:open|launch|show|view|start|display)\s+(?:the\s+)?(?:cctv|camera|cameras|surveillance|live feed)\b/i.test(text);
+            const isFollowUpCheck = /^\s*(?:recheck|check again|check now|refresh|refresh status|status|how about now|is it working|fixed|update)\s*$/i.test(text);
+            const hasRecentCctvInHistory = (historyForAI || []).slice(-6).some(m => /\b(?:cctv|camera|cameras|surveillance|daemon)\b/i.test(m.content || ''));
+            const isRelevantCctvMessage = isCctvQuery || isOpenCctv || (isFollowUpCheck && hasRecentCctvInHistory);
+
+            let cctvContext = null;
+            if (isRelevantCctvMessage || (typeof window !== 'undefined' && (localStorage.getItem('ceova_cctv_local_credentials') || localStorage.getItem('ceova_cctv_connected') === 'true'))) {
+                try {
+                    cctvContext = await cctvAgent.getCctvContext();
+                } catch (e) {
+                    console.warn("[CCTV] Failed to get local CCTV context:", e);
+                }
+            }
+
+            if (isOpenCctv) {
+                try {
+                    await openCctvApp();
+                } catch (e) {
+                    console.warn("[CCTV] Failed to open CCTV app window:", e);
+                }
+            }
+
+            if (/\b(?:pause|stop)\s+(?:cctv\s+)?monitoring\b/i.test(text)) {
+                try { await cctvAgent.pauseMonitoring(); } catch (_e) {}
+            } else if (/\b(?:resume|start)\s+(?:cctv\s+)?monitoring\b/i.test(text)) {
+                try { await cctvAgent.startMonitoring(); } catch (_e) {}
+            }
+
+            // If the query is CCTV related, inject real-time local surveillance context and reports so the AI answers with full awareness
+            let messageToSend = text;
+            if (cctvContext && (isRelevantCctvMessage || cctvContext.connected)) {
+                const isConn = cctvContext.connected || (cctvContext.cameraCount > 0);
+                const camList = (cctvContext.cameras && cctvContext.cameras.length > 0)
+                    ? cctvContext.cameras.map(c => `  • "${c.name || 'Camera'}" | IP: ${c.ip || 'Local Network'}${c.port ? `:${c.port}` : ''} | Status: ${c.status || 'ONLINE'} | Zone: ${c.zone || 'MAIN'}`).join('\n')
+                    : '  • No cameras connected yet.';
+
+                const cctvDirective = `\n\n[LOCAL CEOVA CCTV SURVEILLANCE DATA & STATUS - DIRECT ACCESS]:
+- Connection Status: ${isConn ? 'ONLINE & CONNECTED' : 'DAEMON IN STANDBY / OFFLINE'}
+- Monitoring Status: ${cctvContext.monitoring ? 'Actively Monitoring 24/7' : 'Standby'}
+- Active Cameras Count: ${cctvContext.cameraCount || 0}
+- Camera Details:
+${camList}
+- Credentials & Network:
+  • CCTV Username: ${cctvContext.savedCredentials?.username || 'admin'}
+  • Camera IP: ${cctvContext.savedCredentials?.targetIp || 'Local Network'}
+  • Storage: Stored securely on the user's LOCAL Mac device only.
+- Latest Background Surveillance Report:
+  "${cctvContext.latestReport || 'Surveillance system is active with zero security incidents.'}"
+- Live Occupancy: ${cctvContext.occupancy?.activePeople || 0} person(s) currently detected.
+
+(Ceova System Directive: The user is asking about their local CCTV camera surveillance system. You DO have direct access to their CCTV system and reports via the local device context provided directly above. Answer their inquiry accurately, warmly, and directly. State clearly whether CCTV is connected, specify their camera name and exact IP address, and summarize the background surveillance report without saying you lack access.)`;
+
+                if (isRelevantCctvMessage) {
+                    messageToSend = `${text}${cctvDirective}`;
+                }
+            }
+
             // Cloud fetch directly to super-endpoint
-                const reqBody = {
-                    message: text,
+            const reqBody = {
+                message: messageToSend,
                     project_id: effectiveProjectId || undefined,
                     history: historyForAI,
                     attachments: currentAttachments.length > 0 ? currentAttachments : [],
@@ -740,7 +796,8 @@ export default function Home({ session }) {
                         time: new Date().toLocaleTimeString(),
                         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                         dayOfWeek: new Date().toLocaleDateString(undefined, { weekday: 'long' }),
-                        google_token: effectiveGoogleToken
+                        google_token: effectiveGoogleToken,
+                        cctv: cctvContext
                     }
                 };
 

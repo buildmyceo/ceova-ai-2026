@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, ChevronRight, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical, Sparkles, Search, Image as ImageIcon, Wrench } from 'lucide-react';
+import { ArrowUp, Smile, Square, Plus, X, Maximize2, Minimize2, AudioLines, Link, Zap, ChevronLeft, ChevronRight, Scissors, Eye, Calendar as CalendarIcon, HardDrive, RefreshCw, Edit2, Scan, FileText, Key, Palette, Calculator, Receipt, Film, LayoutGrid, Folder, Paperclip, Brain, BookOpen, Cloud, Mail, MoreVertical, Sparkles, Search, Image as ImageIcon, Wrench, Video } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthProvider';
@@ -15,6 +15,9 @@ import {
 import { useDriveThumbnail } from '../services/driveThumbnailCache';
 import GoogleConnectModal from './GoogleConnectModal';
 import TelegramConnectModal from './TelegramConnectModal';
+import CctvDashboardOverlay from './CctvDashboardOverlay';
+import { openCctvApp } from '../utils/cctvLauncher';
+import { cctvAgent } from '../services/cctvAgentService';
 import { connectGoogleDrive } from '../services/gdriveSyncEngine';
 import './LibraryPickerModal.css';
 
@@ -181,9 +184,11 @@ export default function InputBox({
     const [isLibrarySubmenuOpen, setIsLibrarySubmenuOpen] = useState(false);
     const [isGoogleConnected, setIsGoogleConnected] = useState(false);
     const [isTelegramConnected, setIsTelegramConnected] = useState(false);
+    const [isCctvConnected, setIsCctvConnected] = useState(false);
     const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
     const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
     const [isEditingConnectors, setIsEditingConnectors] = useState(false);
+    const [isCctvDashboardOpen, setIsCctvDashboardOpen] = useState(false);
     const [files, setFiles] = useState([]);
     const [isListening, setIsListening] = useState(false);
     const [isGmailConnected, setIsGmailConnected] = useState(false);
@@ -261,9 +266,82 @@ export default function InputBox({
         }
     };
 
+    const checkCctvStatus = async () => {
+        try {
+            // 1. Direct fast check via cctvAgent
+            const ctx = await cctvAgent.getCctvContext();
+            if (ctx && (ctx.connected || ctx.cameraCount > 0 || (Array.isArray(ctx.cameras) && ctx.cameras.length > 0))) {
+                setIsCctvConnected(true);
+                return;
+            }
+
+            // 2. Direct probe to local CCTV daemon
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), 800);
+            const res = await fetch('http://127.0.0.1:3080/api/cctv/details', { signal: ctrl.signal }).catch(() => null);
+            clearTimeout(tid);
+            if (res && res.ok) {
+                const data = await res.json().catch(() => null);
+                if (data && (data.connected || data.cameraCount > 0 || (Array.isArray(data.cameras) && data.cameras.length > 0))) {
+                    setIsCctvConnected(true);
+                    return;
+                }
+            }
+
+            // 3. Fallback to localStorage
+            if (typeof window !== 'undefined') {
+                const hasLocalCreds = !!localStorage.getItem('ceova_cctv_local_credentials');
+                const isConnFlag = localStorage.getItem('ceova_cctv_connected') === 'true';
+                if (hasLocalCreds || isConnFlag) {
+                    setIsCctvConnected(true);
+                    return;
+                }
+            }
+            setIsCctvConnected(false);
+        } catch (_err) {
+            if (typeof window !== 'undefined' && (localStorage.getItem('ceova_cctv_local_credentials') || localStorage.getItem('ceova_cctv_connected') === 'true')) {
+                setIsCctvConnected(true);
+            } else {
+                setIsCctvConnected(false);
+            }
+        }
+    };
+
     useEffect(() => {
         checkGoogleAndTelegramStatus();
+        checkCctvStatus();
     }, [effectiveSession?.user?.id, authUser?.id]);
+
+    useEffect(() => {
+        if (isConnectorsSubmenuOpen) {
+            checkGoogleAndTelegramStatus();
+            checkCctvStatus();
+        }
+    }, [isConnectorsSubmenuOpen]);
+
+    useEffect(() => {
+        checkCctvStatus();
+        const interval = setInterval(checkCctvStatus, 6000);
+        const onFocus = () => checkCctvStatus();
+        const handleCctvMessage = (e) => {
+            if (e.data?.type === 'CEOVA_CCTV_CONNECTED' || e.data?.type === 'CCTV_CREDENTIALS_SAVED') {
+                setIsCctvConnected(true);
+            } else if (e.data?.type === 'CEOVA_CCTV_CLEARED' || e.data?.type === 'CEOVA_CCTV_DISCONNECTED') {
+                setIsCctvConnected(false);
+                if (typeof window !== 'undefined') {
+                    localStorage.removeItem('ceova_cctv_local_credentials');
+                    localStorage.removeItem('ceova_cctv_connected');
+                }
+            }
+        };
+        window.addEventListener('focus', onFocus);
+        window.addEventListener('message', handleCctvMessage);
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('focus', onFocus);
+            window.removeEventListener('message', handleCctvMessage);
+        };
+    }, []);
 
     const handleGoogleConnect = async () => {
         try {
@@ -314,6 +392,33 @@ export default function InputBox({
         } catch (err) {
             console.error("Failed to disconnect Telegram:", err);
             alert("Failed to disconnect Telegram: " + err.message);
+        }
+    };
+
+    const handleCctvDisconnect = async (e) => {
+        if (e) e.stopPropagation();
+        if (!window.confirm("Are you sure you want to disconnect CCTV?")) return;
+        try {
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('ceova_cctv_local_credentials');
+                localStorage.removeItem('ceova_cctv_connected');
+            }
+            await fetch('http://127.0.0.1:3080/api/cctv/credentials', {
+                method: 'DELETE'
+            }).catch(() => {});
+            await fetch('http://127.0.0.1:3080/api/cctv/credentials', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'disconnect' })
+            }).catch(() => {});
+            await fetch('http://127.0.0.1:3080/api/cameras', {
+                method: 'DELETE'
+            }).catch(() => {});
+            setIsCctvConnected(false);
+            setIsEditingConnectors(false);
+        } catch (err) {
+            console.error("Failed to disconnect CCTV:", err);
+            alert("Failed to disconnect CCTV: " + err.message);
         }
     };
 
@@ -652,8 +757,13 @@ export default function InputBox({
                                             <Link size={18} />
                                         </div>
                                         <div className="sliding-tab-card-content">
-                                            <span className="sliding-tab-card-title">Connectors</span>
-                                            <span className="sliding-tab-card-desc">Google, Telegram & Tools</span>
+                                            <div className="sliding-tab-title-line">
+                                                <span className="sliding-tab-card-title">Connectors</span>
+                                                {(isGoogleConnected || isTelegramConnected || isCctvConnected) && <span className="sliding-tab-status-dot" title="Connected" />}
+                                            </div>
+                                            <span className="sliding-tab-card-desc">
+                                                {(isGoogleConnected || isTelegramConnected || isCctvConnected) ? "Active Integrations" : "Google, Telegram & CCTV"}
+                                            </span>
                                         </div>
                                     </button>
 
@@ -708,7 +818,7 @@ export default function InputBox({
                                             <ChevronLeft size={16} /> Back
                                         </button>
                                         <span className="sliding-tab-submenu-title">Connectors</span>
-                                        {(isGoogleConnected || isTelegramConnected) && (
+                                        {(isGoogleConnected || isTelegramConnected || isCctvConnected) && (
                                             <button 
                                                 type="button"
                                                 className={`sliding-tab-edit-btn ${isEditingConnectors ? 'active' : ''}`}
@@ -800,7 +910,49 @@ export default function InputBox({
                                             )}
                                         </button>
 
-                                        {/* Option 3: Tools */}
+                                        {/* Option 3: CCTV Apps */}
+                                        <button
+                                            type="button"
+                                            className={`sliding-tab-card ${isCctvConnected ? 'is-connected' : ''}`}
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                if (isEditingConnectors && isCctvConnected) {
+                                                    handleCctvDisconnect(e);
+                                                    return;
+                                                }
+                                                setIsConnectorsSubmenuOpen(false);
+                                                setIsPlusOpen(false);
+                                                await openCctvApp(setIsCctvDashboardOpen);
+                                            }}
+                                        >
+                                            <div className="sliding-tab-card-icon" style={{ background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff' }}>
+                                                <Video size={17} />
+                                            </div>
+                                            <div className="sliding-tab-card-content">
+                                                <div className="sliding-tab-title-line">
+                                                    <span className="sliding-tab-card-title">CCTV (Apps)</span>
+                                                    {isCctvConnected && <span className="sliding-tab-status-dot" title="Connected" />}
+                                                </div>
+                                                <span className="sliding-tab-card-desc">
+                                                    {isCctvConnected ? "Connected • Active" : "AI Camera Monitoring"}
+                                                </span>
+                                            </div>
+                                            {isCctvConnected && isEditingConnectors ? (
+                                                <span 
+                                                    className="sliding-tab-disconnect"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleCctvDisconnect(e);
+                                                    }}
+                                                >
+                                                    Disconnect
+                                                </span>
+                                            ) : (
+                                                <ChevronRight size={15} style={{ color: '#71717a', marginLeft: 'auto', flexShrink: 0 }} />
+                                            )}
+                                        </button>
+
+                                        {/* Option 4: Tools */}
                                         <button
                                             type="button"
                                             className="sliding-tab-card"
@@ -1245,6 +1397,11 @@ export default function InputBox({
                 onStatusChange={() => {
                     checkGoogleAndTelegramStatus();
                 }}
+            />
+
+            <CctvDashboardOverlay 
+                isOpen={isCctvDashboardOpen}
+                onClose={() => setIsCctvDashboardOpen(false)}
             />
         </motion.div>
     );

@@ -1,0 +1,25 @@
+{
+  "appId": "ceova-cctv",
+  "version": "1.0.1",
+  "minSupportedVersion": "1.0.0",
+  "platforms": {
+    "macos-aarch64": {
+      "packageUrl": "file:///Users/chintukumar/cctv-ceova/releases/dist/ceova-cctv-1.0.1-macos-aarch64.tar.gz",
+      "localPath": "/Users/chintukumar/cctv-ceova/releases/dist/ceova-cctv-1.0.1-macos-aarch64.tar.gz",
+      "sha256": "289bed3bee9b444fd75b8eda96e40dda800836711d9c251b183dfed7e1082e8c",
+      "signature": "1TAJtoUvc3eu2aQhseiEqL1+YQBccRDdC806UJtRHC6Qn/55UattxczD1URGkiLcjAuMoyE9zd8LwaQNP4m4Cw==",
+      "size": 74285736
+    },
+    "macos": {
+      "packageUrl": "file:///Users/chintukumar/cctv-ceova/releases/dist/ceova-cctv-1.0.1-macos-aarch64.tar.gz",
+      "localPath": "/Users/chintukumar/cctv-ceova/releases/dist/ceova-cctv-1.0.1-macos-aarch64.tar.gz",
+      "sha256": "289bed3bee9b444fd75b8eda96e40dda800836711d9c251b183dfed7e1082e8c",
+      "signature": "1TAJtoUvc3eu2aQhseiEqL1+YQBccRDdC806UJtRHC6Qn/55UattxczD1URGkiLcjAuMoyE9zd8LwaQNP4m4Cw==",
+      "size": 74285736
+    }
+  },
+  "releaseNotes": "CEOVA CCTV v1.0.1 update for macOS Apple Silicon with security hardening.",
+  "releasedAt": "2026-10-12T05:43:15.137Z",
+  "manifestSignature": "Tn3eq7JqZ8vRK7zbqHKMUkQ90h8i/RxLk3mLhgRrTSjuD0+D1xytLddltOEO3Ru3P3pM0Jjp9q4/oLsCu/bKBA==",
+  "canonicalPayload": "appId:ceova-cctv\nversion:1.0.1\nminSupportedVersion:1.0.0\nplatforms:macos:file:///Users/chintukumar/cctv-ceova/releases/dist/ceova-cctv-1.0.1-macos-aarch64.tar.gz:289bed3bee9b444fd75b8eda96e40dda800836711d9c251b183dfed7e1082e8c:74285736|macos-aarch64:file:///Users/chintukumar/cctv-ceova/releases/dist/ceova-cctv-1.0.1-macos-aarch64.tar.gz:289bed3bee9b444fd75b8eda96e40dda800836711d9c251b183dfed7e1082e8c:74285736"
+}

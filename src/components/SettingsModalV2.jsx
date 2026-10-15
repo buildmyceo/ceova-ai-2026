@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -8,14 +8,18 @@ import {
     Settings2, Bell, LayoutGrid, Database, Archive, Shield,
     ArrowLeft, RotateCcw, Trash2, Download, UserMinus, Plus, Edit2, Save, Zap,
     Power, Check, Calendar, HardDrive, Scissors, Scan, Eye, Key, Palette, Film, Minimize2, RefreshCw, Receipt, Megaphone, BookOpen, Terminal, FolderOpen, Code,
-    Smartphone, User, Cookie
+    Smartphone, User, Cookie, Search
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import UsageSection from './UsageSection';
+import ConnectorsAppsView from './ConnectorsAppsView';
+import CctvDashboardOverlay from './CctvDashboardOverlay';
+import { openCctvApp } from '../utils/cctvLauncher';
+import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
+
 import { useTheme } from '../contexts/ThemeContext';
 import GoogleConnectModal from './GoogleConnectModal';
 import TelegramConnectModal from './TelegramConnectModal';
-import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
 
 const legalDocuments = [
     { id: 'privacy-policy', title: 'Privacy Policy', icon: Shield },
@@ -33,9 +37,18 @@ const legalDocuments = [
     { id: 'contact-support', title: 'Contact & Support', icon: Mail }
 ];
 
-export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, session, onOpenPhoneModal, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange }) {
-    const { themePref, setThemePref } = useTheme();
-    const [view, setView] = useState('main'); // 'main', 'archived', 'terms', 'privacy', 'data-controls', 'memories', 'personalization'
+export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, userId, session, onOpenPhoneModal, archivedChats = [], onUnarchive, onBulkArchive, onBulkDelete, onDeleteAccount, onPersonalizationChange, initialView = 'main' }) {
+    const { themePref, setThemePref, resolvedTheme } = useTheme();
+    const isLight = resolvedTheme === 'light';
+    const [view, setView] = useState(initialView || 'main');
+    const [isCctvDashboardOpen, setIsCctvDashboardOpen] = useState(false);
+ // 'main', 'archived', 'terms', 'privacy', 'data-controls', 'memories', 'personalization'
+
+    useEffect(() => {
+        if (isOpen && initialView) {
+            setView(initialView);
+        }
+    }, [isOpen, initialView]);
     const [personalization, setPersonalization] = useState({
         user_message_color: '#3373E8',
         base_tone: 'professional',
@@ -104,9 +117,15 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
     const [summaryUpdatedAt, setSummaryUpdatedAt] = useState(null);
     const [editingMemoryId, setEditingMemoryId] = useState(null);
     const [editContent, setEditContent] = useState("");
-    const [newMemoryInput, setNewMemoryInput] = useState("");
+    const [editTitle, setEditTitle] = useState("");
     const [isLoadingMemories, setIsLoadingMemories] = useState(false);
-    const [isAddingMemory, setIsAddingMemory] = useState(false);
+    const [isMemoryEnabled, setIsMemoryEnabled] = useState(() => {
+        try {
+            return localStorage.getItem('ceova_memory_enabled') !== 'false';
+        } catch {
+            return true;
+        }
+    });
     const [showRawMemories, setShowRawMemories] = useState(false); // toggle between summary and raw list
     const navigate = useNavigate();
     const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
@@ -291,39 +310,22 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
         }
     };
 
-    const handleAddMemory = async () => {
-        if (!newMemoryInput.trim()) return;
-        setIsAddingMemory(true);
+    const handleToggleMemoryEnabled = async () => {
+        const nextVal = !isMemoryEnabled;
+        setIsMemoryEnabled(nextVal);
         try {
-            // Check quota first
-            const { data: usageData, error: usageError } = await supabase.rpc('get_usage_and_limits', { p_user_id: userId });
-            if (!usageError && usageData) {
-                if (usageData.usage.memory_used >= usageData.limits.memory_limit) {
-                    alert("Memory limit reached. Please delete old memories or upgrade your plan to add new ones.");
-                    setIsAddingMemory(false);
-                    return;
-                }
-            }
-
-            const { error } = await supabase
-                .from('user_memory_longterm')
-                .insert({
+            localStorage.setItem('ceova_memory_enabled', nextVal ? 'true' : 'false');
+            if (userId) {
+                await supabase.from('user_preferences').upsert({
                     user_id: userId,
-                    category: 'General',
-                    title: 'Manual Note',
-                    value: newMemoryInput.trim(),
-                    confidence: 1.0
+                    memory_enabled: nextVal
                 });
-            if (error) throw error;
-            
-            setNewMemoryInput("");
-            setIsAddingMemory(false);
-            fetchMemories();
-        } catch (e) { 
-            console.error("Add Memory Error:", e);
-            setIsAddingMemory(false); 
+            }
+        } catch (e) {
+            console.error('Failed to toggle memory:', e);
         }
     };
+
 
     const handleDeleteMemory = async (id) => {
         try {
@@ -349,10 +351,15 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
     };
 
     const handleUpdateMemory = async (id) => {
+        if (!editContent.trim()) return;
         try {
             const { error } = await supabase
                 .from('user_memory_longterm')
-                .update({ value: editContent.trim(), updated_at: new Date().toISOString() })
+                .update({ 
+                    value: editContent.trim(), 
+                    title: editTitle.trim() || 'Saved Info',
+                    updated_at: new Date().toISOString() 
+                })
                 .eq('id', id)
                 .eq('user_id', userId);
             if (error) throw error;
@@ -360,6 +367,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
             fetchMemories();
         } catch (e) { console.error('Update Memory Error:', e); }
     };
+
 
     const handleExport = async () => {
         try {
@@ -395,7 +403,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
             case 'terms': return 'Terms of Use';
             case 'privacy': return 'Privacy Policy';
             case 'data-controls': return 'Data Controls';
-            case 'memories': return 'Memory';
+            case 'memories': return 'Saved info';
             case 'personalization': return 'Personalization';
             case 'notifications': return 'Notifications';
             case 'advanced': return 'Advanced Settings';
@@ -424,11 +432,11 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                 {view !== 'main' ? (
                                     <button 
                                         className="settings-back-btn" 
-                                        onClick={() => setView('main')}
+                                        onClick={() => setView(view === 'memories' ? 'data-controls' : 'main')}
                                         title="Back"
                                         style={{
-                                            background: 'rgba(255, 255, 255, 0.05)',
-                                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                                            background: isLight ? '#f4f4f5' : 'rgba(255, 255, 255, 0.05)',
+                                            border: isLight ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.08)',
                                             borderRadius: '8px',
                                             width: '32px',
                                             height: '32px',
@@ -436,24 +444,24 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                             cursor: 'pointer',
-                                            color: '#e5e7eb',
+                                            color: isLight ? '#09090b' : '#e5e7eb',
                                             padding: 0,
                                             margin: 0,
                                             transition: 'all 0.15s ease'
                                         }}
                                         onMouseOver={e => {
-                                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                                            e.currentTarget.style.color = '#ffffff';
+                                            e.currentTarget.style.background = isLight ? '#e4e4e7' : 'rgba(255, 255, 255, 0.1)';
+                                            e.currentTarget.style.color = isLight ? '#09090b' : '#ffffff';
                                         }}
                                         onMouseOut={e => {
-                                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                                            e.currentTarget.style.color = '#e5e7eb';
+                                            e.currentTarget.style.background = isLight ? '#f4f4f5' : 'rgba(255, 255, 255, 0.05)';
+                                            e.currentTarget.style.color = isLight ? '#09090b' : '#e5e7eb';
                                         }}
                                     >
                                         <ArrowLeft size={16} />
                                     </button>
                                 ) : null}
-                                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#f3f4f6', letterSpacing: '-0.01em' }}>
+                                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: isLight ? '#09090b' : '#f3f4f6', letterSpacing: '-0.01em' }}>
                                     {getTitle()}
                                 </h3>
                             </div>
@@ -470,8 +478,8 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                     onClick={handleClose} 
                                     title="Close"
                                     style={{
-                                        background: 'rgba(255, 255, 255, 0.05)',
-                                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                                        background: isLight ? '#f4f4f5' : 'rgba(255, 255, 255, 0.05)',
+                                        border: isLight ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.08)',
                                         borderRadius: '8px',
                                         width: '32px',
                                         height: '32px',
@@ -479,17 +487,17 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         cursor: 'pointer',
-                                        color: 'rgba(255, 255, 255, 0.65)',
+                                        color: isLight ? '#09090b' : 'rgba(255, 255, 255, 0.65)',
                                         padding: 0,
                                         transition: 'all 0.15s ease'
                                     }}
                                     onMouseOver={e => {
-                                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                                        e.currentTarget.style.color = '#ffffff';
+                                        e.currentTarget.style.background = isLight ? '#e4e4e7' : 'rgba(255, 255, 255, 0.1)';
+                                        e.currentTarget.style.color = isLight ? '#09090b' : '#ffffff';
                                     }}
                                     onMouseOut={e => {
-                                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                                        e.currentTarget.style.color = 'rgba(255, 255, 255, 0.65)';
+                                        e.currentTarget.style.background = isLight ? '#f4f4f5' : 'rgba(255, 255, 255, 0.05)';
+                                        e.currentTarget.style.color = isLight ? '#09090b' : 'rgba(255, 255, 255, 0.65)';
                                     }}
                                 >
                                     <X size={16} />
@@ -506,7 +514,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                                 {session?.user?.user_metadata?.avatar_url ? (
                                                     <img src={session.user.user_metadata.avatar_url} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                                 ) : (
-                                                    <User size={18} color="#ffffff" />
+                                                    <User size={18} color={isLight ? "#18181B" : "#ffffff"} />
                                                 )}
                                             </div>
                                             <div className="settings-profile-info">
@@ -638,8 +646,86 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                         </>
                                     )}
 
-                                    <h4 className="section-label">General</h4>
+                                                                        {isTauri && (
+                                        <>
+                                            <h4 className="section-label">System</h4>
+                                            <div className="settings-section">
+                                                <div className="settings-row">
+                                                    <div className="row-left">
+                                                        <div className="settings-icon-squircle">
+                                                            <Power size={16} />
+                                                        </div>
+                                                        <span>Launch at system startup</span>
+                                                    </div>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={toggleAutoStart}
+                                                        className={`toggle-btn ${autoStartEnabled ? 'active' : ''}`}
+                                                        style={{
+                                                            width: '40px',
+                                                            height: '20px',
+                                                            borderRadius: '20px',
+                                                            background: autoStartEnabled ? '#10b981' : (isLight ? '#e4e4e7' : '#27272a'),
+                                                            border: 'none',
+                                                            position: 'relative',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.3s ease'
+                                                        }}
+                                                    >
+                                                        <div style={{
+                                                            width: '16px',
+                                                            height: '16px',
+                                                            borderRadius: '50%',
+                                                            background: 'white',
+                                                            position: 'absolute',
+                                                            top: '2px',
+                                                            left: autoStartEnabled ? '22px' : '2px',
+                                                            transition: 'all 0.3s ease'
+                                                        }} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+
+<h4 className="section-label">General</h4>
                                     <div className="settings-section">
+                                        <div className="settings-row no-hover">
+                                            <div className="row-left">
+                                                <div className="settings-icon-squircle">
+                                                    <Palette size={16} />
+                                                </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                    <span>Theme</span>
+                                                    <span style={{ fontSize: '11px', color: '#71717a' }}>
+                                                        {themePref === 'system' ? 'Follows system appearance' : (themePref === 'light' ? 'Light white mode' : 'Dark mode')}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="theme-toggle-group">
+                                                <button 
+                                                    type="button"
+                                                    className={`theme-option-btn ${themePref === 'system' ? 'active' : ''}`}
+                                                    onClick={() => setThemePref('system')}
+                                                >
+                                                    System
+                                                </button>
+                                                <button 
+                                                    type="button"
+                                                    className={`theme-option-btn ${themePref === 'light' ? 'active' : ''}`}
+                                                    onClick={() => setThemePref('light')}
+                                                >
+                                                    Light
+                                                </button>
+                                                <button 
+                                                    type="button"
+                                                    className={`theme-option-btn ${themePref === 'dark' ? 'active' : ''}`}
+                                                    onClick={() => setThemePref('dark')}
+                                                >
+                                                    Dark
+                                                </button>
+                                            </div>
+                                        </div>
                                         <div className="settings-row clickable" onClick={() => setView('about')}>
                                             <div className="row-left">
                                                 <div className="settings-icon-squircle">
@@ -667,7 +753,7 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                             {view === 'about' && (
                                 <div className="about-view">
                                     <div style={{ textAlign: 'center', padding: '20px 0 16px' }}>
-                                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: '#ffffff', letterSpacing: '-0.01em' }}>CEOVA AI</h3>
+                                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: isLight ? '#09090b' : '#ffffff', letterSpacing: '-0.01em' }}>CEOVA AI</h3>
                                         <p style={{ color: '#71717a', fontSize: '12px', marginTop: '4px' }}>Version 1.2.6 (Production)</p>
                                     </div>
 
@@ -705,8 +791,8 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                                 <div className="data-controls-view">
                                     <div className="settings-section">
                                         <div className="settings-row clickable" onClick={() => setView('memories')}>
-                                            <div className="row-left"><Wand2 size={18} /> <span>Memory</span></div>
-                                            <div className="row-right"><span className="archive-count">{memories.length} entries</span><ChevronRight size={14} className="chevron" /></div>
+                                            <div className="row-left"><Sparkles size={18} /> <span>Saved info</span></div>
+                                            <div className="row-right"><span className="archive-count">{memories.length} facts</span><ChevronRight size={14} className="chevron" /></div>
                                         </div>
                                         <div className="settings-row clickable" onClick={handleExport}>
                                             <div className="row-left"><Download size={18} /> <span>Export data</span></div>
@@ -842,153 +928,150 @@ export default function SettingsModal({ isOpen, onClose, onLogout, userEmail, us
                             )}
 
                             {view === 'memories' && (
-                                <div className="memories-view">
-                                    {isLoadingMemories ? (
-                                        <div className="empty-memories">
-                                            <CircleDashed size={32} className="spinning" />
-                                            <p>Fetching memories...</p>
-                                        </div>
-                                    ) : !showRawMemories ? (
-                                        // ── ChatGPT-style Summary View ────────────────────────────────
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-                                            {/* Header */}
-                                            <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                                                    <div>
-                                                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f3f4f6' }}>
-                                                            Memory Summary
-                                                        </h3>
-                                                        <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#6b7280' }}>
-                                                            {summaryUpdatedAt
-                                                                ? `Updated ${new Date(summaryUpdatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-                                                                : 'Updated automatically after each conversation'}
-                                                        </p>
-                                                    </div>
-                                                    <button
-                                                        onClick={handleClearAllMemories}
-                                                        title="Clear all memories"
-                                                        style={{
-                                                            background: 'none', border: 'none', cursor: 'pointer',
-                                                            color: '#6b7280', padding: '4px', borderRadius: '6px',
-                                                            display: 'flex', alignItems: 'center', gap: '4px',
-                                                            fontSize: '0.72rem', transition: 'color 0.15s'
-                                                        }}
-                                                        onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                                                        onMouseLeave={e => e.currentTarget.style.color = '#6b7280'}
-                                                    >
-                                                        <Trash2 size={13} /> Clear all
-                                                    </button>
-                                                </div>
+                                <div className="gemini-saved-info-container">
+                                    {/* Master Personalization Switch */}
+                                    <div className="gemini-master-toggle-card">
+                                        <div className="gemini-master-toggle-info">
+                                            <div className="gemini-master-toggle-header">
+                                                <h3>Personalize with saved info</h3>
+                                                <span className={`gemini-status-tag ${isMemoryEnabled ? 'active' : 'paused'}`}>
+                                                    <span className="gemini-status-dot" />
+                                                    {isMemoryEnabled ? 'Active' : 'Paused'}
+                                                </span>
                                             </div>
+                                            <p>When enabled, Ceova references what it remembers about you to deliver tailored, context-rich responses across chats.</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleToggleMemoryEnabled}
+                                            className={`ceova-switch ${isMemoryEnabled ? 'active' : ''}`}
+                                            title={isMemoryEnabled ? "Memory enabled — click to pause" : "Memory paused — click to enable"}
+                                            aria-label="Toggle memory personalization"
+                                        >
+                                            <div className="ceova-switch-knob" />
+                                        </button>
+                                    </div>
 
-                                            {/* Summary sections */}
-                                            {summarySections.length > 0 ? (
-                                                <div style={{ padding: '4px 0 8px' }}>
-                                                    {summarySections.map(sec => {
-                                                        const LABELS = {
-                                                            overview: 'Overview',
-                                                            current_projects: 'Current Projects',
-                                                            design_preferences: 'Design Preferences',
-                                                            development_tools: 'Development Tools',
-                                                            learning_goals: 'Learning Goals',
-                                                            business_context: 'Business Context',
-                                                        };
-                                                        const label = LABELS[sec.category] || sec.category;
-                                                        return (
-                                                            <div key={sec.category} style={{
-                                                                padding: '14px 20px',
-                                                                borderBottom: '1px solid rgba(255,255,255,0.04)',
-                                                            }}>
-                                                                <p style={{ margin: '0 0 5px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#6b7280' }}>
-                                                                    {label}
-                                                                </p>
-                                                                <p style={{ margin: 0, fontSize: '0.88rem', color: '#d1d5db', lineHeight: 1.6 }}>
-                                                                    {sec.summary}
-                                                                </p>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            ) : memories.length > 0 ? (
-                                                // Summaries not generated yet but raw memories exist
-                                                <div style={{ padding: '24px 20px', textAlign: 'center' }}>
-                                                    <CircleDashed size={28} style={{ color: '#6b7280', marginBottom: '8px' }} />
-                                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#9ca3af' }}>
-                                                        Summary is being generated...
-                                                    </p>
-                                                    <p style={{ margin: '4px 0 0', fontSize: '0.76rem', color: '#6b7280' }}>
-                                                        It will appear here after your next conversation.
-                                                    </p>
-                                                </div>
-                                            ) : (
-                                                <div className="empty-memories">
-                                                    <div className="empty-icon-stack">
-                                                        <Sparkles size={32} />
-                                                        <Wand2 size={16} className="sparkle-mini" />
-                                                    </div>
-                                                    <p>No memories yet. Chat with Ceova and it will automatically remember important things about you.</p>
-                                                </div>
-                                            )}
-
-                                            {/* Footer toggle to raw list */}
-                                            {memories.length > 0 && (
-                                                <div style={{ padding: '10px 20px', borderTop: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}>
-                                                    <button
-                                                        onClick={() => setShowRawMemories(true)}
-                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60a5fa', fontSize: '0.78rem' }}
-                                                    >
-                                                        View all {memories.length} raw entries →
-                                                    </button>
-                                                </div>
-                                            )}
+                                    {/* Fact Cards List */}
+                                    {isLoadingMemories ? (
+                                        <div className="gemini-saved-loading">
+                                            <CircleDashed size={28} className="spinning" />
+                                            <span>Loading saved info...</span>
+                                        </div>
+                                    ) : memories.length === 0 ? (
+                                        <div className="gemini-saved-empty">
+                                            <div className="gemini-saved-empty-icon">
+                                                <Sparkles size={24} />
+                                            </div>
+                                            <h4>No saved info yet</h4>
+                                            <p>
+                                                Tell Ceova things to remember in chat (e.g. &quot;Remember that I live in NYC&quot;) and they will appear here automatically.
+                                            </p>
                                         </div>
                                     ) : (
-                                        // ── Raw memory card list (legacy) ─────────────────────────────
-                                        <div className="settings-section">
-                                            <div style={{ padding: '10px 20px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                <button
-                                                    onClick={() => setShowRawMemories(false)}
-                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60a5fa', fontSize: '0.78rem' }}
-                                                >
-                                                    ← Back to summary
-                                                </button>
-                                            </div>
-                                            {Object.entries(
-                                                memories.reduce((acc, mem) => {
-                                                    const cat = mem.category || 'Other';
-                                                    if (!acc[cat]) acc[cat] = [];
-                                                    acc[cat].push(mem);
-                                                    return acc;
-                                                }, {})
-                                            ).map(([category, catMemories]) => (
-                                                <div key={category} style={{ marginBottom: '16px' }}>
-                                                    <h4 style={{ margin: '16px 20px 8px', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#9ca3af' }}>
-                                                        {category}
-                                                    </h4>
-                                                    {catMemories.map(mem => (
-                                                        <div key={mem.id} className="memory-item">
-                                                            <div className="memory-text" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                    <img src="/ceova logo dark.png" alt="Ceova" style={{ width: 16, height: 16, objectFit: 'contain', flexShrink: 0 }} />
-                                                                    <span><strong>{mem.title}:</strong> {mem.value}</span>
-                                                                </div>
-                                                                <span className="memory-date" style={{ marginLeft: '26px' }}>
-                                                                    Saved on: {new Date(mem.created_at).toLocaleDateString()}
-                                                                </span>
+                                        <div className="gemini-facts-list">
+                                            {memories.map(mem => {
+                                                const catLower = (mem.category || 'general').toLowerCase();
+                                                const catClass = catLower.includes('profile') ? 'cat-profile' 
+                                                    : (catLower.includes('business') || catLower.includes('work') || catLower.includes('project')) ? 'cat-business'
+                                                    : catLower.includes('prefer') ? 'cat-preference' : 'cat-general';
+
+                                                return (
+                                                    <div key={mem.id} className="gemini-fact-card">
+                                                        <div className="gemini-fact-main">
+                                                            <div className="gemini-fact-sparkle">
+                                                                <Sparkles size={14} />
                                                             </div>
-                                                            <div className="memory-actions">
-                                                                <button className="del-btn" onClick={() => handleDeleteMemory(mem.id)} title="Delete memory">
-                                                                    <Trash2 size={16} />
-                                                                </button>
+                                                            <div className="gemini-fact-content">
+                                                                {editingMemoryId === mem.id ? (
+                                                                    <div className="gemini-edit-container">
+                                                                        <input
+                                                                            type="text"
+                                                                            value={editContent}
+                                                                            onChange={(e) => setEditContent(e.target.value)}
+                                                                            className="gemini-edit-input"
+                                                                            placeholder="Fact detail..."
+                                                                            autoFocus
+                                                                        />
+                                                                        <div className="gemini-edit-actions">
+                                                                            <button
+                                                                                type="button"
+                                                                                className="gemini-edit-cancel-btn"
+                                                                                onClick={() => setEditingMemoryId(null)}
+                                                                            >
+                                                                                Cancel
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                className="gemini-edit-save-btn"
+                                                                                onClick={() => handleUpdateMemory(mem.id)}
+                                                                            >
+                                                                                Save
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <>
+                                                                        <span className="gemini-fact-val">{mem.value}</span>
+                                                                        <div className="gemini-fact-meta">
+                                                                            <span className={`gemini-fact-pill ${catClass}`}>
+                                                                                {mem.category || 'General'}
+                                                                            </span>
+                                                                            {mem.title && mem.title !== 'Manual Note' && mem.title !== 'Fact' && (
+                                                                                <span className="gemini-fact-title-meta">• {mem.title}</span>
+                                                                            )}
+                                                                            <span className="gemini-fact-date-meta">
+                                                                                • Saved {new Date(mem.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                                            </span>
+                                                                        </div>
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         </div>
-                                                    ))}
-                                                </div>
-                                            ))}
+
+                                                        {editingMemoryId !== mem.id && (
+                                                            <div className="gemini-fact-actions">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setEditingMemoryId(mem.id);
+                                                                        setEditContent(mem.value || '');
+                                                                        setEditTitle(mem.title || '');
+                                                                    }}
+                                                                    title="Edit fact"
+                                                                >
+                                                                    <Edit2 size={13} />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="del"
+                                                                    onClick={() => handleDeleteMemory(mem.id)}
+                                                                    title="Delete fact"
+                                                                >
+                                                                    <Trash2 size={13} />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     )}
-                                    <div className="memory-footer-note">
-                                        Ceova automatically remembers important details to serve you better.
+
+                                    {/* Footer info & Clear all */}
+                                    <div className="gemini-saved-footer">
+                                        <button
+                                            type="button"
+                                            className="gemini-clear-all-btn"
+                                            onClick={handleClearAllMemories}
+                                        >
+                                            <Trash2 size={13} />
+                                            <span>Clear all info</span>
+                                        </button>
+                                        <div className="gemini-privacy-note">
+                                            <Lock size={12} className="gemini-privacy-icon" />
+                                            <span>Your saved info is private to your account.</span>
+                                        </div>
                                     </div>
                                 </div>
                             )}

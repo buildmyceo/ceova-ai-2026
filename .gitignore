@@ -40,3 +40,4 @@ audit_*.js
 *.orig.jsx
 *.orig.tsx
 *.orig.ts
+*.tar.gz

@@ -13,43 +13,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-    <!-- Anti-Clickjacking Defense & Hacker Roast -->
-    <style id="anti-clickjack-style">
-      html { display: none !important; }
-    </style>
-    <script>
-      (function() {
-        try {
-          if (window.top === window.self) {
-            var styleEl = document.getElementById('anti-clickjack-style');
-            if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
-          } else if (window.top.location.origin === window.self.location.origin) {
-            var styleEl = document.getElementById('anti-clickjack-style');
-            if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
-          } else {
-            throw new Error('Framed by foreign origin');
-          }
-        } catch (e) {
-          try { window.stop(); } catch(err) {}
-          document.documentElement.style.display = 'block';
-          document.documentElement.innerHTML = [
-            '<div style="background:#09090b;color:#f87171;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;height:100vh;width:100vw;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;box-sizing:border-box;">',
-              '<div style="font-size:3.5rem;margin-bottom:16px;">🚨</div>',
-              '<h1 style="color:#ffffff;font-size:1.8rem;font-weight:700;margin-bottom:12px;letter-spacing:-0.02em;">NICE TRY, CLICKJACKER!</h1>',
-              '<p style="color:#a1a1aa;font-size:1rem;line-height:1.6;max-width:480px;margin-bottom:24px;">',
-                'Did you really think you could secretly frame CEOVA inside an invisible iframe to steal user clicks? Go touch some grass! Your malicious frame has been neutralized. 😎',
-              '</p>',
-              '<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:12px;padding:12px 20px;color:#fca5a5;font-size:0.85rem;font-family:monospace;">',
-                'HTTP 403: CLICKJACKING_FRAME_DEFLECTED',
-              '</div>',
-            '</div>'
-          ].join('');
-          try {
-            window.top.location = window.self.location.href;
-          } catch (navErr) {}
-        }
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>

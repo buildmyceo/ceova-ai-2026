@@ -10,11 +10,15 @@ import { supabase } from '../services/supabase';
 import { connectGoogleDrive } from '../services/gdriveSyncEngine';
 import GoogleConnectModal from './GoogleConnectModal';
 import TelegramConnectModal from './TelegramConnectModal';
+import CctvAppCard from './CctvAppCard';
+import CctvDashboardOverlay from './CctvDashboardOverlay';
+import { openCctvApp } from '../utils/cctvLauncher';
 
 export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools', onSelectTool }) {
-    const [view, setView] = useState(initialTab); // 'tools' or 'connectors'
+    const [view, setView] = useState(initialTab); // 'tools', 'connectors', 'apps'
     const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
     const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
+    const [isCctvDashboardOpen, setIsCctvDashboardOpen] = useState(false);
     
     const [connections, setConnections] = useState({
         google: false, // Google Drive, Gmail, Google Calendar
@@ -223,6 +227,13 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                 >
                                     Connectors
                                 </button>
+                                <button 
+                                    className={`tab-btn ${view === 'apps' ? 'active' : ''}`} 
+                                    onClick={() => setView('apps')}
+                                    style={{ background: 'none', border: 'none', color: view === 'apps' ? '#fff' : '#a1a1aa', fontSize: '0.95rem', fontWeight: 500, cursor: 'pointer', paddingBottom: '8px', borderBottom: view === 'apps' ? '2px solid #fff' : '2px solid transparent', transition: 'all 0.2s' }}
+                                >
+                                    Apps
+                                </button>
                             </div>
                             <button className="settings-close-btn" onClick={onClose} style={{ background: 'none', border: 'none', color: '#a1a1aa', cursor: 'pointer' }}>
                                 <X size={20} />
@@ -341,13 +352,19 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
                                     type="connector"
                                     icon={<img src="/telegram.png" alt="Telegram" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />} 
                                     title="Telegram" 
-                                    desc={connections.telegram ? "Connected to CEOVA Telegram Bot" : "Build websites, run tools & chat from Telegram."} 
+                                    desc={connections.telegram ? "Connected to CEOVA Telegram Bot" : "Run tools, sync workspace & chat from Telegram."} 
                                     isConnected={connections.telegram}
                                     isChecking={connections.checking}
                                     onConnect={() => setIsTelegramModalOpen(true)}
                                     onClick={() => setIsTelegramModalOpen(true)}
                                     onDisconnect={handleTelegramDisconnect}
                                 />
+                            </div>
+                        )}
+
+                        {view === 'apps' && (
+                            <div className="extensions-apps-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                <CctvAppCard onOpenCctv={() => openCctvApp(setIsCctvDashboardOpen)} />
                             </div>
                         )}
 
@@ -373,6 +390,10 @@ export default function ExtensionsModal({ isOpen, onClose, initialTab = 'tools',
             onStatusChange={() => {
                 checkConnectionStatuses();
             }}
+        />
+        <CctvDashboardOverlay 
+            isOpen={isCctvDashboardOpen}
+            onClose={() => setIsCctvDashboardOpen(false)}
         />
     </>
     );

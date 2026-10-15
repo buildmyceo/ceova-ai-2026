@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
 import { Loader2 } from 'lucide-react';
+import { cctvAgent } from '../../services/cctvAgentService';
 
 const apiBase = 'http://127.0.0.1:8085';
 
@@ -100,7 +101,7 @@ export default function CameraManager({ onLogout, onResetSetup }) {
   const [discoveredIps, setDiscoveredIps] = useState([]);
   const [scanProgress, setScanProgress] = useState(0);
   const [showScanModal, setShowScanModal] = useState(false);
-  const [scanUsername, setScanUsername] = useState('');
+  const [scanUsername, setScanUsername] = useState(() => cctvAgent.getLocalCredentials()?.username || '');
   const [showAddForm, setShowAddForm] = useState(false);
   const [sessionInfo, setSessionInfo] = useState({ email: '', authenticated: false });
   const [newCam, setNewCam] = useState({ name: '', ip: '', rtsp: '' });
@@ -824,7 +825,10 @@ export default function CameraManager({ onLogout, onResetSetup }) {
             <form onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.target);
-              startDiscovery({ username: fd.get('username')?.trim(), password: fd.get('password') });
+              const u = fd.get('username')?.trim();
+              const p = fd.get('password');
+              cctvAgent.saveLocalCredentials({ username: u, password: p });
+              startDiscovery({ username: u, password: p });
               setShowScanModal(false);
             }} style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>

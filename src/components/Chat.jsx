@@ -687,11 +687,7 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
   }, [messages, idx]);
 
   const handleProceed = () => {
-    if (hasProceeded) return;
-    setHasProceeded(true);
-    if (onSuggestionClick) {
-      onSuggestionClick("Proceed");
-    }
+    return;
   };
 
   const handleInteraction = () => {
@@ -814,89 +810,47 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
             )}
 
             {isPlanMessage && !resolvedCloudProject && (
-              hasProceeded ? (
-                <div style={{
-                  marginTop: '16px',
-                  padding: '10px 16px',
-                  background: 'rgba(16, 163, 127, 0.1)',
-                  border: '1px solid rgba(16, 163, 127, 0.25)',
-                  borderRadius: '10px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  color: '#10a37f',
-                  fontSize: '0.88rem',
-                  fontWeight: 600
-                }}>
-                  <Check size={16} />
-                  <span>Plan approved. Starting website generation...</span>
-                </div>
-              ) : !hasLaterResponse ? (
-                <div className="plan-approval-container" style={{
-                  marginTop: '18px',
-                  padding: '14px 18px',
-                  background: 'rgba(99, 102, 241, 0.08)',
-                  border: '1px solid rgba(99, 102, 241, 0.22)',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: '12px'
-                }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                    <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary, #ffffff)' }}>
-                      Ready to build this website?
-                    </div>
-                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary, rgba(255, 255, 255, 0.65))' }}>
-                      Review the plan above. Click <strong>Proceed</strong> to start building, or reply with edits to update the plan.
-                    </div>
+              <div className="plan-approval-container" style={{
+                marginTop: '18px',
+                padding: '14px 18px',
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px'
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div style={{ fontSize: '0.92rem', fontWeight: 600, color: '#f87171' }}>
+                    Website Development Tool Paused
                   </div>
-                  <button
-                    id="plan-proceed-action-btn"
-                    onClick={handleProceed}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '10px 22px',
-                      background: 'linear-gradient(135deg, #7c5cfc 0%, #6366f1 100%)',
-                      color: '#ffffff',
-                      borderRadius: '9px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      fontSize: '0.92rem',
-                      boxShadow: '0 4px 14px rgba(124, 92, 252, 0.35)',
-                      transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                      flexShrink: 0
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-1px)';
-                      e.currentTarget.style.boxShadow = '0 6px 20px rgba(124, 92, 252, 0.45)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 4px 14px rgba(124, 92, 252, 0.35)';
-                    }}
-                  >
-                    <span>Proceed</span>
-                    <ArrowRight size={16} />
-                  </button>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary, rgba(255, 255, 255, 0.65))' }}>
+                    The website development tool is currently paused and temporarily unavailable.
+                  </div>
                 </div>
-              ) : (
-                <div style={{
-                  marginTop: '12px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontSize: '0.82rem',
-                  color: 'rgba(255, 255, 255, 0.45)'
-                }}>
-                  <Check size={14} color="#10a37f" />
-                  <span>Plan reviewed</span>
-                </div>
-              )
+                <button
+                  id="plan-proceed-action-btn"
+                  disabled
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 16px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    cursor: 'not-allowed',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    flexShrink: 0
+                  }}
+                >
+                  <span>Tool Paused</span>
+                </button>
+              </div>
             )}
 
 

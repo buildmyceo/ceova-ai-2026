@@ -1,0 +1,2 @@
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS mode TEXT;
+ALTER TABLE public.user_ai_usage ADD COLUMN IF NOT EXISTS mode TEXT;
