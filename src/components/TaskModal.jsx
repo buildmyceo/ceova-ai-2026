@@ -134,8 +134,6 @@ export default function TaskModal({ isOpen, onClose, userId = null, onAutomateTa
         return () => clearInterval(interval);
     }, [tasks]);
 
-    if (!isOpen) return null;
-
     // Toast helper
     const showToast = (message) => {
         setStatusToast(message);
