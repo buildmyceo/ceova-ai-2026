@@ -188,19 +188,11 @@ fn is_cctv_installed() -> Result<bool, String> {
         if internal_dir.join("CEOVA-CCTV.app").exists() {
             return Ok(true);
         }
-        if std::path::Path::new("/Applications/CEOVA-CCTV.app").exists() {
-            return Ok(true);
-        }
         Ok(false)
     }
     #[cfg(target_os = "windows")]
     {
         if internal_dir.join("CEOVA-CCTV.exe").exists() {
-            return Ok(true);
-        }
-        let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
-        let win_cctv_path = format!("{}\\Programs\\CEOVA-CCTV\\CEOVA-CCTV.exe", local_app_data);
-        if std::path::Path::new(&win_cctv_path).exists() {
             return Ok(true);
         }
         Ok(false)

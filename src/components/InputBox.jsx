@@ -290,6 +290,11 @@ export default function InputBox({
             if (!isInstalled) {
                 setIsCctvInstalled(false);
                 setIsCctvConnected(false);
+                appRegistry.setInstallationStatus('ceova-cctv', 'not_installed');
+                if (typeof window !== 'undefined' && window.localStorage) {
+                    window.localStorage.removeItem('ceova_cctv_connected');
+                    window.localStorage.removeItem('ceova_cctv_local_credentials');
+                }
                 return;
             }
             setIsCctvInstalled(true);
