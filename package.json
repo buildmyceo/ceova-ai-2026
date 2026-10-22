@@ -13,7 +13,9 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "desktop": "tauri dev",
-    "build:dmg": "bash scripts/build-dmg.sh"
+    "build:dmg": "bash scripts/build-dmg.sh",
+    "build:mac": "bash scripts/build-dmg.sh",
+    "push:mac": "bash scripts/build-dmg.sh && rm -rf /Applications/CEOVA.app && cp -R src-tauri/target/release/bundle/macos/CEOVA.app /Applications/ && xattr -cr /Applications/CEOVA.app"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
@@ -35,6 +37,7 @@
     "@zxing/library": "^0.23.0",
     "browser-image-compression": "^2.0.2",
     "docx-to-pdf-wasm": "^0.1.0",
+    "dotenv": "^18.0.8",
     "googleapis": "^144.0.0",
     "groq-sdk": "^0.12.0",
     "highlight.js": "^11.11.1",

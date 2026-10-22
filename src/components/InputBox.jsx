@@ -16,8 +16,11 @@ import { useDriveThumbnail } from '../services/driveThumbnailCache';
 import GoogleConnectModal from './GoogleConnectModal';
 import TelegramConnectModal from './TelegramConnectModal';
 import CctvDashboardOverlay from './CctvDashboardOverlay';
+import CctvInstallerModal from './CctvInstallerModal';
 import { openCctvApp } from '../utils/cctvLauncher';
 import { cctvAgent } from '../services/cctvAgentService';
+import { installerService } from '../services/installerService';
+import { appRegistry } from '../services/appRegistryService';
 import { connectGoogleDrive } from '../services/gdriveSyncEngine';
 import './LibraryPickerModal.css';
 
@@ -189,6 +192,7 @@ export default function InputBox({
     const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
     const [isEditingConnectors, setIsEditingConnectors] = useState(false);
     const [isCctvDashboardOpen, setIsCctvDashboardOpen] = useState(false);
+    const [isCctvInstallerOpen, setIsCctvInstallerOpen] = useState(false);
     const [files, setFiles] = useState([]);
     const [isListening, setIsListening] = useState(false);
     const [isGmailConnected, setIsGmailConnected] = useState(false);
@@ -268,6 +272,23 @@ export default function InputBox({
 
     const checkCctvStatus = async () => {
         try {
+            // Check if application is actually installed on the device
+            let isInstalled = false;
+            if (typeof window !== 'undefined' && (window.__TAURI__ || window.__TAURI_INTERNALS__)) {
+                try {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    isInstalled = await invoke('is_cctv_installed');
+                } catch (_e) {}
+            } else {
+                const cctvApp = appRegistry.getApplication('ceova-cctv');
+                isInstalled = cctvApp?.installationStatus === 'installed';
+            }
+
+            if (!isInstalled) {
+                setIsCctvConnected(false);
+                return;
+            }
+
             // 1. Direct fast check via cctvAgent
             const ctx = await cctvAgent.getCctvContext();
             if (ctx && (ctx.connected || ctx.cameraCount > 0 || (Array.isArray(ctx.cameras) && ctx.cameras.length > 0))) {
@@ -288,7 +309,7 @@ export default function InputBox({
                 }
             }
 
-            // 3. Fallback to localStorage
+            // 3. Fallback to localStorage (only if installed)
             if (typeof window !== 'undefined') {
                 const hasLocalCreds = !!localStorage.getItem('ceova_cctv_local_credentials');
                 const isConnFlag = localStorage.getItem('ceova_cctv_connected') === 'true';
@@ -299,11 +320,7 @@ export default function InputBox({
             }
             setIsCctvConnected(false);
         } catch (_err) {
-            if (typeof window !== 'undefined' && (localStorage.getItem('ceova_cctv_local_credentials') || localStorage.getItem('ceova_cctv_connected') === 'true')) {
-                setIsCctvConnected(true);
-            } else {
-                setIsCctvConnected(false);
-            }
+            setIsCctvConnected(false);
         }
     };
 
@@ -397,25 +414,22 @@ export default function InputBox({
 
     const handleCctvDisconnect = async (e) => {
         if (e) e.stopPropagation();
-        if (!window.confirm("Are you sure you want to disconnect CCTV?")) return;
+        if (!window.confirm("Are you sure you want to disconnect CCTV and uninstall the application from your device?")) return;
         try {
+            await installerService.deleteApplication('ceova-cctv');
+            if (typeof window !== 'undefined' && (window.__TAURI__ || window.__TAURI_INTERNALS__)) {
+                try {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    await invoke('delete_cctv_app');
+                } catch (_e) {}
+            }
+            setIsCctvConnected(false);
+            setIsEditingConnectors(false);
+            appRegistry.setInstallationStatus('ceova-cctv', 'not_installed');
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('ceova_cctv_local_credentials');
                 localStorage.removeItem('ceova_cctv_connected');
             }
-            await fetch('http://127.0.0.1:3080/api/cctv/credentials', {
-                method: 'DELETE'
-            }).catch(() => {});
-            await fetch('http://127.0.0.1:3080/api/cctv/credentials', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'disconnect' })
-            }).catch(() => {});
-            await fetch('http://127.0.0.1:3080/api/cameras', {
-                method: 'DELETE'
-            }).catch(() => {});
-            setIsCctvConnected(false);
-            setIsEditingConnectors(false);
         } catch (err) {
             console.error("Failed to disconnect CCTV:", err);
             alert("Failed to disconnect CCTV: " + err.message);
@@ -922,6 +936,27 @@ export default function InputBox({
                                                 }
                                                 setIsConnectorsSubmenuOpen(false);
                                                 setIsPlusOpen(false);
+
+                                                // 1. Check if CCTV is currently installed on the device
+                                                let isInstalled = false;
+                                                if (typeof window !== 'undefined' && (window.__TAURI__ || window.__TAURI_INTERNALS__)) {
+                                                    try {
+                                                        const { invoke } = await import('@tauri-apps/api/core');
+                                                        isInstalled = await invoke('is_cctv_installed');
+                                                    } catch (_e) {}
+                                                }
+                                                if (!isInstalled) {
+                                                    const cctvApp = appRegistry.getApplication('ceova-cctv');
+                                                    isInstalled = cctvApp?.installationStatus === 'installed';
+                                                }
+
+                                                if (!isInstalled) {
+                                                    // Automatically trigger download & show loading bar pop-up window
+                                                    setIsCctvInstallerOpen(true);
+                                                    return;
+                                                }
+
+                                                // App is installed: open in different tab / window
                                                 await openCctvApp(setIsCctvDashboardOpen);
                                             }}
                                         >
@@ -1396,6 +1431,16 @@ export default function InputBox({
                 }}
                 onStatusChange={() => {
                     checkGoogleAndTelegramStatus();
+                }}
+            />
+
+            <CctvInstallerModal
+                isOpen={isCctvInstallerOpen}
+                onClose={() => setIsCctvInstallerOpen(false)}
+                onInstalled={async () => {
+                    setIsCctvConnected(true);
+                    // Open CCTV app in different tab / window once installation completes
+                    await openCctvApp(setIsCctvDashboardOpen);
                 }}
             />
 

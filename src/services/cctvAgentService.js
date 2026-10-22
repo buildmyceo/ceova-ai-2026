@@ -130,6 +130,26 @@ class CctvAgentService {
    */
   async getStatus() {
     const app = appRegistry.getApplication('ceova-cctv');
+    const isInstalled = app ? app.installationStatus === 'installed' : false;
+
+    if (!isInstalled) {
+      const status = {
+        installed: false,
+        running: false,
+        monitoring: false,
+        aiEngineHealthy: false,
+        cameraCount: 0,
+        cameras: [],
+        savedCredentials: null,
+        latestReport: null,
+        installedVersion: null,
+        updateAvailable: false,
+        lastHealthCheck: new Date().toISOString(),
+        error: null
+      };
+      appRegistry.updateAgentHealth('ceova-cctv', status);
+      return status;
+    }
 
     try {
       const headers = await this.getHeadersAsync();
@@ -192,7 +212,7 @@ class CctvAgentService {
       // Service is stopped or not responding
       const isStopped = err.name === 'AbortError' || err.message.includes('Failed to fetch') || err.message.includes('ECONNREFUSED');
       const status = {
-        installed: true,
+        installed: isInstalled,
         running: false,
         monitoring: false,
         aiEngineHealthy: false,

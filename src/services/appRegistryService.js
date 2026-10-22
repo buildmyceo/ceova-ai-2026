@@ -17,6 +17,8 @@ export const DEFAULT_APPLICATIONS = [
     description: 'Autonomous AI CCTV monitoring system with local object detection, multi-camera live streaming, and intelligent security alerts.',
     publishedVersion: '1.0.0',
     supportedPlatforms: ['windows', 'macos'],
+    downloadSourceUrl: 'https://cctv-app-desktop.vercel.app/',
+    manifestUrl: 'https://cctv-app-desktop.vercel.app/manifest.json',
     installationStatus: 'not_installed', // 'not_installed' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'failed' | 'updating'
     installedVersion: null,
     updateAvailable: false,

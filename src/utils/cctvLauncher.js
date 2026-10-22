@@ -9,23 +9,19 @@
 export const CCTV_HTTP_URL = "http://127.0.0.1:3080";
 
 export async function openCctvApp(fallbackOverlaySetter) {
-  // Always try Tauri native window command first
+  // 1. Ensure internal background CCTV service is active
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("open_cctv_window");
-    return true;
+    if (typeof window !== 'undefined' && (window.__TAURI__ || window.__TAURI_INTERNALS__)) {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("start_cctv_service");
+    }
   } catch (err) {
-    console.warn("[CCTV] Native Tauri open_cctv_window failed or not in desktop environment:", err);
+    console.warn("[CCTV] start_cctv_service notice:", err);
   }
 
-  // Fallback if not running in desktop Tauri or if native window invocation fails
+  // 2. Always open the CCTV interface inside our main app tab/overlay
   if (typeof fallbackOverlaySetter === 'function') {
     fallbackOverlaySetter(true);
-    return true;
-  }
-
-  if (typeof window !== 'undefined') {
-    window.open(CCTV_HTTP_URL, "_blank");
     return true;
   }
 

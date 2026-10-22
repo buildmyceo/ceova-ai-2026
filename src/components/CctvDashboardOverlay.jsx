@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ArrowLeft, ExternalLink, ShieldCheck, RefreshCw, AlertCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, ShieldCheck, RefreshCw, AlertCircle, Loader2, Download } from "lucide-react";
 import { openCctvApp } from "../utils/cctvLauncher";
 import { cctvAgent } from "../services/cctvAgentService";
+import { appRegistry } from "../services/appRegistryService";
+import CctvInstallerModal from "./CctvInstallerModal";
 
 const CCTV_HTTP_URL = "http://127.0.0.1:3080";
 const CCTV_WEB_INFO_URL = "http://127.0.0.1:3080/api/info";
@@ -10,6 +12,7 @@ export default function CctvDashboardOverlay({ isOpen, onClose }) {
   const [isOnline, setIsOnline] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [iframeKey, setIframeKey] = useState(1);
+  const [isInstallerOpen, setIsInstallerOpen] = useState(false);
   const iframeRef = useRef(null);
 
   // Listen for local CCTV connection events from iframe (local only, not server)
@@ -234,27 +237,7 @@ export default function CctvDashboardOverlay({ isOpen, onClose }) {
             <span>Reload</span>
           </button>
 
-          <button
-            onClick={handleOpenDifferentTab}
-            style={{
-              background: "linear-gradient(135deg, #2563eb, #7c3aed)",
-              border: "1px solid rgba(255, 255, 255, 0.2)",
-              borderRadius: "8px",
-              color: "#ffffff",
-              padding: "6px 14px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              fontSize: "0.82rem",
-              fontWeight: 600,
-              boxShadow: "0 2px 10px rgba(37, 99, 235, 0.3)",
-              transition: "all 0.2s"
-            }}
-          >
-            <span>Open in New Window</span>
-            <ExternalLink size={14} />
-          </button>
+
         </div>
       </div>
 
@@ -305,42 +288,82 @@ export default function CctvDashboardOverlay({ isOpen, onClose }) {
             </div>
 
             <h2 style={{ fontSize: "1.25rem", fontWeight: 700, margin: "0 0 8px 0" }}>
-              {isStarting ? "Launching CEOVA CCTV Engine..." : "CCTV Background Service is Offline"}
+              {isStarting 
+                ? "Launching CEOVA CCTV Engine..." 
+                : (appRegistry.getApplication('ceova-cctv')?.installationStatus !== 'installed' 
+                    ? "CCTV App Disconnected & Deleted" 
+                    : "CCTV Background Service is Offline")}
             </h2>
             <p style={{
               fontSize: "0.88rem",
               color: "#94a3b8",
-              maxWidth: "460px",
+              maxWidth: "480px",
               lineHeight: 1.5,
               margin: "0 0 20px 0"
             }}>
               {isStarting 
                 ? "Starting local autonomous surveillance supervisor and AI microservices on port 3080 & 8085..." 
-                : "The CCTV Engine will launch automatically. You can also click below to trigger immediate start."}
+                : (appRegistry.getApplication('ceova-cctv')?.installationStatus !== 'installed'
+                    ? "The CCTV application was disconnected and uninstalled. To start AI camera monitoring, download the app directly from https://cctv-app-desktop.vercel.app"
+                    : "The CCTV Engine will launch automatically. You can also click below to trigger immediate start.")}
             </p>
 
-            <button
-              onClick={handleRefresh}
-              style={{
-                background: "#ffffff",
-                color: "#000000",
-                fontWeight: 700,
-                border: "none",
-                borderRadius: "8px",
-                padding: "10px 20px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                fontSize: "0.85rem"
-              }}
-            >
-              {isStarting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              {isStarting ? "Connecting..." : "Start & Connect CCTV"}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", justifyContent: "center" }}>
+              {appRegistry.getApplication('ceova-cctv')?.installationStatus !== 'installed' && (
+                <button
+                  onClick={() => setIsInstallerOpen(true)}
+                  style={{
+                    background: "linear-gradient(135deg, #2563eb, #3b82f6)",
+                    color: "#ffffff",
+                    fontWeight: 700,
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "10px 20px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    fontSize: "0.85rem",
+                    boxShadow: "0 4px 14px rgba(37, 99, 235, 0.4)"
+                  }}
+                >
+                  <Download size={15} />
+                  <span>Download & Install CCTV Automatically</span>
+                </button>
+              )}
+
+              <button
+                onClick={handleRefresh}
+                style={{
+                  background: "#ffffff",
+                  color: "#000000",
+                  fontWeight: 700,
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "10px 20px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "0.85rem"
+                }}
+              >
+                {isStarting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                {isStarting ? "Connecting..." : "Start & Connect CCTV"}
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      <CctvInstallerModal
+        isOpen={isInstallerOpen}
+        onClose={() => setIsInstallerOpen(false)}
+        onInstalled={async () => {
+          await startCctvService();
+          setIframeKey(k => k + 1);
+        }}
+      />
     </div>
   );
 }

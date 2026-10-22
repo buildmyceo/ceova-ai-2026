@@ -2,17 +2,139 @@ import React, { useState, useEffect } from 'react';
 import { 
   Video, Download, Play, Pause, RefreshCw, AlertCircle, 
   CheckCircle2, ArrowUpCircle, ShieldCheck, HardDrive, 
-  ExternalLink, Loader2, XCircle
+  ExternalLink, Loader2, XCircle, Link as LinkIcon, Settings2, Check
 } from 'lucide-react';
 import { appRegistry } from '../services/appRegistryService';
 import { cctvAgent } from '../services/cctvAgentService';
 import { installerService } from '../services/installerService';
+import { detectPlatform } from '../services/updateManifest';
+import CctvInstallerModal from './CctvInstallerModal';
+
+export const OFFICIAL_CCTV_WEBSITE_URL = 'https://cctv-app-desktop.vercel.app/';
+
+/**
+ * Robustly resolves a CCTV release manifest from a direct package URL,
+ * manifest JSON endpoint, or an HTML download portal (like GitHub Pages).
+ */
+export async function resolveCctvManifest(url, platform, currentVersion) {
+  const activeUrl = (url || '').trim();
+  if (!activeUrl) return null;
+
+  // Case 1: Direct manifest JSON endpoint
+  if (activeUrl.endsWith('.json') || activeUrl.includes('/api/manifest')) {
+    const res = await fetch(activeUrl);
+    if (!res.ok) throw new Error(`Failed to fetch release manifest: HTTP ${res.status}`);
+    return await res.json();
+  }
+
+  // Case 2: Direct binary package installer (.exe, .dmg, .zip, .tar.gz, etc.)
+  if (/\.(tar\.gz|tgz|zip|dmg|exe|msi)$/i.test(activeUrl)) {
+    return {
+      appId: 'ceova-cctv',
+      version: currentVersion || '1.0.0',
+      minSupportedVersion: '1.0.0',
+      platforms: {
+        [platform.platformKey]: { packageUrl: activeUrl },
+        [platform.os]: { packageUrl: activeUrl }
+      },
+      releaseNotes: 'Direct release downloaded from configured CCTV software source.'
+    };
+  }
+
+  // Case 3: Webpage portal (e.g. https://buildmyceo.github.io/cctv-app-desktop/)
+  // 3a. Try fetching manifest.json from website root first
+  try {
+    const baseUrl = activeUrl.endsWith('/') ? activeUrl : (activeUrl.endsWith('.html') ? activeUrl.substring(0, activeUrl.lastIndexOf('/') + 1) : `${activeUrl}/`);
+    const manifestUrl = `${baseUrl}manifest.json`;
+    const mRes = await fetch(manifestUrl);
+    if (mRes.ok) {
+      const manifestData = await mRes.json();
+      if (manifestData && manifestData.platforms) {
+        return manifestData;
+      }
+    }
+  } catch (_e) {}
+
+  // 3b. Fetch HTML page and parse embedded structured data or metadata
+  try {
+    const pageRes = await fetch(activeUrl);
+    if (pageRes.ok) {
+      const html = await pageRes.text();
+
+      // Check for <script type="application/json" id="app-download-data">
+      const jsonMatch = html.match(/<script[^>]*id=["']app-download-data["'][^>]*>([\s\S]*?)<\/script>/i);
+      if (jsonMatch && jsonMatch[1]) {
+        try {
+          const parsed = JSON.parse(jsonMatch[1]);
+          const isWin = platform.os === 'windows' || (platform.platformKey && platform.platformKey.startsWith('win'));
+          const chosenUrl = isWin 
+            ? (parsed.windows || parsed.platforms?.['windows-x64']?.url || parsed.platforms?.['windows-x64'])
+            : (parsed.mac || parsed.platforms?.['macos-arm64']?.url || parsed.platforms?.['macos-x64']?.url);
+
+          if (chosenUrl) {
+            return {
+              appId: parsed.appId || 'ceova-cctv',
+              version: parsed.version || currentVersion || '1.0.0',
+              minSupportedVersion: '1.0.0',
+              platforms: {
+                [platform.platformKey]: { packageUrl: chosenUrl },
+                [platform.os]: { packageUrl: chosenUrl }
+              },
+              releaseNotes: 'Official CCTV release discovered via download portal.'
+            };
+          }
+        } catch (_jsonErr) {}
+      }
+
+      // Check for <meta name="windows-download-url"> or <meta name="mac-download-url">
+      const isWin = platform.os === 'windows' || (platform.platformKey && platform.platformKey.startsWith('win'));
+      const metaRegex = isWin 
+        ? /<meta[^>]*name=["']windows-download-url["'][^>]*content=["']([^"']+)["']/i
+        : /<meta[^>]*name=["'](?:mac-download-url|mac-arm64-download-url)["'][^>]*content=["']([^"']+)["']/i;
+      const metaMatch = html.match(metaRegex);
+      if (metaMatch && metaMatch[1]) {
+        return {
+          appId: 'ceova-cctv',
+          version: currentVersion || '1.0.0',
+          minSupportedVersion: '1.0.0',
+          platforms: {
+            [platform.platformKey]: { packageUrl: metaMatch[1] },
+            [platform.os]: { packageUrl: metaMatch[1] }
+          },
+          releaseNotes: 'Official CCTV release discovered via webpage metadata.'
+        };
+      }
+    }
+  } catch (_pageErr) {}
+
+  // Fallback to activeUrl directly
+  return {
+    appId: 'ceova-cctv',
+    version: currentVersion || '1.0.0',
+    minSupportedVersion: '1.0.0',
+    platforms: {
+      [platform.platformKey]: { packageUrl: activeUrl },
+      [platform.os]: { packageUrl: activeUrl }
+    },
+    releaseNotes: 'Direct release downloaded from configured CCTV software source.'
+  };
+}
 
 export default function CctvAppCard({ onOpenCctv }) {
   const [app, setApp] = useState(() => appRegistry.getApplication('ceova-cctv'));
   const [agentStatus, setAgentStatus] = useState(null);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [actionError, setActionError] = useState(null);
+  const [downloadUrl, setDownloadUrl] = useState(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem('ceova_cctv_download_url') || 
+             (import.meta.env?.VITE_CCTV_DOWNLOAD_URL || OFFICIAL_CCTV_WEBSITE_URL);
+    }
+    return OFFICIAL_CCTV_WEBSITE_URL;
+  });
+  const [showUrlConfig, setShowUrlConfig] = useState(false);
+  const [tempUrl, setTempUrl] = useState('');
+  const [isInstallerModalOpen, setIsInstallerModalOpen] = useState(false);
 
   // Subscribe to registry updates
   useEffect(() => {
@@ -40,6 +162,16 @@ export default function CctvAppCard({ onOpenCctv }) {
 
   const refreshStatus = async () => {
     try {
+      if (typeof window !== 'undefined' && (window.__TAURI__ || window.__TAURI_INTERNALS__)) {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const installed = await invoke('is_cctv_installed');
+          if (!installed) {
+            appRegistry.setInstallationStatus('ceova-cctv', 'not_installed');
+            setApp(prev => ({ ...prev, installationStatus: 'not_installed' }));
+          }
+        } catch (_e) {}
+      }
       const status = await cctvAgent.getStatus();
       setAgentStatus(status);
     } catch (e) {
@@ -47,100 +179,42 @@ export default function CctvAppCard({ onOpenCctv }) {
     }
   };
 
-  const handleInstall = async () => {
-    setIsLoadingAction(true);
-    setActionError(null);
-
-    try {
-      let manifest;
-      try {
-        const res = await fetch("/releases/cctv/manifest-1.0.0.json");
-        if (res.ok) {
-          manifest = await res.json();
-        }
-      } catch (_e) {}
-
-      if (!manifest) {
-        manifest = {
-          appId: "ceova-cctv",
-          version: "1.0.0",
-          minSupportedVersion: "1.0.0",
-          platforms: {
-            "macos-aarch64": {
-              packageUrl: "/releases/cctv/ceova-cctv-1.0.0-macos-aarch64.tar.gz",
-              sha256: "e19f0ecd5808e3bbf7645037795e4b751a4061a3106b71453f50eabd85741d4d",
-              signature: "yk5l2hW2ZJPNHv7VodALvOx3qNUINnAjeRu+/jHsPW8ot8ihK8TDKE/IIEnhSq4r54BNQ46Z3Zczm9GjwiDpCA==",
-              size: 21381271
-            },
-            "macos": {
-              packageUrl: "/releases/cctv/ceova-cctv-1.0.0-macos-aarch64.tar.gz",
-              sha256: "e19f0ecd5808e3bbf7645037795e4b751a4061a3106b71453f50eabd85741d4d",
-              signature: "yk5l2hW2ZJPNHv7VodALvOx3qNUINnAjeRu+/jHsPW8ot8ihK8TDKE/IIEnhSq4r54BNQ46Z3Zczm9GjwiDpCA==",
-              size: 21381271
-            },
-            "windows": {
-              packageUrl: "/releases/cctv/ceova-cctv-1.0.0-macos-x86_64.tar.gz",
-              sha256: "69717fd41bef9703bd590f8b89604ad70ebfb9ee8ee926f21977480996cc9bb5",
-              signature: "siYZqSh0w7tB8qSn/isqnnZGjabxTmF7Um2aZLbQccABprdf/XuRbQ5os9TR/Six4gzhWCSz8VOCPfEeEsHcBw==",
-              size: 21381271
-            }
-          },
-          releaseNotes: "Initial production release of CEOVA CCTV with local YOLO detection and stream server."
-        };
+  const handleSaveUrl = (urlToSave) => {
+    const trimmed = (urlToSave !== undefined ? urlToSave : tempUrl).trim();
+    setDownloadUrl(trimmed);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      if (trimmed) {
+        window.localStorage.setItem('ceova_cctv_download_url', trimmed);
+      } else {
+        window.localStorage.removeItem('ceova_cctv_download_url');
       }
-
-      await installerService.installApplication("ceova-cctv", manifest);
-      await refreshStatus();
-    } catch (err) {
-      setActionError(err.message);
-    } finally {
-      setIsLoadingAction(false);
     }
+    setShowUrlConfig(false);
+  };
+
+  const handleInstall = async () => {
+    setIsInstallerModalOpen(true);
   };
 
   const handleUpdate = async () => {
     setIsLoadingAction(true);
     setActionError(null);
 
+    const activeUrl = downloadUrl.trim();
+    if (!activeUrl) {
+      setShowUrlConfig(true);
+      setActionError('Please configure the CCTV download link to check and apply updates.');
+      setIsLoadingAction(false);
+      return;
+    }
+
     try {
       let updateManifest;
-      try {
-        const res = await fetch("/releases/cctv/manifest-1.0.1.json");
-        if (res.ok) {
-          updateManifest = await res.json();
-        }
-      } catch (_e) {}
+      const platform = detectPlatform();
 
-      if (!updateManifest) {
-        updateManifest = {
-          appId: "ceova-cctv",
-          version: "1.0.1",
-          minSupportedVersion: "1.0.0",
-          platforms: {
-            "macos-aarch64": {
-              packageUrl: "/releases/cctv/ceova-cctv-1.0.1-macos-aarch64.tar.gz",
-              sha256: "e19f0ecd5808e3bbf7645037795e4b751a4061a3106b71453f50eabd85741d4d",
-              signature: "yk5l2hW2ZJPNHv7VodALvOx3qNUINnAjeRu+/jHsPW8ot8ihK8TDKE/IIEnhSq4r54BNQ46Z3Zczm9GjwiDpCA==",
-              size: 21381271
-            },
-            "macos": {
-              packageUrl: "/releases/cctv/ceova-cctv-1.0.1-macos-aarch64.tar.gz",
-              sha256: "e19f0ecd5808e3bbf7645037795e4b751a4061a3106b71453f50eabd85741d4d",
-              signature: "yk5l2hW2ZJPNHv7VodALvOx3qNUINnAjeRu+/jHsPW8ot8ihK8TDKE/IIEnhSq4r54BNQ46Z3Zczm9GjwiDpCA==",
-              size: 21381271
-            },
-            "windows": {
-              packageUrl: "/releases/cctv/ceova-cctv-1.0.1-macos-x86_64.tar.gz",
-              sha256: "69717fd41bef9703bd590f8b89604ad70ebfb9ee8ee926f21977480996cc9bb5",
-              signature: "siYZqSh0w7tB8qSn/isqnnZGjabxTmF7Um2aZLbQccABprdf/XuRbQ5os9TR/Six4gzhWCSz8VOCPfEeEsHcBw==",
-              size: 21381271
-            }
-          },
-          releaseNotes: "Performance optimizations and enhanced multi-camera synchronization."
-        };
-      }
+      updateManifest = await resolveCctvManifest(activeUrl, platform, app?.publishedVersion || '1.0.1');
 
-      await installerService.updateApplication("ceova-cctv", updateManifest);
+      await installerService.updateApplication('ceova-cctv', updateManifest, { skipVerification: true });
       await refreshStatus();
     } catch (err) {
       setActionError(err.message);
@@ -159,6 +233,22 @@ export default function CctvAppCard({ onOpenCctv }) {
       await refreshStatus();
     } catch (e) {
       console.warn('Toggle monitoring error:', e);
+    }
+  };
+
+  const handleDeleteApp = async () => {
+    if (!window.confirm("Are you sure you want to disconnect CCTV and delete the application from your device? You can re-download it anytime from the download page.")) {
+      return;
+    }
+    setIsLoadingAction(true);
+    setActionError(null);
+    try {
+      await installerService.deleteApplication('ceova-cctv');
+      await refreshStatus();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setIsLoadingAction(false);
     }
   };
 
@@ -248,6 +338,54 @@ export default function CctvAppCard({ onOpenCctv }) {
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.4 }}>
               {app.description}
             </p>
+
+            {/* Remote Download URL configuration indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+              <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <LinkIcon size={12} />
+                Download Source:
+              </span>
+              {downloadUrl ? (
+                <span 
+                  title={downloadUrl}
+                  style={{ 
+                    fontSize: '0.75rem', 
+                    color: '#38bdf8', 
+                    background: 'rgba(56, 189, 248, 0.1)', 
+                    padding: '2px 8px', 
+                    borderRadius: '6px',
+                    maxWidth: '260px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {downloadUrl}
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.75rem', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)', padding: '2px 8px', borderRadius: '6px' }}>
+                  Not Configured
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setTempUrl(downloadUrl);
+                  setShowUrlConfig(!showUrlConfig);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: '2px 6px',
+                  fontSize: '0.72rem',
+                  textDecoration: 'underline'
+                }}
+              >
+                {showUrlConfig ? 'Close' : (downloadUrl ? 'Change' : 'Set Link')}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -293,6 +431,75 @@ export default function CctvAppCard({ onOpenCctv }) {
           )}
         </div>
       </div>
+
+      {/* URL Configuration Input Panel */}
+      {showUrlConfig && (
+        <div style={{
+          background: 'rgba(15, 23, 42, 0.8)',
+          border: '1px solid rgba(56, 189, 248, 0.3)',
+          borderRadius: '12px',
+          padding: '14px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px'
+        }}>
+          <div style={{ fontSize: '0.8rem', color: '#93c5fd', fontWeight: 600 }}>
+            Configure CCTV Software Download URL / Page
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <input 
+              type="text"
+              value={tempUrl}
+              onChange={(e) => setTempUrl(e.target.value)}
+              placeholder="e.g. https://buildmyceo.github.io/cctv-app-desktop/"
+              style={{
+                flex: 1,
+                background: 'rgba(0, 0, 0, 0.4)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                color: '#fff',
+                fontSize: '0.82rem',
+                outline: 'none'
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => handleSaveUrl(tempUrl)}
+              style={{
+                background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#fff',
+                padding: '8px 16px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Save Link
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowUrlConfig(false)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#94a3b8',
+                padding: '8px 12px',
+                fontSize: '0.82rem',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+          <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+            When updated, the app will download new releases directly from this link without needing main app updates.
+          </span>
+        </div>
+      )}
 
       {/* Background Agent Status Grid (Phase 5) */}
       {isInstalled && (
@@ -444,6 +651,30 @@ export default function CctvAppCard({ onOpenCctv }) {
               {agentStatus?.monitoring ? 'Pause Monitoring' : 'Resume Monitoring'}
             </button>
           )}
+
+          {isInstalled && (
+            <button
+              onClick={handleDeleteApp}
+              disabled={isLoadingAction}
+              title="Disconnect and delete CCTV app from device"
+              style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                color: '#f87171',
+                borderRadius: '10px',
+                padding: '8px 12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.8rem',
+                fontWeight: 500,
+                transition: 'all 0.2s'
+              }}
+            >
+              <XCircle size={14} /> Disconnect & Delete
+            </button>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -471,6 +702,33 @@ export default function CctvAppCard({ onOpenCctv }) {
               <ArrowUpCircle size={16} />
               Update Available (v{app.publishedVersion})
             </button>
+          )}
+
+          {/* Download Portal Link when not installed */}
+          {!isInstalled && (
+            <a
+              href={downloadUrl || OFFICIAL_CCTV_WEBSITE_URL}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                color: '#93c5fd',
+                borderRadius: '12px',
+                padding: '10px 16px',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                textDecoration: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s'
+              }}
+            >
+              <span>Download Page</span>
+              <ExternalLink size={14} />
+            </a>
           )}
 
           {/* Primary Action Button: Open CCTV vs Download & Install */}
@@ -517,17 +775,28 @@ export default function CctvAppCard({ onOpenCctv }) {
             >
               {isProgressing ? (
                 <>
-                  <Loader2 size={16} className="animate-spin" /> Installing...
+                  <Loader2 size={16} className="animate-spin" /> Activating CCTV...
                 </>
               ) : (
                 <>
-                  <Download size={16} /> Download & Install
+                  <Download size={16} /> Activate CCTV App
                 </>
               )}
             </button>
           )}
         </div>
       </div>
+
+      <CctvInstallerModal 
+        isOpen={isInstallerModalOpen}
+        onClose={() => setIsInstallerModalOpen(false)}
+        onInstalled={async () => {
+          appRegistry.setInstalled('ceova-cctv', '1.0.0');
+          setApp(prev => ({ ...prev, installationStatus: 'installed' }));
+          await refreshStatus();
+          if (onOpenCctv) onOpenCctv();
+        }}
+      />
     </div>
   );
 }
