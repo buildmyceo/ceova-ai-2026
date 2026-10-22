@@ -128,7 +128,13 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "tools",
     description: "Generate QR codes, barcodes, invoices, color palettes, and hash passwords.",
-    keywords: ["qr", "qr code", "barcode", "invoice", "bill", "receipt", "color", "palette", "hex", "rgb", "password", "hash", "encrypt"],
+    keywords: [
+      "qr", "qr code", "qrcode", "qr_barcode", "qr-barcode", "barcode", "bar code",
+      "generate qr", "make qr", "create qr", "qr generator", "scan qr", "scan barcode", "read qr", "read barcode",
+      "invoice", "bill", "receipt", "invoice generator", "invoice_generator", "create invoice", "generate invoice",
+      "color", "palette", "hex", "rgb", "color palette", "color_toolkit", "extract color",
+      "password", "hash", "encrypt", "password hash", "password_hash", "generate password"
+    ],
     toolIds: ["qr_barcode", "invoice_generator", "color_toolkit", "password_hash"],
     memoryCategories: [],
   },

@@ -243,6 +243,7 @@ export function routeIntent(
   }
 
   // Helper to match keywords cleanly with word boundaries (prevents "guide" matching "ui", etc.)
+  // Handles underscores, slashes, and non-alphanumeric delimiters so e.g. "/qr_barcode" matches "qr" or "barcode"
   const matchesKeyword = (text: string, kw: string): boolean => {
     const cleanKw = kw.trim().toLowerCase();
     if (!cleanKw) return false;
@@ -250,7 +251,7 @@ export function routeIntent(
       return text.includes(cleanKw);
     }
     const escaped = cleanKw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
+    return new RegExp(`(?:^|[^a-zA-Z0-9])${escaped}(?:$|[^a-zA-Z0-9])`, 'i').test(text);
   };
 
   // ── Image tool matching ───────────────────────────────────────────────────
@@ -375,6 +376,18 @@ export function routeIntent(
     const calCap = CAPABILITIES.find(c => c.id === "calendar");
     if (calCap && !matchedCapabilities.includes(calCap)) {
       matchedCapabilities.push(calCap);
+    }
+  }
+
+  // ── Explicit Tool ID & Slash Command matching (e.g. /qr_barcode, /invoice_generator) ──
+  for (const cap of CAPABILITIES) {
+    if (matchedCapabilities.includes(cap)) continue;
+    for (const tid of cap.toolIds) {
+      const toolPattern = new RegExp(`(?:/\\s*|\\b)${tid}\\b`, 'i');
+      if (toolPattern.test(lowerMessage)) {
+        matchedCapabilities.push(cap);
+        break;
+      }
     }
   }
 

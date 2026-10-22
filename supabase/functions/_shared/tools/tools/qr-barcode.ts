@@ -74,7 +74,8 @@ export class QRBarcodeTool implements Tool {
         }
       };
     } else if (params.operation === 'generate_qr') {
-      updateStatus(`Preparing to generate ${params.data_type} QR Code...`);
+      const dataType = params.data_type || (params.content && /^https?:\/\//i.test(params.content.trim()) ? 'url' : 'text');
+      updateStatus(`Preparing to generate ${dataType} QR Code...`);
       
       if (!params.content) {
         return { 
@@ -89,7 +90,7 @@ export class QRBarcodeTool implements Tool {
       const actionMeta = {
         type: 'client_qr_barcode_action',
         operation: 'generate_qr',
-        data_type: params.data_type,
+        data_type: dataType,
         content: params.content,
         export_format: params.export_format || 'png'
       };

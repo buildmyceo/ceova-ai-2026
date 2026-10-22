@@ -831,6 +831,28 @@ STRICT RULES:
                         intent.isCasualChat = false;
                     }
 
+                    // Ensure explicit slash command or tool ID invocations guarantee tool loading
+                    for (const tool of toolRegistry.getAllTools()) {
+                        const tid = tool.metadata.id;
+                        const toolPattern = new RegExp(`(?:/\\s*|\\b)${tid}\\b`, 'i');
+                        if (toolPattern.test(message || '')) {
+                            if (!intent.toolSchemas.some((s: any) => s.id === tid)) {
+                                intent.toolSchemas.push(tool.metadata);
+                            }
+                            intent.isCasualChat = false;
+                        }
+                    }
+
+                    // Also ensure qr_barcode is loaded if user mentions QR or barcode
+                    const isQRCommand = /(?:\/|\/ )qr_barcode/i.test(message || '') || /\b(?:qr|qrcode|barcode|qr_barcode)\b/i.test(message || '');
+                    if (isQRCommand) {
+                        const qrTool = toolRegistry.getTool('qr_barcode');
+                        if (qrTool && !intent.toolSchemas.some((s: any) => s.id === 'qr_barcode')) {
+                            intent.toolSchemas.push(qrTool.metadata);
+                        }
+                        intent.isCasualChat = false;
+                    }
+
                     // ── Build slim, intent-driven system prompt ───────────────────────────────
                     // Tool schemas are injected ONLY when the intent router selected them.
                     // For casual chat, zero tool tokens are sent to OpenAI.
@@ -1259,13 +1281,16 @@ ${analyticsText}
                             const forceImageGen = isImageGenCommand && openAITools?.some((t: any) => t.function?.name === 'generate_image');
                             const forceGmailSend = isEmailConfirmation && openAITools?.some((t: any) => t.function?.name === 'gmail_connector');
                             const forceCalendar = (isCalendarConfirmation || isExplicitCalendarAction) && openAITools?.some((t: any) => t.function?.name === 'calendar_connector');
+                            const forceQR = (/(?:\/|\/ )qr_barcode/i.test(message || '') || /\b(?:generate|create|make)\s+(?:a\s+)?(?:qr|barcode)\b/i.test(message || '')) && openAITools?.some((t: any) => t.function?.name === 'qr_barcode');
                             const toolChoiceOverride = forceImageGen
                                 ? { type: 'function', function: { name: 'generate_image' } }
                                 : (forceGmailSend
                                     ? { type: 'function', function: { name: 'gmail_connector' } }
                                     : (forceCalendar
                                         ? { type: 'function', function: { name: 'calendar_connector' } }
-                                        : undefined));
+                                        : (forceQR
+                                            ? { type: 'function', function: { name: 'qr_barcode' } }
+                                            : undefined)));
 
                             aiResponse = await aiRouter.generateContent(llmMessages, taskType, user.id, { 
                                 temperature: 0.2, 
