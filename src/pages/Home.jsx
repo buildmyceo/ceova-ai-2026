@@ -9,7 +9,7 @@ import SearchModal from '../components/SearchModal';
 import TaskModal from '../components/TaskModal';
 import Library from './Library';
 import { cacheManager } from '../services/CacheManager';
-import { Search, MoreVertical, Menu, Share2, Check, Camera, BarChart3, Zap, Brain, Link, Send, Glasses, Edit, ChevronDown, Compass, Image, Globe, MessageCircleDashed, CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
+import { Search, MoreVertical, Menu, Share2, Check, Camera, BarChart3, Zap, Brain, Link, Send, Glasses, Edit, ChevronDown, Compass, Image, Globe, MessageCircleDashed, CheckCircle2, AlertCircle, AlertTriangle, Info, X, Sparkles, Video } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Login from './Login';
 import { buildSystemPrompt } from '../lib/systemPromptBuilder';
@@ -18,6 +18,7 @@ import { getGreetingName, getGreetingHeadline, getTimePeriod, getGreetingSubtitl
 import PhoneLinkModal from '../components/PhoneLinkModal';
 import { cctvAgent } from '../services/cctvAgentService';
 import { openCctvApp } from '../utils/cctvLauncher';
+import CctvDashboardOverlay from '../components/CctvDashboardOverlay';
 
 const CURRENT_CHAT_KEY = "chat_id";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -97,6 +98,8 @@ export default function Home({ session }) {
     const abortControllerRef = useRef(null);
     
     const [toast, setToast] = useState(null);
+    const [isCctvTabOpen, setIsCctvTabOpen] = useState(false);
+    const [activeMainTab, setActiveMainTab] = useState('assistant');
 
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
     
@@ -740,6 +743,8 @@ export default function Home({ session }) {
             if (isOpenCctv) {
                 try {
                     await openCctvApp();
+                    setIsCctvTabOpen(true);
+                    setActiveMainTab('cctv');
                 } catch (e) {
                     console.warn("[CCTV] Failed to open CCTV app window:", e);
                 }
@@ -1755,6 +1760,44 @@ ${camList}
             </motion.div>
 
             <main className={`main-content ${(chats[currentChatId] || []).length === 0 ? 'is-home-view' : ''}`}>
+                {isCctvTabOpen && (
+                    <div className="ceova-main-app-tabs-bar">
+                        <div className="ceova-tabs-list">
+                            <button
+                                type="button"
+                                className={`ceova-main-tab-btn ${activeMainTab === 'assistant' ? 'is-active' : ''}`}
+                                onClick={() => setActiveMainTab('assistant')}
+                                title="Switch to CEOVA Assistant"
+                            >
+                                <Sparkles size={14} style={{ color: "#38bdf8" }} />
+                                <span>CEOVA Assistant</span>
+                            </button>
+
+                            <div
+                                className={`ceova-main-tab-btn ${activeMainTab === 'cctv' ? 'is-active' : ''}`}
+                                onClick={() => setActiveMainTab('cctv')}
+                                style={{ cursor: 'pointer' }}
+                                title="Active Tab: CEOVA CCTV"
+                            >
+                                <Video size={14} style={{ color: "#a855f7" }} />
+                                <span>CEOVA CCTV</span>
+                                <span className="ceova-tab-live-dot" title="Autonomous Vision Engine Active" />
+                                <button
+                                    type="button"
+                                    className="ceova-tab-close-icon"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsCctvTabOpen(false);
+                                        setActiveMainTab('assistant');
+                                    }}
+                                    title="Close CCTV Tab"
+                                >
+                                    <X size={12} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 {inGracePeriod && (
                     <div className="grace-period-banner" style={{ 
                         background: 'rgba(239, 68, 68, 0.1)', 
@@ -1951,9 +1994,24 @@ ${camList}
                         setLocalDirectoryHandle={setLocalDirectoryHandle}
                         onOpenLibrary={() => { setIsLibraryOpen(true); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}
                         session={session}
+                        onOpenCctvTab={() => {
+                            setIsCctvTabOpen(true);
+                            setActiveMainTab('cctv');
+                        }}
+                        isCctvTabOpen={isCctvTabOpen}
+                        showToast={showToast}
                     />
 
                 </div>
+
+                <CctvDashboardOverlay 
+                    isOpen={isCctvTabOpen && activeMainTab === 'cctv'}
+                    onClose={() => {
+                        setIsCctvTabOpen(false);
+                        setActiveMainTab('assistant');
+                    }}
+                    onSwitchToAssistant={() => setActiveMainTab('assistant')}
+                />
                 <SearchModal 
                     isOpen={isSearchModalOpen}
                     onClose={() => setIsSearchModalOpen(false)}

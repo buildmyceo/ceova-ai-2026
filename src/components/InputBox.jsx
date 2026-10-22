@@ -17,6 +17,7 @@ import GoogleConnectModal from './GoogleConnectModal';
 import TelegramConnectModal from './TelegramConnectModal';
 import CctvDashboardOverlay from './CctvDashboardOverlay';
 import CctvInstallerModal from './CctvInstallerModal';
+import CctvDownloadConfirmModal from './CctvDownloadConfirmModal';
 import { openCctvApp } from '../utils/cctvLauncher';
 import { cctvAgent } from '../services/cctvAgentService';
 import { installerService } from '../services/installerService';
@@ -170,7 +171,7 @@ function PickerRowCard({ item, onClick }) {
 export default function InputBox({ 
     input, setInput, handleSend, isLoading, handleStop, isHome,
     localDirectoryHandle, setLocalDirectoryHandle, onOpenLibrary,
-    session: sessionProp
+    session: sessionProp, onOpenCctvTab, isCctvTabOpen, showToast
 }) {
     const { session: authSession, user: authUser } = useAuth() || {};
     const effectiveSession = sessionProp || authSession;
@@ -188,10 +189,12 @@ export default function InputBox({
     const [isGoogleConnected, setIsGoogleConnected] = useState(false);
     const [isTelegramConnected, setIsTelegramConnected] = useState(false);
     const [isCctvConnected, setIsCctvConnected] = useState(false);
+    const [isCctvInstalled, setIsCctvInstalled] = useState(false);
     const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
     const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
     const [isEditingConnectors, setIsEditingConnectors] = useState(false);
     const [isCctvDashboardOpen, setIsCctvDashboardOpen] = useState(false);
+    const [isCctvConfirmOpen, setIsCctvConfirmOpen] = useState(false);
     const [isCctvInstallerOpen, setIsCctvInstallerOpen] = useState(false);
     const [files, setFiles] = useState([]);
     const [isListening, setIsListening] = useState(false);
@@ -285,9 +288,11 @@ export default function InputBox({
             }
 
             if (!isInstalled) {
+                setIsCctvInstalled(false);
                 setIsCctvConnected(false);
                 return;
             }
+            setIsCctvInstalled(true);
 
             // 1. Direct fast check via cctvAgent
             const ctx = await cctvAgent.getCctvContext();
@@ -424,11 +429,16 @@ export default function InputBox({
                 } catch (_e) {}
             }
             setIsCctvConnected(false);
+            setIsCctvInstalled(false);
             setIsEditingConnectors(false);
+            setIsCctvDashboardOpen(false);
             appRegistry.setInstallationStatus('ceova-cctv', 'not_installed');
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('ceova_cctv_local_credentials');
                 localStorage.removeItem('ceova_cctv_connected');
+            }
+            if (typeof showToast === 'function') {
+                showToast("CEOVA CCTV disconnected and uninstalled from your device.", "info");
             }
         } catch (err) {
             console.error("Failed to disconnect CCTV:", err);
@@ -951,13 +961,17 @@ export default function InputBox({
                                                 }
 
                                                 if (!isInstalled) {
-                                                    // Automatically trigger download & show loading bar pop-up window
-                                                    setIsCctvInstallerOpen(true);
+                                                    // First click: Show confirmation tab/modal before downloading
+                                                    setIsCctvConfirmOpen(true);
                                                     return;
                                                 }
 
-                                                // App is installed: open in different tab / window
-                                                await openCctvApp(setIsCctvDashboardOpen);
+                                                // App is already installed: open in new tab of main app
+                                                if (typeof onOpenCctvTab === 'function') {
+                                                    onOpenCctvTab();
+                                                } else {
+                                                    await openCctvApp(setIsCctvDashboardOpen);
+                                                }
                                             }}
                                         >
                                             <div className="sliding-tab-card-icon" style={{ background: 'linear-gradient(135deg, #2563eb, #7c3aed)', color: '#fff' }}>
@@ -969,7 +983,7 @@ export default function InputBox({
                                                     {isCctvConnected && <span className="sliding-tab-status-dot" title="Connected" />}
                                                 </div>
                                                 <span className="sliding-tab-card-desc">
-                                                    {isCctvConnected ? "Connected • Active" : "AI Camera Monitoring"}
+                                                    {isCctvConnected ? "Connected • Active" : (isCctvInstalled ? "Ready • Click to Open Tab" : "Click to Install")}
                                                 </span>
                                             </div>
                                             {isCctvConnected && isEditingConnectors ? (
@@ -1434,19 +1448,33 @@ export default function InputBox({
                 }}
             />
 
+            <CctvDownloadConfirmModal
+                isOpen={isCctvConfirmOpen}
+                onClose={() => setIsCctvConfirmOpen(false)}
+                onConfirm={() => {
+                    setIsCctvConfirmOpen(false);
+                    setIsCctvInstallerOpen(true);
+                }}
+            />
+
             <CctvInstallerModal
                 isOpen={isCctvInstallerOpen}
                 onClose={() => setIsCctvInstallerOpen(false)}
                 onInstalled={async () => {
+                    setIsCctvInstalled(true);
                     setIsCctvConnected(true);
-                    // Open CCTV app in different tab / window once installation completes
-                    await openCctvApp(setIsCctvDashboardOpen);
+                    await checkCctvStatus();
+                    if (typeof showToast === 'function') {
+                        showToast("CEOVA CCTV installed inside app! Click CCTV in Connectors to open in a new tab.", "success");
+                    }
+                    // Do not auto-open CCTV dashboard
                 }}
             />
 
             <CctvDashboardOverlay 
                 isOpen={isCctvDashboardOpen}
                 onClose={() => setIsCctvDashboardOpen(false)}
+                onSwitchToAssistant={() => setIsCctvDashboardOpen(false)}
             />
         </motion.div>
     );

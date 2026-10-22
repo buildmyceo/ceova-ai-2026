@@ -71,7 +71,7 @@ export default function CctvInstallerModal({ isOpen, onClose, onInstalled }) {
 
         setPercent(100);
         setStage("completed");
-        setStatusMessage("CEOVA CCTV installed successfully!");
+        setStatusMessage("CEOVA CCTV installed inside app! Ready to launch.");
         setIsDone(true);
 
         // Update registry & persistent state
@@ -83,7 +83,7 @@ export default function CctvInstallerModal({ isOpen, onClose, onInstalled }) {
         setTimeout(() => {
           if (onInstalled) onInstalled();
           if (onClose) onClose();
-        }, 1200);
+        }, 1400);
 
         return;
       }
@@ -355,7 +355,7 @@ export default function CctvInstallerModal({ isOpen, onClose, onInstalled }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", color: percent >= 100 ? "#4ade80" : "#64748b" }}>
               <CheckCircle2 size={13} color={percent >= 100 ? "#4ade80" : "#475569"} />
-              <span>Launch CCTV tab</span>
+              <span>Installed inside app</span>
             </div>
           </div>
 
@@ -417,8 +417,8 @@ export default function CctvInstallerModal({ isOpen, onClose, onInstalled }) {
                   boxShadow: "0 4px 14px rgba(16, 185, 129, 0.35)"
                 }}
               >
-                <span>Open CCTV Interface</span>
-                <ExternalLink size={14} />
+                <CheckCircle2 size={15} />
+                <span>Done (Ready to Launch)</span>
               </button>
             </div>
           ) : (
@@ -428,7 +428,7 @@ export default function CctvInstallerModal({ isOpen, onClose, onInstalled }) {
               textAlign: "center",
               marginTop: "4px"
             }}>
-              Keep this window open while installation finishes. It will open automatically once completed.
+              Downloading CCTV vision engine inside CEOVA application storage.
             </div>
           )}
         </div>

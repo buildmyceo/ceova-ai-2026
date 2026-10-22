@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ArrowLeft, ExternalLink, ShieldCheck, RefreshCw, AlertCircle, Loader2, Download } from "lucide-react";
+import { ArrowLeft, ExternalLink, ShieldCheck, RefreshCw, AlertCircle, Loader2, Download, Sparkles, Video, X } from "lucide-react";
 import { openCctvApp } from "../utils/cctvLauncher";
 import { cctvAgent } from "../services/cctvAgentService";
 import { appRegistry } from "../services/appRegistryService";
@@ -8,7 +8,7 @@ import CctvInstallerModal from "./CctvInstallerModal";
 const CCTV_HTTP_URL = "http://127.0.0.1:3080";
 const CCTV_WEB_INFO_URL = "http://127.0.0.1:3080/api/info";
 
-export default function CctvDashboardOverlay({ isOpen, onClose }) {
+export default function CctvDashboardOverlay({ isOpen, onClose, onSwitchToAssistant }) {
   const [isOnline, setIsOnline] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [iframeKey, setIframeKey] = useState(1);
@@ -128,93 +128,91 @@ export default function CctvDashboardOverlay({ isOpen, onClose }) {
       display: "flex",
       flexDirection: "column"
     }}>
-      {/* Top Header Bar */}
-      <div style={{
-        height: "52px",
-        background: "rgba(15, 23, 42, 0.95)",
-        backdropFilter: "blur(16px)",
-        borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 20px",
-        zIndex: 10
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+      {/* Top Header Bar with Multi-Tab Controls */}
+      <div className="ceova-main-app-tabs-bar" style={{ height: "48px" }}>
+        <div className="ceova-tabs-list">
+          {/* Tab 1: Assistant */}
           <button
-            onClick={onClose}
-            style={{
-              background: "rgba(255, 255, 255, 0.06)",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              borderRadius: "8px",
-              color: "#e2e8f0",
-              padding: "6px 12px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              fontSize: "0.82rem",
-              fontWeight: 500,
-              transition: "all 0.2s"
+            type="button"
+            className="ceova-main-tab-btn"
+            onClick={() => {
+              if (onSwitchToAssistant) onSwitchToAssistant();
+              else if (onClose) onClose();
             }}
+            title="Switch to CEOVA Assistant"
           >
-            <ArrowLeft size={16} /> Back to CEOVA
+            <Sparkles size={14} style={{ color: "#38bdf8" }} />
+            <span>CEOVA Assistant</span>
           </button>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#fff", letterSpacing: "0.02em" }}>
-              CEOVA CCTV
-            </span>
-            {isOnline ? (
-              <span style={{
-                fontSize: "0.72rem",
-                background: "rgba(34, 197, 94, 0.15)",
-                color: "#4ade80",
-                padding: "3px 9px",
-                borderRadius: "10px",
-                border: "1px solid rgba(34, 197, 94, 0.3)",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                gap: "5px"
-              }}>
-                <ShieldCheck size={13} /> Active (Port 3080 & 8085)
-              </span>
-            ) : isStarting ? (
-              <span style={{
-                fontSize: "0.72rem",
-                background: "rgba(56, 189, 248, 0.15)",
-                color: "#38bdf8",
-                padding: "3px 9px",
-                borderRadius: "10px",
-                border: "1px solid rgba(56, 189, 248, 0.3)",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                gap: "5px"
-              }}>
-                <Loader2 size={13} className="animate-spin" /> Auto-Starting Service...
-              </span>
-            ) : (
-              <span style={{
-                fontSize: "0.72rem",
-                background: "rgba(239, 68, 68, 0.15)",
-                color: "#f87171",
-                padding: "3px 9px",
-                borderRadius: "10px",
-                border: "1px solid rgba(239, 68, 68, 0.3)",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                gap: "5px"
-              }}>
-                <AlertCircle size={13} /> CCTV Daemon Offline
-              </span>
-            )}
+          {/* Tab 2: CCTV (Active) */}
+          <div
+            className="ceova-main-tab-btn is-active"
+            title="Active Tab: CEOVA CCTV"
+          >
+            <Video size={14} style={{ color: "#a855f7" }} />
+            <span>CEOVA CCTV</span>
+            <span className="ceova-tab-live-dot" title="Autonomous Vision Engine Active" />
+            <button
+              type="button"
+              className="ceova-tab-close-icon"
+              onClick={onClose}
+              title="Close CCTV Tab"
+            >
+              <X size={12} />
+            </button>
           </div>
         </div>
 
+        {/* Status & actions on the right */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {isOnline ? (
+            <span style={{
+              fontSize: "0.72rem",
+              background: "rgba(34, 197, 94, 0.15)",
+              color: "#4ade80",
+              padding: "3px 9px",
+              borderRadius: "10px",
+              border: "1px solid rgba(34, 197, 94, 0.3)",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: "5px"
+            }}>
+              <ShieldCheck size={13} /> Local Port 3080 & 8085 Active
+            </span>
+          ) : isStarting ? (
+            <span style={{
+              fontSize: "0.72rem",
+              background: "rgba(56, 189, 248, 0.15)",
+              color: "#38bdf8",
+              padding: "3px 9px",
+              borderRadius: "10px",
+              border: "1px solid rgba(56, 189, 248, 0.3)",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: "5px"
+            }}>
+              <Loader2 size={13} className="animate-spin" /> Starting Vision Daemon...
+            </span>
+          ) : (
+            <span style={{
+              fontSize: "0.72rem",
+              background: "rgba(239, 68, 68, 0.15)",
+              color: "#f87171",
+              padding: "3px 9px",
+              borderRadius: "10px",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: "5px"
+            }}>
+              <AlertCircle size={13} /> Daemon Offline
+            </span>
+          )}
+
           <button
             onClick={handleRefresh}
             title="Reload CCTV Interface"
@@ -223,12 +221,12 @@ export default function CctvDashboardOverlay({ isOpen, onClose }) {
               border: "1px solid rgba(255, 255, 255, 0.1)",
               borderRadius: "8px",
               color: "#94a3b8",
-              padding: "6px 10px",
+              padding: "5px 10px",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
-              gap: "6px",
-              fontSize: "0.8rem",
+              gap: "5px",
+              fontSize: "0.78rem",
               fontWeight: 500,
               transition: "all 0.2s"
             }}
@@ -236,8 +234,6 @@ export default function CctvDashboardOverlay({ isOpen, onClose }) {
             <RefreshCw size={13} />
             <span>Reload</span>
           </button>
-
-
         </div>
       </div>
 
