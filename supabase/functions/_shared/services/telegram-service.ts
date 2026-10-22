@@ -574,11 +574,12 @@ export async function generateTelegramConnectLink(userId: string): Promise<{ lin
   // 2. Generate UUID connect token
   const connectToken = crypto.randomUUID();
 
-  // 3. Upsert record with pending state
+  // 3. Upsert record with pending state (explicitly ensure chat_id is null so it never blocks or claims chat IDs while pending)
   await supabase.from("user_telegram").delete().eq("user_id", userId).eq("connected", false);
   const { error: upsertErr } = await supabase.from("user_telegram").upsert({
     user_id: userId,
     connect_token: connectToken,
+    chat_id: null,
     connected: false,
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id" });
@@ -724,10 +725,10 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
 
     const userId = pending.user_id;
 
-    // Disconnect any other account previously linked to this chat
+    // Disconnect and release chat_id from any other account previously linked to this chat
     await supabase
       .from("user_telegram")
-      .update({ connected: false, updated_at: new Date().toISOString() })
+      .update({ connected: false, chat_id: null, updated_at: new Date().toISOString() })
       .eq("chat_id", tgFromId || tgChatId);
 
     // Bind this user to this chat
@@ -737,7 +738,7 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
       connect_token: tokenArg,
       connected: true,
       updated_at: new Date().toISOString(),
-    });
+    }, { onConflict: "user_id" });
 
     if (linkErr) {
       Logger.ERROR("[Telegram] Failed to link account:", linkErr);
@@ -916,7 +917,7 @@ export async function processTelegramUpdate(body: any): Promise<Response> {
 
     await supabase
       .from("user_telegram")
-      .update({ connected: false, updated_at: new Date().toISOString() })
+      .update({ connected: false, chat_id: null, updated_at: new Date().toISOString() })
       .eq("chat_id", tgFromId || tgChatId);
 
     await reply(

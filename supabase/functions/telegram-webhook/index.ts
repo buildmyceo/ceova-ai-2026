@@ -105,7 +105,7 @@ serve(async (req: Request) => {
 
       await supabase
         .from("user_telegram")
-        .update({ connected: false, updated_at: new Date().toISOString() })
+        .update({ connected: false, chat_id: null, updated_at: new Date().toISOString() })
         .eq("user_id", authedUserId);
 
       return new Response(JSON.stringify({ success: true, message: "Telegram disconnected." }), {

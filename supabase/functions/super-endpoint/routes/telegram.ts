@@ -280,9 +280,15 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
       if (existingForUser?.chat_id && existingForUser.chat_id !== tgChatId) {
         await supabase
           .from("user_telegram")
-          .update({ connected: false, updated_at: new Date().toISOString() })
+          .update({ connected: false, chat_id: null, updated_at: new Date().toISOString() })
           .eq("user_id", userId);
       }
+
+      // Release this chat_id from any other user who was previously connected
+      await supabase
+        .from("user_telegram")
+        .update({ connected: false, chat_id: null, updated_at: new Date().toISOString() })
+        .eq("chat_id", tgChatId);
 
       const { error: linkErr } = await supabase.from("user_telegram").upsert({
         user_id: userId,
@@ -290,7 +296,7 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
         connect_token: validToken,
         connected: true,
         updated_at: new Date().toISOString(),
-      });
+      }, { onConflict: "user_id" });
 
       if (linkErr) {
         console.error("[Telegram] Linking error:", linkErr);
@@ -373,7 +379,7 @@ export async function handleTelegram(req: Request, handleChatAI: Function): Prom
 
       const { error: disconnectErr } = await supabase
         .from("user_telegram")
-        .update({ connected: false, updated_at: new Date().toISOString() })
+        .update({ connected: false, chat_id: null, updated_at: new Date().toISOString() })
         .eq("user_id", mapping.user_id)
         .eq("chat_id", tgFromId || tgChatId);
 
