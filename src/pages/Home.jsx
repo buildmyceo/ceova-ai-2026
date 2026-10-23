@@ -1994,9 +1994,14 @@ ${camList}
                         setLocalDirectoryHandle={setLocalDirectoryHandle}
                         onOpenLibrary={() => { setIsLibraryOpen(true); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}
                         session={session}
-                        onOpenCctvTab={() => {
+                        onOpenCctvTab={async () => {
                             setIsCctvTabOpen(true);
                             setActiveMainTab('cctv');
+                            await openCctvApp();
+                        }}
+                        onCloseCctvTab={() => {
+                            setIsCctvTabOpen(false);
+                            setActiveMainTab('assistant');
                         }}
                         isCctvTabOpen={isCctvTabOpen}
                         showToast={showToast}

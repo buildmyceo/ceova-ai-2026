@@ -536,7 +536,7 @@ class InstallerService {
       try {
         const fs = await import('node:fs');
         const internalMacApp = path.join(os.homedir(), '.ceova', 'apps', 'ceova-cctv', 'CEOVA-CCTV.app');
-        if (process.platform === 'darwin' && (fs.existsSync(internalMacApp) || fs.existsSync('/Applications/CEOVA-CCTV.app'))) {
+        if (process.platform === 'darwin' && fs.existsSync(internalMacApp)) {
           return true;
         }
         if (process.platform === 'win32') {

@@ -171,7 +171,7 @@ function PickerRowCard({ item, onClick }) {
 export default function InputBox({ 
     input, setInput, handleSend, isLoading, handleStop, isHome,
     localDirectoryHandle, setLocalDirectoryHandle, onOpenLibrary,
-    session: sessionProp, onOpenCctvTab, isCctvTabOpen, showToast
+    session: sessionProp, onOpenCctvTab, onCloseCctvTab, isCctvTabOpen, showToast
 }) {
     const { session: authSession, user: authUser } = useAuth() || {};
     const effectiveSession = sessionProp || authSession;
@@ -437,6 +437,9 @@ export default function InputBox({
             setIsCctvInstalled(false);
             setIsEditingConnectors(false);
             setIsCctvDashboardOpen(false);
+            if (typeof onCloseCctvTab === 'function') {
+                onCloseCctvTab();
+            }
             appRegistry.setInstallationStatus('ceova-cctv', 'not_installed');
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('ceova_cctv_local_credentials');
@@ -959,8 +962,7 @@ export default function InputBox({
                                                         const { invoke } = await import('@tauri-apps/api/core');
                                                         isInstalled = await invoke('is_cctv_installed');
                                                     } catch (_e) {}
-                                                }
-                                                if (!isInstalled) {
+                                                } else {
                                                     const cctvApp = appRegistry.getApplication('ceova-cctv');
                                                     isInstalled = cctvApp?.installationStatus === 'installed';
                                                 }
@@ -991,7 +993,7 @@ export default function InputBox({
                                                     {isCctvConnected ? "Connected • Active" : (isCctvInstalled ? "Ready • Click to Open Tab" : "Click to Install")}
                                                 </span>
                                             </div>
-                                            {isCctvConnected && isEditingConnectors ? (
+                                            {(isCctvConnected || isCctvInstalled) && isEditingConnectors ? (
                                                 <span 
                                                     className="sliding-tab-disconnect"
                                                     onClick={(e) => {
@@ -1467,10 +1469,9 @@ export default function InputBox({
                 onClose={() => setIsCctvInstallerOpen(false)}
                 onInstalled={async () => {
                     setIsCctvInstalled(true);
-                    setIsCctvConnected(true);
                     await checkCctvStatus();
                     if (typeof showToast === 'function') {
-                        showToast("CEOVA CCTV installed inside app! Click CCTV in Connectors to open in a new tab.", "success");
+                        showToast("CEOVA CCTV installed! Click CCTV in Connectors to open in a new tab.", "success");
                     }
                     // Do not auto-open CCTV dashboard
                 }}

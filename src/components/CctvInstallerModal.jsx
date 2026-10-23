@@ -74,11 +74,8 @@ export default function CctvInstallerModal({ isOpen, onClose, onInstalled }) {
         setStatusMessage("CEOVA CCTV installed inside app! Ready to launch.");
         setIsDone(true);
 
-        // Update registry & persistent state
+        // Update registry as installed (not connected yet)
         appRegistry.setInstalled("ceova-cctv", "1.0.0");
-        if (typeof window !== "undefined" && window.localStorage) {
-          window.localStorage.setItem("ceova_cctv_connected", "true");
-        }
 
         setTimeout(() => {
           if (onInstalled) onInstalled();
@@ -107,13 +104,10 @@ export default function CctvInstallerModal({ isOpen, onClose, onInstalled }) {
 
       setStage("completed");
       setPercent(100);
-      setStatusMessage("CEOVA CCTV is ready!");
+      setStatusMessage("CEOVA CCTV installed! Ready to launch.");
       setIsDone(true);
 
       appRegistry.setInstalled("ceova-cctv", "1.0.0");
-      if (typeof window !== "undefined" && window.localStorage) {
-        window.localStorage.setItem("ceova_cctv_connected", "true");
-      }
 
       setTimeout(() => {
         if (onInstalled) onInstalled();

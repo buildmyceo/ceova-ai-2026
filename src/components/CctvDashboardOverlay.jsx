@@ -42,7 +42,7 @@ export default function CctvDashboardOverlay({ isOpen, onClose, onSwitchToAssist
   const startCctvService = async () => {
     try {
       setIsStarting(true);
-      if (window.__TAURI__) {
+      if (typeof window !== 'undefined' && (window.__TAURI__ || window.__TAURI_INTERNALS__)) {
         const { invoke } = await import("@tauri-apps/api/core");
         await invoke("start_cctv_service");
       }
@@ -74,7 +74,7 @@ export default function CctvDashboardOverlay({ isOpen, onClose, onSwitchToAssist
         }
       } catch (_e) {
         try {
-          if (window.__TAURI__) {
+          if (typeof window !== 'undefined' && (window.__TAURI__ || window.__TAURI_INTERNALS__)) {
             const { invoke } = await import("@tauri-apps/api/core");
             const active = await invoke("get_cctv_service_status");
             if (active && mounted) {

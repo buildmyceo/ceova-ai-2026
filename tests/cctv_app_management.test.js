@@ -348,6 +348,22 @@ describe('CEOVA CCTV Application Management & Security Test Suite', () => {
     assert.equal(cctv.installationStatus, 'installed');
   });
 
+  // TEST 13: Disconnect and uninstall
+  it('13. Disconnect and uninstall - resets application state to not_installed and clears traces', async () => {
+    // 1. Mark as installed
+    appRegistry.setInstalled('ceova-cctv', '1.0.0');
+    assert.equal(appRegistry.getApplication('ceova-cctv').installationStatus, 'installed');
+
+    // 2. Perform delete/disconnect operation
+    const result = await installerService.deleteApplication('ceova-cctv');
+    assert.equal(result.success, true);
+
+    // 3. Verify application is completely reset
+    const app = appRegistry.getApplication('ceova-cctv');
+    assert.equal(app.installationStatus, 'not_installed');
+    assert.equal(app.installedVersion, null);
+  });
+
   // SECURITY GUARDRAILS (Phase 7)
   it('Security: Camera passwords and secrets are strictly stripped from AI prompts', () => {
     const rawPromptWithSecret = "Check camera rtsp://admin:superSecretPass123@192.168.1.100:554/stream and camera_password='mySecretPassword'";

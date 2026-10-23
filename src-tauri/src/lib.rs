@@ -76,15 +76,9 @@ fn start_cctv_supervisor_process() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
         let internal_mac_app = internal_dir.join("CEOVA-CCTV.app");
-        let mac_app_path = if internal_mac_app.exists() {
-            internal_mac_app
-        } else {
-            std::path::PathBuf::from("/Applications/CEOVA-CCTV.app")
-        };
-
-        if mac_app_path.exists() {
-            let binary = mac_app_path.join("Contents").join("MacOS").join("CEOVA-CCTV");
-            let server_js = mac_app_path.join("Contents").join("Resources").join("app.asar").join("server.js");
+        if internal_mac_app.exists() {
+            let binary = internal_mac_app.join("Contents").join("MacOS").join("CEOVA-CCTV");
+            let server_js = internal_mac_app.join("Contents").join("Resources").join("app.asar").join("server.js");
 
             // Run headless in background as an internal node microservice (NO separate window, NO dock icon!)
             let mut cmd = Command::new(&binary);
@@ -103,16 +97,9 @@ fn start_cctv_supervisor_process() -> Result<bool, String> {
     #[cfg(target_os = "windows")]
     {
         let internal_exe = internal_dir.join("CEOVA-CCTV.exe");
-        let win_exe_path = if internal_exe.exists() {
-            internal_exe
-        } else {
-            let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
-            std::path::PathBuf::from(format!("{}\\Programs\\CEOVA-CCTV\\CEOVA-CCTV.exe", local_app_data))
-        };
-
-        if win_exe_path.exists() {
+        if internal_exe.exists() {
             let asar_server = internal_dir.join("resources").join("app.asar").join("server.js");
-            let mut cmd = Command::new(&win_exe_path);
+            let mut cmd = Command::new(&internal_exe);
             cmd.env("ELECTRON_RUN_AS_NODE", "1")
                .env("NODE_ENV", "production")
                .arg(asar_server)
@@ -350,18 +337,9 @@ async fn install_cctv_package(app: tauri::AppHandle, package_url: Option<String>
         }
 
         let _ = app.emit("cctv_install_progress", InstallProgress {
-            percent: 95,
-            stage: "launching".into(),
-            message: "Starting internal CCTV service...".into(),
-        });
-
-        // Launch internal headless service daemon
-        let _ = start_cctv_supervisor_process();
-
-        let _ = app.emit("cctv_install_progress", InstallProgress {
             percent: 100,
             stage: "completed".into(),
-            message: "CEOVA CCTV is ready!".into(),
+            message: "CEOVA CCTV downloaded and installed! Ready to launch.".into(),
         });
 
         return Ok(true);

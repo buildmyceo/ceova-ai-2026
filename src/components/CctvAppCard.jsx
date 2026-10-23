@@ -169,6 +169,9 @@ export default function CctvAppCard({ onOpenCctv }) {
           if (!installed) {
             appRegistry.setInstallationStatus('ceova-cctv', 'not_installed');
             setApp(prev => ({ ...prev, installationStatus: 'not_installed' }));
+          } else {
+            appRegistry.setInstallationStatus('ceova-cctv', 'installed');
+            setApp(prev => ({ ...prev, installationStatus: 'installed' }));
           }
         } catch (_e) {}
       }
