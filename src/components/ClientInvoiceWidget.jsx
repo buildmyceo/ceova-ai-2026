@@ -5,27 +5,28 @@ import { invoiceTemplatesList, getInvoiceTemplate } from '../lib/invoiceTemplate
 import html2pdf from 'html2pdf.js';
 
 export default function ClientInvoiceWidget({ meta }) {
-  if (!meta || !meta.invoiceData) return null;
-  const data = meta.invoiceData;
+  const data = meta?.invoiceData;
 
   const [isConfiguring, setIsConfiguring] = useState(() => {
-    return localStorage.getItem(`invoice_configured_${data.invoiceNumber}`) !== 'true';
+    return data?.invoiceNumber ? localStorage.getItem(`invoice_configured_${data.invoiceNumber}`) !== 'true' : false;
   });
   const [selectedTemplateId, setSelectedTemplateId] = useState(() => {
-    return localStorage.getItem(`invoice_template_${data.invoiceNumber}`) || invoiceTemplatesList[0].id;
+    return (data?.invoiceNumber && localStorage.getItem(`invoice_template_${data.invoiceNumber}`)) || invoiceTemplatesList[0]?.id;
   });
   const [customLogoUrl, setCustomLogoUrl] = useState(() => {
-    return localStorage.getItem(`invoice_logo_${data.invoiceNumber}`) || data.logoUrl || null;
+    return (data?.invoiceNumber && localStorage.getItem(`invoice_logo_${data.invoiceNumber}`)) || data?.logoUrl || null;
   });
   const [renderedInvoice, setRenderedInvoice] = useState('');
   const [previewTemplateId, setPreviewTemplateId] = useState(null);
   const iframeRef = useRef(null);
 
   useEffect(() => {
-    if (!isConfiguring) {
+    if (!isConfiguring && data) {
       setRenderedInvoice(getInvoiceTemplate(selectedTemplateId, data, customLogoUrl));
     }
   }, [isConfiguring, selectedTemplateId, data, customLogoUrl]);
+
+  if (!data) return null;
 
   const handleLogoUpload = (e) => {
     const file = e.target.files[0];

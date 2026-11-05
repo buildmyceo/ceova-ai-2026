@@ -7,8 +7,6 @@ import { Loader2, ArrowRight } from 'lucide-react';
    ═══════════════════════════════════════════════════════════════════════ */
 
 export default function CloudProjectCard({ project, onPreview }) {
-  if (!project) return null;
-
   const {
     stage = 'CREATING',
     slug,
@@ -17,14 +15,14 @@ export default function CloudProjectCard({ project, onPreview }) {
     content = '',
     error = null,
     isUpdate = false,
-  } = project;
+  } = project || {};
 
   const isReady = stage === 'READY';
   const isFailed = stage === 'FAILED' || !!error;
-  const inProgress = !isReady && !isFailed;
+  const inProgress = Boolean(project) && !isReady && !isFailed;
 
   const [elapsedSeconds, setElapsedSeconds] = useState(() => {
-    if (project.startedAt || project.started_at) {
+    if (project?.startedAt || project?.started_at) {
       const ts = new Date(project.startedAt || project.started_at).getTime();
       return Math.max(0, Math.floor((Date.now() - ts) / 1000));
     }
@@ -34,14 +32,14 @@ export default function CloudProjectCard({ project, onPreview }) {
   const [finalDuration, setFinalDuration] = useState(null);
 
   useEffect(() => {
-    if (!inProgress) {
+    if (!project || !inProgress) {
       if (elapsedSeconds > 0 && !finalDuration) {
         setFinalDuration(elapsedSeconds);
       }
       return;
     }
 
-    const startTs = project.startedAt || project.started_at 
+    const startTs = project?.startedAt || project?.started_at 
       ? new Date(project.startedAt || project.started_at).getTime() 
       : Date.now();
 
@@ -53,7 +51,7 @@ export default function CloudProjectCard({ project, onPreview }) {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [inProgress, project.startedAt, project.started_at]);
+  }, [inProgress, project?.startedAt, project?.started_at, finalDuration, elapsedSeconds]);
 
   const displayProjectName = useMemo(() => {
     if (name) return name;
@@ -71,8 +69,8 @@ export default function CloudProjectCard({ project, onPreview }) {
 
   const displayDescription = useMemo(() => {
     if (description) return description;
-    if (project.description) return project.description;
-    if (project.metadata?.description) return project.metadata.description;
+    if (project?.description) return project.description;
+    if (project?.metadata?.description) return project.metadata.description;
 
     if (content) {
       const descMatch = content.match(/(?:Description|About):\s*\*?([^\n*]+)/i);
@@ -86,14 +84,16 @@ export default function CloudProjectCard({ project, onPreview }) {
       }
     }
 
-    if (project.metadata?.prompt) {
+    if (project?.metadata?.prompt) {
       const p = project.metadata.prompt.trim();
       return p.charAt(0).toUpperCase() + p.slice(1);
     }
 
     const cleanName = displayProjectName.replace(/^(?:My\s+)?Cloud\s+Project$/i, 'website');
     return `Responsive ${cleanName.toLowerCase().includes('website') || cleanName.toLowerCase().includes('app') ? cleanName : `${cleanName} website`} with menu, about, contact and custom interactive sections.`;
-  }, [description, project.description, project.metadata, content, displayProjectName]);
+  }, [description, project?.description, project?.metadata, content, displayProjectName]);
+
+  if (!project) return null;
 
   // ─── 1. Completed State: Simple, clean website result message (Step 10) ───────────
   if (isReady) {
