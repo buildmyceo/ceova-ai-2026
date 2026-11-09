@@ -423,9 +423,12 @@ export default function Home({ session }) {
         const tempId = crypto.randomUUID();
         const optimisticUserMsg = { sender: "user", text, time: new Date().toISOString(), attachments: localAttachments, isHidden };
         let initialToolStatus = files.length > 0 ? "Uploading files..." : "Thinking...";
-        if (/^\s*(?:\/generate_image|generate\s+(?:an?\s+)?image|draw\s+(?:an?\s+)?(?:image|picture)|create\s+(?:an?\s+)?(?:image|picture)|make\s+(?:an?\s+)?(?:image|picture)|paint\s+(?:an?\s+)?image)/i.test(text)) {
+        if (/^\s*\/?(?:generate_image|genrate_image)\b/i.test(text) ||
+            /\b(?:generate|genrate|create|make|draw|paint|sketch|render|design)\s+(?:a |an |me |the |this )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar|poster|flyer|creative|ad|visual)\b/i.test(text) ||
+            /^\s*(?:genrate|generate)\s+(?:image|picture|photo|artwork|a|an)\b/i.test(text) ||
+            /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(text)) {
             initialToolStatus = "Sketching it out";
-        } else if (/^\s*(?:\/generate_qr|generate\s+(?:a\s+)?qr|create\s+(?:a\s+)?qr|make\s+(?:a\s+)?qr|qr\s*code)/i.test(text)) {
+        } else if (/^\s*(?:\/generate_qr|generate\s+(?:a\s+)?qr|genrate\s+(?:a\s+)?qr|create\s+(?:a\s+)?qr|make\s+(?:a\s+)?qr|qr\s*code)/i.test(text)) {
             initialToolStatus = "Encoding data...";
         }
 
@@ -669,7 +672,8 @@ export default function Home({ session }) {
             const msgs = [...(prev[idToUse] || [])];
             const aiIdx = msgs.findIndex(m => m.tempId === tempId);
             if (aiIdx !== -1) {
-                msgs[aiIdx] = { ...msgs[aiIdx], toolStatus: "Thinking..." };
+                // Preserve initial toolStatus (e.g. "Sketching it out" or "Encoding data...")
+                msgs[aiIdx] = { ...msgs[aiIdx], toolStatus: msgs[aiIdx].toolStatus || "Thinking..." };
             }
             // Update the user message that was just added right before AI placeholder
             const userIdx = aiIdx - 1;

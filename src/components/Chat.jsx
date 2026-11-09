@@ -714,43 +714,55 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
     if (isUser) return false;
     if (rawText && rawText.includes('![')) return false;
 
+    // Check if this message is actively typing or live
+    const isLiveOrTyping = Boolean(msg.isTyping || msg.isLive);
+    if (!isLiveOrTyping) return false;
+
     const toolStatusMatch = Boolean(
       msg.toolStatus &&
-      /image|poster|photo|sketch|drawing|inpaint|remove\s*object|background_remover|generate_image|draft/i.test(msg.toolStatus)
+      /image|poster|photo|picture|sketch|drawing|inpaint|remove\s*object|background_remover|generate_image|genrate_image|draft|polish/i.test(msg.toolStatus)
     );
 
-    const isFirstAiTyping = (msg.isTyping || msg.isLive) && !rawText.trim();
+    // Look back at the prompt from the user
     let promptMatch = false;
-    if (isFirstAiTyping && messages && idx > 0) {
+    if (messages && idx > 0) {
       const prevUser = messages.slice(0, idx).reverse().find(m => m.sender === 'user');
       if (prevUser && prevUser.text) {
-        promptMatch = /^\s*(?:\/generate_image|generate\s+(?:an?\s+)?image|draw\s+(?:an?\s+)?(?:image|picture)|create\s+(?:an?\s+)?(?:image|picture)|make\s+(?:an?\s+)?(?:image|picture)|paint\s+(?:an?\s+)?image)/i.test(prevUser.text);
+        promptMatch = Boolean(
+          /^\s*\/?(?:generate_image|genrate_image)\b/i.test(prevUser.text) ||
+          /\b(?:generate|genrate|create|make|draw|paint|sketch|render|design)\s+(?:a |an |me |the |this )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar|poster|flyer|creative|ad|visual)\b/i.test(prevUser.text) ||
+          /^\s*(?:genrate|generate)\s+(?:image|picture|photo|artwork|a|an)\b/i.test(prevUser.text) ||
+          /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(prevUser.text)
+        );
       }
     }
 
-    return Boolean((msg.isTyping || msg.isLive) && (toolStatusMatch || promptMatch));
+    // While waiting for the image (before the markdown ![ image arrives), always show the generative preview card
+    return toolStatusMatch || promptMatch;
   }, [isUser, rawText, msg.toolStatus, msg.isTyping, msg.isLive, messages, idx]);
 
   const isGeneratingQR = useMemo(() => {
     if (isUser) return false;
     if (actionMeta && actionMeta.type === 'client_qr_barcode_action') return false;
 
+    const isLiveOrTyping = Boolean(msg.isTyping || msg.isLive);
+    if (!isLiveOrTyping) return false;
+
     const toolStatusMatch = Boolean(
       msg.toolStatus &&
       /qr|barcode|generate_qr|scan_barcode/i.test(msg.toolStatus)
     );
 
-    const isFirstAiTyping = (msg.isTyping || msg.isLive) && !rawText.trim();
     let promptMatch = false;
-    if (isFirstAiTyping && messages && idx > 0) {
+    if (messages && idx > 0) {
       const prevUser = messages.slice(0, idx).reverse().find(m => m.sender === 'user');
       if (prevUser && prevUser.text) {
-        promptMatch = /^\s*(?:\/generate_qr|generate\s+(?:a\s+)?qr|create\s+(?:a\s+)?qr|make\s+(?:a\s+)?qr|qr\s*code)/i.test(prevUser.text);
+        promptMatch = /^\s*(?:\/generate_qr|generate\s+(?:a\s+)?qr|genrate\s+(?:a\s+)?qr|create\s+(?:a\s+)?qr|make\s+(?:a\s+)?qr|qr\s*code)/i.test(prevUser.text);
       }
     }
 
-    return Boolean((msg.isTyping || msg.isLive) && (toolStatusMatch || promptMatch));
-  }, [isUser, actionMeta, msg.toolStatus, msg.isTyping, msg.isLive, rawText, messages, idx]);
+    return toolStatusMatch || promptMatch;
+  }, [isUser, actionMeta, msg.toolStatus, msg.isTyping, msg.isLive, messages, idx]);
 
   const handleProceed = () => {
     return;
@@ -859,7 +871,7 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
               <CyclingStatus defaultStatus={displayText || "Processing..."} />
             ) : null}
 
-            {(displayText || (msg.isTyping && !parsedDriveFiles.length && !resolvedCalendarEvent)) ? (
+            {(!isGeneratingImage && !isGeneratingQR && (displayText || (msg.isTyping && !parsedDriveFiles.length && !resolvedCalendarEvent))) ? (
               <TypewriterRenderer text={(displayText || '').replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
             ) : null}
 
