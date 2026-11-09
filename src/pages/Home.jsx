@@ -234,6 +234,39 @@ export default function Home({ session }) {
                 let activeChatId = currentChatId;
 
                 if (activeChatId) {
+                    // Instantly restore from local cache first if available, avoiding blank state
+                    try {
+                        const localCached = await cacheManager.getMessages(activeChatId);
+                        if (localCached && localCached.length > 0) {
+                            const formattedLocal = sortMessagesChronologically(localCached).map(msg => {
+                                const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
+                                const memoryEventsAttachment = msg.attachments?.find?.((a) => a.type === 'memory_events');
+                                return {
+                                    id: msg.id,
+                                    sender: (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'ai',
+                                    text: msg.content ?? msg.text ?? '',
+                                    time: msg.created_at || msg.time,
+                                    mode: msg.mode,
+                                    attachments: msg.attachments || [],
+                                    cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null,
+                                    memoryEvents: memoryEventsAttachment ? memoryEventsAttachment.data : null
+                                };
+                            });
+                            setChats(prev => {
+                                const existing = prev[activeChatId] || [];
+                                const pending = existing.filter(m => m.isTyping || m.isLive || m.tempId);
+                                if (pending.length === 0) {
+                                    return { ...prev, [activeChatId]: formattedLocal };
+                                }
+                                const dbIds = new Set(formattedLocal.map(m => m.id));
+                                const uniquePending = pending.filter(m => !m.id || !dbIds.has(m.id));
+                                return { ...prev, [activeChatId]: [...formattedLocal, ...uniquePending] };
+                            });
+                        }
+                    } catch (cacheErr) {
+                        console.warn("Local cache read error on fast sync:", cacheErr);
+                    }
+
                     const { data: currentChatMessages, error: activeErr } = await supabase
                         .from('messages')
                         .select('*')
@@ -247,9 +280,9 @@ export default function Home({ session }) {
                             const memoryEventsAttachment = msg.attachments?.find?.((a) => a.type === 'memory_events');
                             return {
                                 id: msg.id,
-                                sender: msg.role === 'user' ? 'user' : 'ai',
-                                text: msg.content,
-                                time: msg.created_at,
+                                sender: (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'ai',
+                                text: msg.content ?? msg.text ?? '',
+                                time: msg.created_at || msg.time,
                                 mode: msg.mode,
                                 attachments: msg.attachments || [],
                                 cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null,
@@ -1189,22 +1222,38 @@ export default function Home({ session }) {
 
             if (!isTemporary) {
                 try {
+                    const aiContentToPersist = aiRawText.trim() || (currentCloudProject ? "" : "I couldn't complete that request. Please try again.");
+                    const aiAttachments = [
+                        ...(currentCloudProject ? [{ type: 'cloud_project', data: currentCloudProject }] : []),
+                        ...(currentMemoryEvents.length > 0 ? [{ type: 'memory_events', data: currentMemoryEvents }] : [])
+                    ];
+
                     const aiMsgObj = {
                         id: crypto.randomUUID(),
                         chat_id: idToUse,
                         user_id: session.user.id,
                         role: 'assistant',
-                        content: aiRawText,
+                        content: aiContentToPersist,
                         mode: 'ceova',
-                        attachments: [
-                            ...(currentCloudProject ? [{ type: 'cloud_project', data: currentCloudProject }] : []),
-                            ...(currentMemoryEvents.length > 0 ? [{ type: 'memory_events', data: currentMemoryEvents }] : [])
-                        ],
+                        attachments: aiAttachments.length > 0 ? aiAttachments : null,
                         created_at: new Date().toISOString()
                     };
                     
                     await cacheManager.setMessage(aiMsgObj);
-                    await supabase.from('messages').insert(aiMsgObj);
+                    const { error: aiInsertErr } = await supabase.from('messages').insert(aiMsgObj);
+                    if (aiInsertErr) {
+                        console.error("Supabase AI message insert failed:", aiInsertErr);
+                        // Fallback: try inserting minimal fields in case optional columns caused schema error
+                        const sanitizedObj = {
+                            id: aiMsgObj.id,
+                            chat_id: idToUse,
+                            user_id: session.user.id,
+                            role: 'assistant',
+                            content: aiContentToPersist,
+                            created_at: aiMsgObj.created_at
+                        };
+                        await supabase.from('messages').insert(sanitizedObj);
+                    }
                 } catch (dbErr) {
                     console.error("Local Persistence Error (AI Msg):", dbErr);
                 }
@@ -1391,6 +1440,26 @@ export default function Home({ session }) {
 
         if (id && !id.startsWith('temp_') && (!chats[id] || chats[id].length === 0)) {
             try {
+                // Immediately check local IndexedDB cache first
+                const localCached = await cacheManager.getMessages(id);
+                if (localCached && localCached.length > 0) {
+                    const formattedLocal = sortMessagesChronologically(localCached).map(msg => {
+                        const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
+                        const memoryEventsAttachment = msg.attachments?.find?.((a) => a.type === 'memory_events');
+                        return {
+                            id: msg.id,
+                            sender: (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'ai',
+                            text: msg.content ?? msg.text ?? '',
+                            time: msg.created_at || msg.time,
+                            mode: msg.mode,
+                            attachments: msg.attachments || [],
+                            cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null,
+                            memoryEvents: memoryEventsAttachment ? memoryEventsAttachment.data : null
+                        };
+                    });
+                    setChats(prev => ({ ...prev, [id]: formattedLocal }));
+                }
+
                 const { data: chatMsgs } = await supabase
                     .from('messages')
                     .select('*')
@@ -1404,9 +1473,9 @@ export default function Home({ session }) {
                         const memoryEventsAttachment = msg.attachments?.find?.((a) => a.type === 'memory_events');
                         return {
                             id: msg.id,
-                            sender: msg.role === 'user' ? 'user' : 'ai',
-                            text: msg.content,
-                            time: msg.created_at,
+                            sender: (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'ai',
+                            text: msg.content ?? msg.text ?? '',
+                            time: msg.created_at || msg.time,
                             mode: msg.mode,
                             attachments: msg.attachments || [],
                             cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null,
@@ -1414,6 +1483,7 @@ export default function Home({ session }) {
                         };
                     });
                     setChats(prev => ({ ...prev, [id]: formatted }));
+                    cacheManager.setMessages(sortedChatMsgs).catch(console.error);
 
                     const curTitle = (chatMetadata[id]?.title || '').trim();
                     if (!curTitle || curTitle === 'New Chat' || curTitle === 'Telegram Chat' || curTitle.startsWith('Topic ')) {
