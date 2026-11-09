@@ -16,6 +16,7 @@ import WebsitePreviewModal from './WebsitePreviewModal';
 import DriveFilesCard from './DriveFilesCard';
 import DriveFilePreviewModal from './DriveFilePreviewModal';
 import CalendarEventCard from './CalendarEventCard';
+import GenerativePreviewCard from './GenerativePreviewCard';
 async function forceDownloadImage(url, filename = 'ceova-image.png') {
   try {
     const res = await fetch(url, { mode: 'cors' });
@@ -44,11 +45,14 @@ function ChatImage({ src, alt, onZoom }) {
 
   return (
     <div className="chat-markdown-image">
-      {/* Square skeleton shown while image loads */}
+      {/* Generative dot matrix preview shown while image bytes load */}
       {!loaded && !failed && (
-        <div className="chat-img-skeleton">
-          <div className="skeleton-shimmer" />
-        </div>
+        <GenerativePreviewCard
+          type="image"
+          isFinishing={true}
+          statusText="Polishing the image"
+          style={{ width: '320px', height: '360px', margin: 0 }}
+        />
       )}
 
       {/* Actual image, hidden until loaded, fades in */}
@@ -706,6 +710,48 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
     );
   }, [messages, idx]);
 
+  const isGeneratingImage = useMemo(() => {
+    if (isUser) return false;
+    if (rawText && rawText.includes('![')) return false;
+
+    const toolStatusMatch = Boolean(
+      msg.toolStatus &&
+      /image|poster|photo|sketch|drawing|inpaint|remove\s*object|background_remover|generate_image|draft/i.test(msg.toolStatus)
+    );
+
+    const isFirstAiTyping = (msg.isTyping || msg.isLive) && !rawText.trim();
+    let promptMatch = false;
+    if (isFirstAiTyping && messages && idx > 0) {
+      const prevUser = messages.slice(0, idx).reverse().find(m => m.sender === 'user');
+      if (prevUser && prevUser.text) {
+        promptMatch = /^\s*(?:\/generate_image|generate\s+(?:an?\s+)?image|draw\s+(?:an?\s+)?(?:image|picture)|create\s+(?:an?\s+)?(?:image|picture)|make\s+(?:an?\s+)?(?:image|picture)|paint\s+(?:an?\s+)?image)/i.test(prevUser.text);
+      }
+    }
+
+    return Boolean((msg.isTyping || msg.isLive) && (toolStatusMatch || promptMatch));
+  }, [isUser, rawText, msg.toolStatus, msg.isTyping, msg.isLive, messages, idx]);
+
+  const isGeneratingQR = useMemo(() => {
+    if (isUser) return false;
+    if (actionMeta && actionMeta.type === 'client_qr_barcode_action') return false;
+
+    const toolStatusMatch = Boolean(
+      msg.toolStatus &&
+      /qr|barcode|generate_qr|scan_barcode/i.test(msg.toolStatus)
+    );
+
+    const isFirstAiTyping = (msg.isTyping || msg.isLive) && !rawText.trim();
+    let promptMatch = false;
+    if (isFirstAiTyping && messages && idx > 0) {
+      const prevUser = messages.slice(0, idx).reverse().find(m => m.sender === 'user');
+      if (prevUser && prevUser.text) {
+        promptMatch = /^\s*(?:\/generate_qr|generate\s+(?:a\s+)?qr|create\s+(?:a\s+)?qr|make\s+(?:a\s+)?qr|qr\s*code)/i.test(prevUser.text);
+      }
+    }
+
+    return Boolean((msg.isTyping || msg.isLive) && (toolStatusMatch || promptMatch));
+  }, [isUser, actionMeta, msg.toolStatus, msg.isTyping, msg.isLive, rawText, messages, idx]);
+
   const handleProceed = () => {
     return;
   };
@@ -801,7 +847,11 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
             <img src="/ceova logo dark.png" alt="Ceova" className="ai-avatar-img" />
           </div>
           <div className="ai-content">
-            {msg.toolStatus ? (
+            {isGeneratingImage ? (
+              <GenerativePreviewCard type="image" statusText={msg.toolStatus} />
+            ) : isGeneratingQR ? (
+              <GenerativePreviewCard type="qr" statusText={msg.toolStatus} />
+            ) : msg.toolStatus ? (
               <CyclingStatus defaultStatus={msg.toolStatus} />
             ) : (msg.isTyping && !msg.text) ? (
               <CyclingStatus defaultStatus={null} />

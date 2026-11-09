@@ -307,10 +307,10 @@ export class GenerateImageTool implements Tool {
 
     // Choose status stages based on operation type
     const statusStages = (isInpainting && hasImageForEdit)
-      ? ['Analyzing image with ChatGPT…', 'Removing object…', 'Preserving details…', 'Finalizing output…']
+      ? ['Locating object…', 'Sketching background…', 'Adding the details…', 'Polishing the image…']
       : (hasImageForEdit
-        ? ['Editing image with ChatGPT…', 'Applying changes…', 'Preserving details…', 'Finalizing output…']
-        : ['Generating image with ChatGPT…', 'Adding design…', 'Refining details…', 'Finalizing…']);
+        ? ['Inspecting image…', 'Making the changes…', 'Adding the details…', 'Polishing the image…']
+        : ['Sketching it out…', 'Making the first draft…', 'Adding the details…', 'Polishing the image…']);
 
     let currentStageIdx = 0;
     updateStatus(statusStages[currentStageIdx]);

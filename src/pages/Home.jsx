@@ -385,13 +385,20 @@ export default function Home({ session }) {
 
         const tempId = crypto.randomUUID();
         const optimisticUserMsg = { sender: "user", text, time: new Date().toISOString(), attachments: localAttachments, isHidden };
+        let initialToolStatus = files.length > 0 ? "Uploading files..." : "Thinking...";
+        if (/^\s*(?:\/generate_image|generate\s+(?:an?\s+)?image|draw\s+(?:an?\s+)?(?:image|picture)|create\s+(?:an?\s+)?(?:image|picture)|make\s+(?:an?\s+)?(?:image|picture)|paint\s+(?:an?\s+)?image)/i.test(text)) {
+            initialToolStatus = "Sketching it out";
+        } else if (/^\s*(?:\/generate_qr|generate\s+(?:a\s+)?qr|create\s+(?:a\s+)?qr|make\s+(?:a\s+)?qr|qr\s*code)/i.test(text)) {
+            initialToolStatus = "Encoding data...";
+        }
+
         const aiPlaceholder = { 
             sender: "ai", 
             text: "", 
             tempId, 
             isTyping: true, 
             isLive: true, 
-            toolStatus: files.length > 0 ? "Uploading files..." : "Thinking..." 
+            toolStatus: initialToolStatus
         };
 
         setChats(prev => {
@@ -845,7 +852,7 @@ export default function Home({ session }) {
                                     } else if (parsed.type === 'text') {
                                         aiRawText += parsed.content;
                                         if (activeToolStatus) {
-                                            if (aiRawText.includes('![') || !/image|design|completed|edit|detail|almost done/i.test(activeToolStatus)) {
+                                            if (aiRawText.includes('![') || !/image|design|completed|edit|detail|almost done|sketch|draft|polish|qr|barcode/i.test(activeToolStatus)) {
                                                 activeToolStatus = null;
                                             }
                                         }

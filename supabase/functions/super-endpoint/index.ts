@@ -1422,7 +1422,7 @@ ${analyticsText}
                             } else if (toolId === 'generate_image') {
                                 const isInpaintOp = /\b(?:remove|erase|delete|take\s*out|cut\s*out|crop\s*out|without)\b/i.test(message || '') && activeAttachments.some((a: any) => a.type?.startsWith('image/'));
                                 const isPosterOp = /\b(?:poster|flyer|banner|creative|ad)\b/i.test(message || '');
-                                friendlyStatus = isInpaintOp ? 'Removing object…' : (isPosterOp ? 'Creating poster…' : 'Generating image…');
+                                friendlyStatus = isInpaintOp ? 'Locating object…' : (isPosterOp ? 'Drafting layout…' : 'Sketching it out…');
                             } else if (toolId === 'image_analysis' || toolId === 'background_remover') {
                                 friendlyStatus = 'Processing image…';
                             } else if (toolId === 'pdf_toolkit') {
@@ -1430,7 +1430,7 @@ ${analyticsText}
                             } else if (toolId === 'invoice_generator') {
                                 friendlyStatus = 'Generating invoice…';
                             } else if (toolId === 'qr_barcode') {
-                                friendlyStatus = 'Generating QR code…';
+                                friendlyStatus = 'Encoding data…';
                             } else if (toolId === 'verify_ceova_provenance') {
                                 friendlyStatus = 'Verifying Ceova watermark…';
                             } else if (toolId.includes('connector')) {
