@@ -322,9 +322,9 @@ export default function Home({ session }) {
                             const memoryEventsAttachment = msg.attachments?.find?.((a) => a.type === 'memory_events');
                             acc[msg.chat_id].push({
                                 id: msg.id,
-                                sender: msg.role === 'user' ? 'user' : 'ai',
-                                text: msg.content,
-                                time: msg.created_at,
+                                sender: (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'ai',
+                                text: msg.content ?? msg.text ?? '',
+                                time: msg.created_at || msg.time,
                                 mode: msg.mode,
                                 attachments: msg.attachments || [],
                                 cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null,
@@ -342,10 +342,14 @@ export default function Home({ session }) {
                                     if (existing.length > 0 || key === currentChatId) {
                                         merged[key] = existing;
                                     }
-                                } else if (pending.length > 0) {
+                                } else {
+                                    // Merge DB messages with any existing messages so local or fast-synced items aren't dropped
                                     const dbIds = new Set(merged[key].map(m => m.id));
+                                    const missingFromDb = existing.filter(m => m.id && !dbIds.has(m.id));
                                     const uniquePending = pending.filter(m => !m.id || !dbIds.has(m.id));
-                                    merged[key] = [...merged[key], ...uniquePending];
+                                    if (missingFromDb.length > 0 || uniquePending.length > 0) {
+                                        merged[key] = sortMessagesChronologically([...merged[key], ...missingFromDb, ...uniquePending]);
+                                    }
                                 }
                             });
                             // Automatically rename legacy or raw chat titles in the background
