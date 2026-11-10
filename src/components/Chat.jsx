@@ -468,6 +468,30 @@ function ClientCompressionWidget({ meta }) {
   return <CompressionResultCard meta={resultMeta} />;
 }
 
+// Reusable prompt matcher for image generation intents
+export const isImageRequestPrompt = (text) => {
+  if (!text || typeof text !== 'string') return false;
+  const t = text.trim();
+  // 1. Slash / command styles
+  if (/^\s*\/?(?:generate_image|genrate_image|image_gen|dalle|draw)\b/i.test(t)) return true;
+  // 2. Action verb + optional articles + visual noun
+  if (/\b(?:generate|genrate|create|make|draw|paint|sketch|render|design|produce|illustrate)\s+(?:a |an |me |the |this |some )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar|poster|flyer|creative|ad|visual)\b/i.test(t)) return true;
+  // 3. Casual requests: "want an image of", "give me a picture of", "show me a photo of", "need a picture of", "can you generate a picture", etc.
+  if (/\b(?:want|give|send|show|need|get|see)\s+(?:me\s+)?(?:a |an |the |some )?(?:image|picture|photo|illustration|artwork|drawing|sketch|portrait|wallpaper|avatar|poster|flyer)\b/i.test(t)) return true;
+  // 4. "image of ...", "picture of ...", "photo of ...", "drawing of ...", "sketch of ...", "portrait of ...", "wallpaper of ..."
+  if (/\b(?:image|picture|photo|illustration|artwork|drawing|sketch|portrait|wallpaper)\s+(?:of|for|depicting|showing|with)\b/i.test(t)) return true;
+  // 5. Short prompts like "genrate a picture", "picture of a dog", "image of dog", "photo of cat"
+  if (/^\s*(?:genrate|generate|draw|paint|sketch)\s+(?:a |an )?(?:image|picture|photo|artwork)/i.test(t)) return true;
+  // 6. Keywords
+  if (/\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(t)) return true;
+  return false;
+};
+
+export const isQRRequestPrompt = (text) => {
+  if (!text || typeof text !== 'string') return false;
+  return /^\s*(?:\/generate_qr|generate\s+(?:a\s+)?qr|genrate\s+(?:a\s+)?qr|create\s+(?:a\s+)?qr|make\s+(?:a\s+)?qr|qr\s*code|generate\s+(?:a\s+)?barcode)/i.test(text.trim());
+};
+
 // ── MessageItem component ────────────────────────────────────────────────────
 function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onPreviewWebsite, onPreviewDriveFile, onOpenSettings }) {
   const [showActions, setShowActions] = useState(false);
@@ -712,34 +736,33 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
 
   const isGeneratingImage = useMemo(() => {
     if (isUser) return false;
+    // Once the markdown image is present, the image itself takes over
     if (rawText && rawText.includes('![')) return false;
 
-    // Check if this message is actively typing or live
+    // Must be actively live or typing
     const isLiveOrTyping = Boolean(msg.isTyping || msg.isLive);
     if (!isLiveOrTyping) return false;
 
+    // 1. Explicit message flag set by Home.jsx
+    if (msg.isGeneratingImage) return true;
+
+    // 2. Tool status matches ANY stage of image generation/editing/detail/polish
     const toolStatusMatch = Boolean(
       msg.toolStatus &&
-      /image|poster|photo|picture|sketch|drawing|inpaint|remove\s*object|background_remover|generate_image|genrate_image|draft|polish/i.test(msg.toolStatus)
+      /image|poster|photo|picture|sketch|drawing|inpaint|remove\s*object|background_remover|generate_image|genrate_image|draft|polish|details?|design|visual|artwork|first draft/i.test(msg.toolStatus)
     );
+    if (toolStatusMatch) return true;
 
-    // Look back at the prompt from the user
-    let promptMatch = false;
+    // 3. Look back at the user prompt using our comprehensive image intent matcher
     if (messages && idx > 0) {
       const prevUser = messages.slice(0, idx).reverse().find(m => m.sender === 'user');
-      if (prevUser && prevUser.text) {
-        promptMatch = Boolean(
-          /^\s*\/?(?:generate_image|genrate_image)\b/i.test(prevUser.text) ||
-          /\b(?:generate|genrate|create|make|draw|paint|sketch|render|design)\s+(?:a |an |me |the |this )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar|poster|flyer|creative|ad|visual)\b/i.test(prevUser.text) ||
-          /^\s*(?:genrate|generate)\s+(?:image|picture|photo|artwork|a|an)\b/i.test(prevUser.text) ||
-          /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(prevUser.text)
-        );
+      if (prevUser && prevUser.text && isImageRequestPrompt(prevUser.text)) {
+        return true;
       }
     }
 
-    // While waiting for the image (before the markdown ![ image arrives), always show the generative preview card
-    return toolStatusMatch || promptMatch;
-  }, [isUser, rawText, msg.toolStatus, msg.isTyping, msg.isLive, messages, idx]);
+    return false;
+  }, [isUser, rawText, msg.isGeneratingImage, msg.toolStatus, msg.isTyping, msg.isLive, messages, idx]);
 
   const isGeneratingQR = useMemo(() => {
     if (isUser) return false;
@@ -748,21 +771,23 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
     const isLiveOrTyping = Boolean(msg.isTyping || msg.isLive);
     if (!isLiveOrTyping) return false;
 
+    if (msg.isGeneratingQR) return true;
+
     const toolStatusMatch = Boolean(
       msg.toolStatus &&
-      /qr|barcode|generate_qr|scan_barcode/i.test(msg.toolStatus)
+      /qr|barcode|generate_qr|scan_barcode|encoding data/i.test(msg.toolStatus)
     );
+    if (toolStatusMatch) return true;
 
-    let promptMatch = false;
     if (messages && idx > 0) {
       const prevUser = messages.slice(0, idx).reverse().find(m => m.sender === 'user');
-      if (prevUser && prevUser.text) {
-        promptMatch = /^\s*(?:\/generate_qr|generate\s+(?:a\s+)?qr|genrate\s+(?:a\s+)?qr|create\s+(?:a\s+)?qr|make\s+(?:a\s+)?qr|qr\s*code)/i.test(prevUser.text);
+      if (prevUser && prevUser.text && isQRRequestPrompt(prevUser.text)) {
+        return true;
       }
     }
 
-    return toolStatusMatch || promptMatch;
-  }, [isUser, actionMeta, msg.toolStatus, msg.isTyping, msg.isLive, messages, idx]);
+    return false;
+  }, [isUser, actionMeta, msg.isGeneratingQR, msg.toolStatus, msg.isTyping, msg.isLive, messages, idx]);
 
   const handleProceed = () => {
     return;
@@ -1087,64 +1112,31 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
   );
 }
 
-const IMAGE_STATUSES = [
-  "Generating image...",
-  "Adding design...",
-  "Just completed...",
-  "Last edit..."
-];
-
 const GENERAL_STATUSES = ["Thinking...", "Writing...", "Searching..."];
 
 const CyclingStatus = ({ defaultStatus }) => {
-  const [imageStatusIdx, setImageStatusIdx] = useState(0);
   const [generalStatusIdx, setGeneralStatusIdx] = useState(0);
-  const startTimeRef = useRef(Date.now());
 
+  // If this is an image generation stage, do NOT render raw text - show GenerativePreviewCard
   const isImageStatus = Boolean(
     defaultStatus && (
-      /image|design|completed|edit|detail|almost done/i.test(defaultStatus)
+      /image|design|completed|edit|detail|almost done|sketch|draft|polish|inpaint/i.test(defaultStatus)
     ) && !/extracting visual|writing local/i.test(defaultStatus)
   );
 
   useEffect(() => {
-    startTimeRef.current = Date.now();
-  }, [isImageStatus]);
+    if (defaultStatus) return;
+    const interval = setInterval(() => {
+      setGeneralStatusIdx(prev => (prev + 1) % GENERAL_STATUSES.length);
+    }, 2200);
+    return () => clearInterval(interval);
+  }, [defaultStatus]);
 
-  useEffect(() => {
-    const updateProgress = () => {
-      if (isImageStatus) {
-        const elapsed = Date.now() - startTimeRef.current;
-        // Advance every 2.6 seconds through the 4 requested stages, holding at the last stage
-        const idx = Math.min(Math.floor(elapsed / 2600), IMAGE_STATUSES.length - 1);
-        setImageStatusIdx(idx);
-      } else if (!defaultStatus) {
-        setGeneralStatusIdx(prev => (prev + 1) % GENERAL_STATUSES.length);
-      }
-    };
+  if (isImageStatus) {
+    return <GenerativePreviewCard type="image" statusText={defaultStatus} />;
+  }
 
-    // Fast interval ensures smooth updates
-    const interval = setInterval(updateProgress, 400);
-
-    // Instant update whenever user switches back to this tab
-    const handleSync = () => {
-      if (document.visibilityState === 'visible') {
-        updateProgress();
-      }
-    };
-    document.addEventListener('visibilitychange', handleSync);
-    window.addEventListener('focus', handleSync);
-
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleSync);
-      window.removeEventListener('focus', handleSync);
-    };
-  }, [defaultStatus, isImageStatus]);
-
-  const currentText = isImageStatus 
-    ? IMAGE_STATUSES[imageStatusIdx] 
-    : (defaultStatus || GENERAL_STATUSES[generalStatusIdx]);
+  const currentText = defaultStatus || GENERAL_STATUSES[generalStatusIdx];
 
   const lcText = (currentText || '').toLowerCase();
   let iconSrc = null;

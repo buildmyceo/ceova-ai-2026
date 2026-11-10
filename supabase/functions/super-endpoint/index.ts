@@ -762,6 +762,8 @@ STRICT RULES:
                     const isImageGenCommand = !isQuestion && !isStrictlyBackgroundRemoval && (
                       /^\s*\/?generate_image\b/i.test(message || '') ||
                       /\b(?:generate|genrate|create|make|draw|paint|sketch|render|design)\s+(?:a |an |me |the |this )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar|poster|flyer|creative|ad|advertisement|visual|mockup|post)\b/i.test(message || '') ||
+                      /\b(?:want|give|send|show|need|get)\s+(?:me\s+)?(?:a |an |the |some )?(?:image|picture|photo|illustration|artwork|drawing|sketch|portrait|wallpaper|avatar|poster|flyer)\b/i.test(message || '') ||
+                      /\b(?:image|picture|photo|illustration|artwork|drawing|sketch|portrait|wallpaper)\s+(?:of|for|depicting|showing|with)\b/i.test(message || '') ||
                       /^\s*(?:genrate|genrate image|genrate picture|genrate a|genrate an)\b/i.test(message || '') ||
                       /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image|image\s+generation)\b/i.test(message || '') ||
                       /\b(?:make|create|generate|design|draw)\s+(?:a |an |me |the )?(?:poster|flyer|banner|creative|ad|visual)\b/i.test(message || '') ||

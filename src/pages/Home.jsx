@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase, SUPABASE_KEY, SUPABASE_URL } from '../services/supabase';
 import Sidebar from '../components/Sidebar';
-import Chat from '../components/Chat';
+import Chat, { isImageRequestPrompt, isQRRequestPrompt } from '../components/Chat';
 import InputBox from '../components/InputBox';
 import SettingsModal from '../components/SettingsModalV2';
 import SearchModal from '../components/SearchModal';
@@ -196,6 +196,11 @@ export default function Home({ session }) {
     useEffect(() => {
         if (!session) return;
 
+        // Clear any old message cache from IndexedDB so state is 100% direct and fresh from Supabase
+        try {
+            cacheManager.clearChats().catch(() => {});
+        } catch (e) {}
+
         // Fetch user memories to personalize greeting and AI context
         supabase
             .from('user_memory_longterm')
@@ -230,44 +235,11 @@ export default function Home({ session }) {
                     setChatMetadata(metaMap);
                 }
 
-                // Fast Sync: Fetch messages just for the current active chat if one is set (e.g. on page reload)
+                // Direct Sync: Fetch messages directly from Supabase for the current active chat
                 let activeChatId = currentChatId;
 
                 if (activeChatId) {
-                    // Instantly restore from local cache first if available, avoiding blank state
-                    try {
-                        const localCached = await cacheManager.getMessages(activeChatId);
-                        if (localCached && localCached.length > 0) {
-                            const formattedLocal = sortMessagesChronologically(localCached).map(msg => {
-                                const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
-                                const memoryEventsAttachment = msg.attachments?.find?.((a) => a.type === 'memory_events');
-                                return {
-                                    id: msg.id,
-                                    sender: (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'ai',
-                                    text: msg.content ?? msg.text ?? '',
-                                    time: msg.created_at || msg.time,
-                                    mode: msg.mode,
-                                    attachments: msg.attachments || [],
-                                    cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null,
-                                    memoryEvents: memoryEventsAttachment ? memoryEventsAttachment.data : null
-                                };
-                            });
-                            setChats(prev => {
-                                const existing = prev[activeChatId] || [];
-                                const pending = existing.filter(m => m.isTyping || m.isLive || m.tempId);
-                                if (pending.length === 0) {
-                                    return { ...prev, [activeChatId]: formattedLocal };
-                                }
-                                const dbIds = new Set(formattedLocal.map(m => m.id));
-                                const uniquePending = pending.filter(m => !m.id || !dbIds.has(m.id));
-                                return { ...prev, [activeChatId]: [...formattedLocal, ...uniquePending] };
-                            });
-                        }
-                    } catch (cacheErr) {
-                        console.warn("Local cache read error on fast sync:", cacheErr);
-                    }
-
-                    const { data: currentChatMessages, error: activeErr } = await supabase
+                    const { data: currentChatMessages } = await supabase
                         .from('messages')
                         .select('*')
                         .eq('chat_id', activeChatId)
@@ -299,12 +271,10 @@ export default function Home({ session }) {
                             const uniquePending = pending.filter(m => !m.id || !dbIds.has(m.id));
                             return { ...prev, [activeChatId]: [...formattedMessages, ...uniquePending] };
                         });
-                        // We do NOT await this so the UI doesn't block
-                        cacheManager.setMessages(sortedCurrent).catch(console.error);
                     }
                 }
 
-                // Async Background Sync: Fetch everything else without blocking the main render
+                // Async Background Sync: Fetch all messages directly from Supabase without caching
                 supabase
                     .from('messages')
                     .select('*')
@@ -314,7 +284,6 @@ export default function Home({ session }) {
                         if (error || !data) return;
                         
                         const sortedData = sortMessagesChronologically(data);
-                        await cacheManager.setMessages(sortedData);
                         
                         const grouped = sortedData.reduce((acc, msg) => {
                             if (!acc[msg.chat_id]) acc[msg.chat_id] = [];
@@ -422,13 +391,14 @@ export default function Home({ session }) {
 
         const tempId = crypto.randomUUID();
         const optimisticUserMsg = { sender: "user", text, time: new Date().toISOString(), attachments: localAttachments, isHidden };
+        
+        const isImageRequest = isImageRequestPrompt(text);
+        const isQRRequest = isQRRequestPrompt(text);
+
         let initialToolStatus = files.length > 0 ? "Uploading files..." : "Thinking...";
-        if (/^\s*\/?(?:generate_image|genrate_image)\b/i.test(text) ||
-            /\b(?:generate|genrate|create|make|draw|paint|sketch|render|design)\s+(?:a |an |me |the |this )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar|poster|flyer|creative|ad|visual)\b/i.test(text) ||
-            /^\s*(?:genrate|generate)\s+(?:image|picture|photo|artwork|a|an)\b/i.test(text) ||
-            /\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(text)) {
-            initialToolStatus = "Sketching it out";
-        } else if (/^\s*(?:\/generate_qr|generate\s+(?:a\s+)?qr|genrate\s+(?:a\s+)?qr|create\s+(?:a\s+)?qr|make\s+(?:a\s+)?qr|qr\s*code)/i.test(text)) {
+        if (isImageRequest) {
+            initialToolStatus = "Sketching it out…";
+        } else if (isQRRequest) {
             initialToolStatus = "Encoding data...";
         }
 
@@ -438,6 +408,8 @@ export default function Home({ session }) {
             tempId, 
             isTyping: true, 
             isLive: true, 
+            isGeneratingImage: isImageRequest,
+            isGeneratingQR: isQRRequest,
             toolStatus: initialToolStatus
         };
 
@@ -726,8 +698,6 @@ export default function Home({ session }) {
                     attachments: currentAttachments.length > 0 ? currentAttachments : null,
                     created_at: new Date().toISOString()
                 };
-                
-                await cacheManager.setMessage(userMsgObj);
 
                 const { error: userMsgErr } = await supabase.from('messages').insert(userMsgObj);
 
@@ -770,9 +740,67 @@ export default function Home({ session }) {
             let aiRawText = "";
             let autoFollowUpText = null;
             let currentCloudProject = null;
+            let currentMemoryEvents = [];
+            let isImageGenerationActive = isImageRequest;
             let activeToolStatus = files.length > 0 
                 ? "Uploading files..." 
-                : (isWebSearch ? "Searching the web..." : (isThinking ? "Thinking deeply..." : "Thinking..."));
+                : (isImageRequest ? "Sketching it out…" : (isQRRequest ? "Encoding data..." : (isWebSearch ? "Searching the web..." : (isThinking ? "Thinking deeply..." : "Thinking..."))));
+
+            let aiSaved = false;
+            const persistAiResponse = async (finalContent) => {
+                if (aiSaved || isTemporary || !session?.user?.id || !idToUse) return;
+                const textToPersist = (finalContent || '').trim();
+                if (!textToPersist && !currentCloudProject) return;
+
+                aiSaved = true;
+                const aiPermanentId = crypto.randomUUID();
+                const aiAttachments = [
+                    ...(currentCloudProject ? [{ type: 'cloud_project', data: currentCloudProject }] : []),
+                    ...(currentMemoryEvents.length > 0 ? [{ type: 'memory_events', data: currentMemoryEvents }] : [])
+                ];
+
+                const aiMsgObj = {
+                    id: aiPermanentId,
+                    chat_id: idToUse,
+                    user_id: session.user.id,
+                    role: 'assistant',
+                    content: textToPersist || (currentCloudProject ? "" : "Task completed."),
+                    mode: 'ceova',
+                    attachments: aiAttachments.length > 0 ? aiAttachments : null,
+                    created_at: new Date().toISOString()
+                };
+
+                try {
+                    const { error: aiInsertErr } = await supabase.from('messages').insert(aiMsgObj);
+                    if (aiInsertErr) {
+                        console.error("Supabase primary AI insert failed, retrying minimal fields:", aiInsertErr);
+                        const sanitizedObj = {
+                            id: aiPermanentId,
+                            chat_id: idToUse,
+                            user_id: session.user.id,
+                            role: 'assistant',
+                            content: aiMsgObj.content,
+                            created_at: aiMsgObj.created_at
+                        };
+                        const { error: fallbackErr } = await supabase.from('messages').insert(sanitizedObj);
+                        if (fallbackErr) {
+                            console.error("Fallback AI message insert failed:", fallbackErr);
+                        }
+                    }
+
+                    // Update in-memory message to reflect the permanent DB id
+                    setChats(prev => {
+                        const messages = [...(prev[idToUse] || [])];
+                        const aiIdx = messages.findIndex(m => m.tempId === tempId);
+                        if (aiIdx !== -1) {
+                            messages[aiIdx] = { ...messages[aiIdx], id: aiPermanentId, isLive: false, isTyping: false };
+                        }
+                        return { ...prev, [idToUse]: messages };
+                    });
+                } catch (dbErr) {
+                    console.error("Error persisting AI message to Supabase:", dbErr);
+                }
+            };
 
             // Retrieve cached or session Google OAuth token so super-endpoint can sync/use it
             const cachedGoogleToken = typeof window !== 'undefined' ? (localStorage.getItem('google_provider_token') || sessionStorage.getItem('google_provider_token')) : null;
@@ -890,6 +918,9 @@ export default function Home({ session }) {
                                         }
                                     } else if (parsed.type === 'status') {
                                         activeToolStatus = parsed.stage;
+                                        if (/image|sketch|draft|detail|polish|design|visual|poster|inpaint|remove\s*object|background_remover|generate_image/i.test(parsed.stage)) {
+                                            isImageGenerationActive = true;
+                                        }
                                     } else if (parsed.type === 'text') {
                                         aiRawText += parsed.content;
                                         if (activeToolStatus) {
@@ -1175,6 +1206,8 @@ export default function Home({ session }) {
                                                 text: aiRawText, 
                                                 isTyping: true, 
                                                 isLive: true, 
+                                                isGeneratingImage: isImageGenerationActive && !aiRawText.includes('!['),
+                                                isGeneratingQR: isQRRequest && !aiRawText.includes(':::qr_code'),
                                                 toolStatus: activeToolStatus,
                                                 cloudProject: currentCloudProject
                                             };
@@ -1197,6 +1230,8 @@ export default function Home({ session }) {
                                 text: finalAiText, 
                                 isTyping: false, 
                                 isLive: true, 
+                                isGeneratingImage: false,
+                                isGeneratingQR: false,
                                 toolStatus: null,
                                 cloudProject: currentCloudProject,
                                 memoryEvents: currentMemoryEvents.length > 0 ? currentMemoryEvents : (messages[aiIdx]?.memoryEvents || undefined)
@@ -1228,44 +1263,10 @@ export default function Home({ session }) {
                     }
                 }
 
+            // Guaranteed Direct Supabase Persistence
+            await persistAiResponse(aiRawText);
+
             if (!isTemporary) {
-                try {
-                    const aiContentToPersist = aiRawText.trim() || (currentCloudProject ? "" : "I couldn't complete that request. Please try again.");
-                    const aiAttachments = [
-                        ...(currentCloudProject ? [{ type: 'cloud_project', data: currentCloudProject }] : []),
-                        ...(currentMemoryEvents.length > 0 ? [{ type: 'memory_events', data: currentMemoryEvents }] : [])
-                    ];
-
-                    const aiMsgObj = {
-                        id: crypto.randomUUID(),
-                        chat_id: idToUse,
-                        user_id: session.user.id,
-                        role: 'assistant',
-                        content: aiContentToPersist,
-                        mode: 'ceova',
-                        attachments: aiAttachments.length > 0 ? aiAttachments : null,
-                        created_at: new Date().toISOString()
-                    };
-                    
-                    await cacheManager.setMessage(aiMsgObj);
-                    const { error: aiInsertErr } = await supabase.from('messages').insert(aiMsgObj);
-                    if (aiInsertErr) {
-                        console.error("Supabase AI message insert failed:", aiInsertErr);
-                        // Fallback: try inserting minimal fields in case optional columns caused schema error
-                        const sanitizedObj = {
-                            id: aiMsgObj.id,
-                            chat_id: idToUse,
-                            user_id: session.user.id,
-                            role: 'assistant',
-                            content: aiContentToPersist,
-                            created_at: aiMsgObj.created_at
-                        };
-                        await supabase.from('messages').insert(sanitizedObj);
-                    }
-                } catch (dbErr) {
-                    console.error("Local Persistence Error (AI Msg):", dbErr);
-                }
-
                 // Dynamic AI Title Generation using gpt-4o-mini (Turn 1 & Turn 2)
                 const currentMetaTitle = (chatMetadata[idToUse]?.title || '').trim();
                 const isGenericTitle = !currentMetaTitle || currentMetaTitle === 'New Chat' || currentMetaTitle === 'Telegram Chat' || currentMetaTitle.startsWith('Topic ');
@@ -1278,8 +1279,6 @@ export default function Home({ session }) {
                         ], session?.access_token, userMemories).then(async (newTitle) => {
                             if (newTitle && newTitle !== 'New Chat' && !newTitle.startsWith('Topic ')) {
                                 await supabase.from('chats').update({ title: newTitle }).eq('id', idToUse);
-                                const cached = await cacheManager.getChat(idToUse);
-                                if (cached) await cacheManager.setChat({ ...cached, title: newTitle });
                                 setChatMetadata(prev => ({
                                     ...prev,
                                     [idToUse]: { ...(prev[idToUse] || {}), title: newTitle }
@@ -1299,8 +1298,6 @@ export default function Home({ session }) {
                         generateChatTitle(firstTurns, session?.access_token, userMemories).then(async (finalTitle) => {
                             if (finalTitle && finalTitle !== 'New Chat') {
                                 await supabase.from('chats').update({ title: finalTitle }).eq('id', idToUse);
-                                const cached = await cacheManager.getChat(idToUse);
-                                if (cached) await cacheManager.setChat({ ...cached, title: finalTitle });
                                 setChatMetadata(prev => ({
                                     ...prev,
                                     [idToUse]: { ...(prev[idToUse] || {}), title: finalTitle }
@@ -1366,7 +1363,7 @@ export default function Home({ session }) {
                                 time: timeNow
                             };
                             
-                            // Save this message to DB and cache so it persists
+                            // Save this message to Supabase so it persists
                             const aiMsgObj = {
                                 id: newMsgId,
                                 chat_id: idToUse,
@@ -1376,7 +1373,6 @@ export default function Home({ session }) {
                                 mode: 'ceova',
                                 created_at: timeNow
                             };
-                            cacheManager.setMessage(aiMsgObj).catch(console.error);
                             if (!isTemporary) {
                                 supabase.from('messages').insert(aiMsgObj).then(({ error }) => {
                                     if (error) console.error("Error saving fallback message:", error);
@@ -1396,14 +1392,21 @@ export default function Home({ session }) {
                             }, 1500);
                             
                         } else if (messages[aiIdx].isTyping) {
-                            // Do not delete the message; preserve it and show an error state so nothing disappears
+                            const fallbackText = (aiRawText || '').trim() || displayError || "Connection interrupted. Please try again.";
+                            // Do not delete the message; preserve it and show text/image state so nothing disappears
                             messages[aiIdx] = {
                                 ...messages[aiIdx],
                                 isTyping: false,
                                 isLive: false,
+                                isGeneratingImage: false,
+                                isGeneratingQR: false,
                                 toolStatus: null,
-                                text: messages[aiIdx].text || displayError || "Connection interrupted. Please try again."
+                                text: messages[aiIdx].text || fallbackText
                             };
+
+                            if (fallbackText) {
+                                persistAiResponse(fallbackText).catch(console.error);
+                            }
                         }
                     }
                     return { ...prev, [idToUse]: messages };
@@ -1448,26 +1451,6 @@ export default function Home({ session }) {
 
         if (id && !id.startsWith('temp_') && (!chats[id] || chats[id].length === 0)) {
             try {
-                // Immediately check local IndexedDB cache first
-                const localCached = await cacheManager.getMessages(id);
-                if (localCached && localCached.length > 0) {
-                    const formattedLocal = sortMessagesChronologically(localCached).map(msg => {
-                        const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
-                        const memoryEventsAttachment = msg.attachments?.find?.((a) => a.type === 'memory_events');
-                        return {
-                            id: msg.id,
-                            sender: (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'ai',
-                            text: msg.content ?? msg.text ?? '',
-                            time: msg.created_at || msg.time,
-                            mode: msg.mode,
-                            attachments: msg.attachments || [],
-                            cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null,
-                            memoryEvents: memoryEventsAttachment ? memoryEventsAttachment.data : null
-                        };
-                    });
-                    setChats(prev => ({ ...prev, [id]: formattedLocal }));
-                }
-
                 const { data: chatMsgs } = await supabase
                     .from('messages')
                     .select('*')
@@ -1491,7 +1474,6 @@ export default function Home({ session }) {
                         };
                     });
                     setChats(prev => ({ ...prev, [id]: formatted }));
-                    cacheManager.setMessages(sortedChatMsgs).catch(console.error);
 
                     const curTitle = (chatMetadata[id]?.title || '').trim();
                     if (!curTitle || curTitle === 'New Chat' || curTitle === 'Telegram Chat' || curTitle.startsWith('Topic ')) {
