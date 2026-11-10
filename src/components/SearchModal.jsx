@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, MessageSquare, Edit, Pin, MessageCircle, X } from 'lucide-react';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, chatMetadata = {}, currentChatId }) {
     const [searchQuery, setSearchQuery] = useState('');
+    const { resolvedTheme } = useTheme();
+    const isLight = resolvedTheme === 'light';
 
     useEffect(() => {
         if (!isOpen) {
@@ -57,6 +60,16 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
         const title = getChatTitle(chatId);
         const isActive = chatId === currentChatId;
 
+        const textColor = isActive 
+            ? (isLight ? '#09090B' : '#ffffff') 
+            : (isLight ? '#27272A' : '#e5e7eb');
+        const bgColor = isActive 
+            ? (isLight ? '#E4E4E7' : 'rgba(255, 255, 255, 0.12)') 
+            : (isLight ? 'rgba(0, 0, 0, 0.02)' : 'rgba(255, 255, 255, 0.02)');
+        const borderColor = isActive 
+            ? (isLight ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.16)') 
+            : 'transparent';
+
         return (
             <button 
                 key={chatId}
@@ -68,29 +81,29 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
                     display: 'flex', alignItems: 'center', gap: '12px',
                     width: '100%',
                     padding: '10px 14px', borderRadius: '10px',
-                    color: isActive ? '#ffffff' : '#e5e7eb', 
+                    color: textColor, 
                     textAlign: 'left', cursor: 'pointer',
-                    background: isActive ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.02)', 
-                    border: isActive ? '1px solid rgba(255, 255, 255, 0.16)' : '1px solid transparent',
+                    background: bgColor, 
+                    border: `1px solid ${borderColor}`,
                     transition: 'all 0.15s ease'
                 }}
                 onMouseOver={(e) => {
                     if (!isActive) {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.07)';
-                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                        e.currentTarget.style.background = isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.07)';
+                        e.currentTarget.style.borderColor = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)';
                     }
                 }}
                 onMouseOut={(e) => {
                     if (!isActive) {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                        e.currentTarget.style.background = isLight ? 'rgba(0, 0, 0, 0.02)' : 'rgba(255, 255, 255, 0.02)';
                         e.currentTarget.style.borderColor = 'transparent';
                     }
                 }}
             >
                 {isPinned ? (
-                    <MessageCircle size={16} style={{ color: 'rgba(255, 255, 255, 0.75)', flexShrink: 0 }} />
+                    <MessageCircle size={16} style={{ color: isLight ? '#4F46E5' : 'rgba(255, 255, 255, 0.75)', flexShrink: 0 }} />
                 ) : (
-                    <MessageSquare size={16} style={{ color: 'rgba(255, 255, 255, 0.45)', flexShrink: 0 }} />
+                    <MessageSquare size={16} style={{ color: isLight ? '#71717A' : 'rgba(255, 255, 255, 0.45)', flexShrink: 0 }} />
                 )}
                 
                 <span style={{ 
@@ -105,7 +118,7 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
                 </span>
 
                 {isPinned && (
-                    <Pin size={12} style={{ color: 'rgba(255, 255, 255, 0.4)', flexShrink: 0, marginLeft: 'auto' }} />
+                    <Pin size={12} style={{ color: isLight ? '#71717A' : 'rgba(255, 255, 255, 0.4)', flexShrink: 0, marginLeft: 'auto' }} />
                 )}
             </button>
         );
@@ -118,7 +131,7 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
                     onClick={onClose} 
                     style={{ 
                         position: 'fixed', inset: 0, 
-                        background: 'rgba(0, 0, 0, 0.65)', 
+                        background: isLight ? 'rgba(0, 0, 0, 0.35)' : 'rgba(0, 0, 0, 0.65)', 
                         backdropFilter: 'blur(16px)',
                         WebkitBackdropFilter: 'blur(16px)',
                         display: 'flex', justifyContent: 'center', alignItems: 'flex-start',
@@ -134,14 +147,16 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
                         transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                         style={{ 
                             width: '92%', maxWidth: '580px', 
-                            background: 'rgba(22, 22, 26, 0.84)', 
+                            background: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(22, 22, 26, 0.84)', 
                             backdropFilter: 'blur(28px) saturate(190%)',
                             WebkitBackdropFilter: 'blur(28px) saturate(190%)',
-                            border: '1px solid rgba(255, 255, 255, 0.12)', 
+                            border: isLight ? '1px solid rgba(0, 0, 0, 0.12)' : '1px solid rgba(255, 255, 255, 0.12)', 
                             borderRadius: '16px',
                             display: 'flex', flexDirection: 'column',
                             maxHeight: '78vh',
-                            boxShadow: '0 24px 64px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+                            boxShadow: isLight 
+                                ? '0 24px 64px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 1)' 
+                                : '0 24px 64px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
                             overflow: 'hidden'
                         }}
                     >
@@ -150,10 +165,10 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
                             position: 'relative', 
                             display: 'flex',
                             alignItems: 'center',
-                            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                            background: 'rgba(255, 255, 255, 0.02)'
+                            borderBottom: isLight ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.08)',
+                            background: isLight ? 'rgba(0, 0, 0, 0.015)' : 'rgba(255, 255, 255, 0.02)'
                         }}>
-                            <Search size={18} style={{ position: 'absolute', left: '16px', color: 'rgba(255, 255, 255, 0.5)', pointerEvents: 'none' }} />
+                            <Search size={18} style={{ position: 'absolute', left: '16px', color: isLight ? '#71717A' : 'rgba(255, 255, 255, 0.5)', pointerEvents: 'none' }} />
                             <input 
                                 type="text" 
                                 placeholder="Search chats..." 
@@ -165,7 +180,7 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
                                     padding: '16px 16px 16px 46px',
                                     border: 'none',
                                     background: 'transparent',
-                                    color: '#ffffff',
+                                    color: isLight ? '#09090B' : '#ffffff',
                                     fontSize: '15px',
                                     outline: 'none',
                                     fontFamily: 'inherit'
@@ -177,9 +192,9 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
                                     <button 
                                         onClick={() => setSearchQuery('')}
                                         style={{ 
-                                            background: 'rgba(255, 255, 255, 0.06)', 
+                                            background: isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.06)', 
                                             border: 'none', 
-                                            color: 'rgba(255, 255, 255, 0.6)', 
+                                            color: isLight ? '#71717A' : 'rgba(255, 255, 255, 0.6)', 
                                             cursor: 'pointer', 
                                             padding: '4px',
                                             borderRadius: '50%',
@@ -188,8 +203,8 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
                                             justifyContent: 'center',
                                             transition: 'all 0.15s ease'
                                         }}
-                                        onMouseOver={e => e.currentTarget.style.color = '#ffffff'}
-                                        onMouseOut={e => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)'}
+                                        onMouseOver={e => e.currentTarget.style.color = isLight ? '#09090B' : '#ffffff'}
+                                        onMouseOut={e => e.currentTarget.style.color = isLight ? '#71717A' : 'rgba(255, 255, 255, 0.6)'}
                                         title="Clear search"
                                     >
                                         <X size={14} />
@@ -198,9 +213,9 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
                                 <kbd style={{
                                     fontSize: '10.5px',
                                     fontWeight: 500,
-                                    color: 'rgba(255, 255, 255, 0.45)',
-                                    background: 'rgba(255, 255, 255, 0.05)',
-                                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    color: isLight ? '#71717A' : 'rgba(255, 255, 255, 0.45)',
+                                    background: isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+                                    border: isLight ? '1px solid rgba(0, 0, 0, 0.1)' : '1px solid rgba(255, 255, 255, 0.1)',
                                     borderRadius: '5px',
                                     padding: '2px 6px',
                                     fontFamily: 'inherit',
@@ -220,26 +235,27 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: '12px',
                                     padding: '10px 14px', borderRadius: '10px',
-                                    color: '#ffffff', textAlign: 'left', cursor: 'pointer',
-                                    background: 'rgba(255, 255, 255, 0.04)', 
-                                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                                    color: isLight ? '#09090B' : '#ffffff', textAlign: 'left', cursor: 'pointer',
+                                    background: isLight ? '#F4F4F5' : 'rgba(255, 255, 255, 0.04)', 
+                                    border: isLight ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.06)',
                                     transition: 'all 0.15s ease'
                                 }}
                                 onMouseOver={(e) => {
-                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+                                    e.currentTarget.style.background = isLight ? '#E4E4E7' : 'rgba(255, 255, 255, 0.08)';
+                                    e.currentTarget.style.borderColor = isLight ? 'rgba(0, 0, 0, 0.14)' : 'rgba(255, 255, 255, 0.12)';
                                 }}
                                 onMouseOut={(e) => {
-                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
-                                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.06)';
+                                    e.currentTarget.style.background = isLight ? '#F4F4F5' : 'rgba(255, 255, 255, 0.04)';
+                                    e.currentTarget.style.borderColor = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.06)';
                                 }}
                             >
                                 <div style={{
                                     width: '26px', height: '26px', borderRadius: '6px',
-                                    background: 'rgba(255, 255, 255, 0.08)',
+                                    background: isLight ? '#FFFFFF' : 'rgba(255, 255, 255, 0.08)',
+                                    boxShadow: isLight ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center'
                                 }}>
-                                    <Edit size={14} color="#ffffff" />
+                                    <Edit size={14} color={isLight ? '#09090B' : '#ffffff'} />
                                 </div>
                                 <span style={{ fontSize: '14.5px', fontWeight: 500 }}>New chat</span>
                             </button>
@@ -252,15 +268,15 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
                                         padding: '4px 10px',
                                         fontSize: '11px', fontWeight: 600,
                                         textTransform: 'uppercase', letterSpacing: '0.07em',
-                                        color: 'rgba(255, 255, 255, 0.45)'
+                                        color: isLight ? '#71717A' : 'rgba(255, 255, 255, 0.45)'
                                     }}>
                                         <Pin size={11} />
                                         <span>Pinned</span>
                                         <span style={{
                                             marginLeft: 'auto', fontSize: '10px',
-                                            background: 'rgba(255, 255, 255, 0.06)',
+                                            background: isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.06)',
                                             padding: '1px 6px', borderRadius: '10px',
-                                            color: 'rgba(255, 255, 255, 0.5)'
+                                            color: isLight ? '#52525B' : 'rgba(255, 255, 255, 0.5)'
                                         }}>{pinnedChatIds.length}</span>
                                     </div>
                                     {pinnedChatIds.map(chatId => renderChatRow(chatId, true))}
@@ -275,7 +291,7 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
                                         padding: '4px 10px',
                                         fontSize: '11px', fontWeight: 600,
                                         textTransform: 'uppercase', letterSpacing: '0.07em',
-                                        color: 'rgba(255, 255, 255, 0.45)'
+                                        color: isLight ? '#71717A' : 'rgba(255, 255, 255, 0.45)'
                                     }}>
                                         <MessageSquare size={11} />
                                         <span>Recents</span>
@@ -286,7 +302,7 @@ export default function SearchModal({ isOpen, onClose, chats = {}, switchChat, c
 
                             {/* Empty Results */}
                             {sortedChatIds.length === 0 && (
-                                <div style={{ textAlign: 'center', color: 'rgba(255, 255, 255, 0.45)', padding: '36px 16px' }}>
+                                <div style={{ textAlign: 'center', color: isLight ? '#71717A' : 'rgba(255, 255, 255, 0.45)', padding: '36px 16px' }}>
                                     <Search size={28} style={{ opacity: 0.35, marginBottom: '8px' }} />
                                     <p style={{ margin: 0, fontSize: '14px' }}>
                                         {searchQuery ? `No chats match "${searchQuery}"` : 'No chats found'}

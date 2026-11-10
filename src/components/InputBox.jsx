@@ -12,7 +12,8 @@ import {
     isCalendarItem,
     isCeovaItem
 } from '../services/libraryFetchEngine';
-import { useDriveThumbnail } from '../services/driveThumbnailCache';
+import { useDriveThumbnail, getDriveImageBlob, extractDriveId, getDriveThumbnailUrl } from '../services/driveThumbnailCache';
+import { resolveSupabaseImage } from '../services/supabaseStorageHelper';
 import GoogleConnectModal from './GoogleConnectModal';
 import TelegramConnectModal from './TelegramConnectModal';
 import { connectGoogleDrive } from '../services/gdriveSyncEngine';
@@ -56,27 +57,103 @@ const fmtSize = (bytes) => {
 };
 
 function PickerImageCard({ item, onClick }) {
-    const { src, loading, error } = useDriveThumbnail(item);
-    const [imgErr, setImgErr] = useState(false);
+    const isDrive = item?.source === 'gdrive' || !!item?.drive_id;
+    const driveThumb = isDrive ? getDriveThumbnailUrl(item) : null;
+    const { src: driveSrc, loading: driveLoading, error: driveErr, driveId } = useDriveThumbnail(item);
 
-    const hasFailed = error || imgErr;
+    const [activeSrc, setActiveSrc] = useState(() => driveSrc || driveThumb || item?.thumbnail_url || item?.url || item?.web_view_link || null);
+    const [imgErr, setImgErr] = useState(false);
+    const [loaded, setLoaded] = useState(false);
+
+    useEffect(() => {
+        let isMounted = true;
+        setImgErr(false);
+        setLoaded(false);
+
+        const initial = driveSrc || driveThumb || item?.thumbnail_url || item?.url || item?.web_view_link;
+
+        const isSupabase = typeof initial === 'string' && (
+            initial.includes('/storage/v1/') || !!item?.path || item?.storage_source === 'local' || item?.source === 'ceova' || item?.source === 'ai'
+        );
+
+        if (isSupabase) {
+            resolveSupabaseImage(initial, item).then(resolved => {
+                if (isMounted && resolved) {
+                    setActiveSrc(resolved);
+                    setImgErr(false);
+                }
+            }).catch(() => {
+                if (isMounted && initial) {
+                    setActiveSrc(initial);
+                }
+            });
+        } else if (initial) {
+            setActiveSrc(initial);
+        }
+
+        return () => { isMounted = false; };
+    }, [item?.id, item?.drive_id, item?.thumbnail_url, item?.url, item?.web_view_link, item?.path, driveSrc, driveThumb]);
+
+    const handleImgError = async () => {
+        // 1. Try Supabase authenticated resolution
+        try {
+            const blobUrl = await resolveSupabaseImage(activeSrc, item);
+            if (blobUrl && blobUrl !== activeSrc) {
+                setActiveSrc(blobUrl);
+                setImgErr(false);
+                setLoaded(true);
+                return;
+            }
+        } catch (e) {}
+
+        // 2. If it's a Drive item, try fetching authenticated blob
+        const cleanDriveId = driveId || extractDriveId(item);
+        if (cleanDriveId && typeof activeSrc === 'string' && !activeSrc.startsWith('blob:')) {
+            try {
+                const blobUrl = await getDriveImageBlob(cleanDriveId);
+                if (blobUrl) {
+                    setActiveSrc(blobUrl);
+                    setImgErr(false);
+                    setLoaded(true);
+                    return;
+                }
+            } catch (e) {}
+        }
+
+        // 3. Fallback to raw item.url if activeSrc was different
+        if (item?.url && activeSrc !== item.url) {
+            setActiveSrc(item.url);
+            setImgErr(false);
+            return;
+        }
+
+        setImgErr(true);
+    };
+
+    const isFailed = imgErr || (driveErr && !driveLoading && !activeSrc);
 
     return (
         <div 
             className="lib-picker-img-card" 
-            onClick={() => onClick(item)}
+            onClick={() => onClick({ ...item, resolvedSrc: activeSrc || item.url })}
             title={`Click to attach ${item.name}`}
         >
             <div className="lib-picker-img-wrap">
-                {src && !hasFailed ? (
+                {activeSrc && !isFailed ? (
                     <img
-                        src={src}
+                        src={activeSrc}
                         alt={item.name}
-                        className="lib-picker-img"
+                        className={`lib-picker-img ${loaded ? 'loaded' : ''}`}
                         loading="lazy"
-                        onError={() => setImgErr(true)}
+                        referrerPolicy="no-referrer"
+                        crossOrigin="anonymous"
+                        onLoad={() => {
+                            setLoaded(true);
+                            setImgErr(false);
+                        }}
+                        onError={handleImgError}
                     />
-                ) : loading ? (
+                ) : (driveLoading || !isFailed) ? (
                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.03)' }}>
                         <div className="lib-skeleton-shimmer" style={{ width: '100%', height: '100%' }} />
                     </div>
@@ -216,8 +293,14 @@ export default function InputBox({
                 setIsLibrarySubmenuOpen(false);
             }
         };
+        document.addEventListener('pointerdown', handleClickOutside, { passive: true });
+        document.addEventListener('touchstart', handleClickOutside, { passive: true });
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('pointerdown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
     }, [isPlusOpen]);
 
     const checkGoogleAndTelegramStatus = async () => {
@@ -471,15 +554,6 @@ export default function InputBox({
     const handleInputChange = (e) => {
         const val = e.target.value;
         setInput(val);
-        if (val.endsWith('/')) {
-            setIsPlusOpen(true);
-            setIsToolsSubmenuOpen(true);
-        } else if (!val.includes('/')) {
-            setIsToolsSubmenuOpen(false);
-            if (isPlusOpen && !isConnectorsSubmenuOpen && !isUploadSubmenuOpen && !isLibrarySubmenuOpen && !isEmojiOpen) {
-                setIsPlusOpen(false);
-            }
-        }
     };
 
     const onEnterPress = (e) => {
@@ -625,13 +699,26 @@ export default function InputBox({
             <div className="input-box-positioner" ref={inputBoxPositionerRef}>
                 <AnimatePresence>
                     {isPlusOpen && (
-                        <motion.div 
-                            className="attachment-sliding-tab slide-up"
-                            initial={{ y: 30, opacity: 0, scale: 0.98 }}
-                            animate={{ y: 0, opacity: 1, scale: 1 }}
-                            exit={{ y: 30, opacity: 0, scale: 0.98 }}
-                            transition={{ type: "spring", stiffness: 360, damping: 28 }}
-                        >
+                        <>
+                            <div 
+                                className="plus-backdrop-scrim" 
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setIsPlusOpen(false);
+                                    setIsToolsSubmenuOpen(false);
+                                    setIsConnectorsSubmenuOpen(false);
+                                    setIsUploadSubmenuOpen(false);
+                                    setIsLibrarySubmenuOpen(false);
+                                }}
+                            />
+                            <motion.div 
+                                className="attachment-sliding-tab slide-up"
+                                initial={{ y: 30, opacity: 0, scale: 0.98 }}
+                                animate={{ y: 0, opacity: 1, scale: 1 }}
+                                exit={{ y: 30, opacity: 0, scale: 0.98 }}
+                                transition={{ type: "spring", stiffness: 360, damping: 28 }}
+                            >
                             {!isToolsSubmenuOpen && !isConnectorsSubmenuOpen && !isUploadSubmenuOpen && !isLibrarySubmenuOpen && (
                                 <div className="sliding-tab-grid">
                                     <button 
@@ -980,8 +1067,8 @@ export default function InputBox({
                                         >
                                             <ChevronLeft size={16} /> Back
                                         </button>
-                                        <div className="sliding-tab-title-line">
-                                            <span className="sliding-tab-submenu-title">Select from Library</span>
+                                        <div className="sliding-tab-submenu-title-group">
+                                            <span className="sliding-tab-submenu-title">Library</span>
                                             <span className="sliding-tab-lib-count-badge">{libraryCounts.total} items</span>
                                         </div>
                                         {onOpenLibrary ? (
@@ -1062,8 +1149,19 @@ export default function InputBox({
                                                 </span>
                                             </div>
                                         ) : (() => {
-                                            const images = filteredLibraryItems.filter(it => it.kind === 'image' || it.mime_type?.startsWith('image/'));
-                                            const others = filteredLibraryItems.filter(it => !(it.kind === 'image' || it.mime_type?.startsWith('image/')));
+                                            const isImageItem = (it) => {
+                                                if (!it) return false;
+                                                if (it.kind === 'image') return true;
+                                                if (it.mime_type?.startsWith('image/')) return true;
+                                                const name = (it.name || '').toLowerCase();
+                                                const url = (it.url || it.thumbnail_url || '').toLowerCase();
+                                                return /\.(png|jpe?g|webp|gif|svg|bmp|ico|heic)$/i.test(name) ||
+                                                       /\.(png|jpe?g|webp|gif|svg|bmp|ico|heic)/i.test(url) ||
+                                                       name.startsWith('ai_image_') ||
+                                                       name.startsWith('image-');
+                                            };
+                                            const images = filteredLibraryItems.filter(isImageItem);
+                                            const others = filteredLibraryItems.filter(it => !isImageItem(it));
 
                                             return (
                                                 <div className="sliding-tab-lib-items-list">
@@ -1096,98 +1194,110 @@ export default function InputBox({
                                 </div>
                             )}
                         </motion.div>
+                        </>
                     )}
                 </AnimatePresence>
 
                 <div 
                     className={`input-wrapper ${isDragging ? 'dragging' : ''}`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-            >
-                {isEmojiOpen && (
-                    <div className="emoji-picker-menu">
-                        {COMMON_EMOJIS.map(emoji => (
-                            <button key={emoji} onClick={() => insertEmoji(emoji)}>{emoji}</button>
-                        ))}
-                    </div>
-                )}
-                {files.length > 0 && (
-                    <div className="file-preview-list">
-                        {files.map((file, idx) => (
-                            <div key={idx} className="file-preview-item">
-                                <div className="preview-media-box">
-                                    {(file.type?.startsWith('image/') || file.thumbnail_url) ? (
-                                        <img src={file.thumbnail_url || file.url} alt="preview" className="preview-img" />
-                                    ) : (
-                                        <div className="file-icon-box">
-                                            <span className="file-ext">{(file.name || 'FILE').split('.').pop().toUpperCase()}</span>
-                                        </div>
-                                    )}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                >
+                    {isEmojiOpen && (
+                        <div className="emoji-picker-menu">
+                            {COMMON_EMOJIS.map(emoji => (
+                                <button key={emoji} onClick={() => insertEmoji(emoji)}>{emoji}</button>
+                            ))}
+                        </div>
+                    )}
+                    {files.length > 0 && (
+                        <div className="file-preview-list">
+                            {files.map((file, idx) => (
+                                <div key={idx} className="file-preview-item">
+                                    <div className="preview-media-box">
+                                        {(file.type?.startsWith('image/') || file.thumbnail_url) ? (
+                                            <img src={file.thumbnail_url || file.url} alt="preview" className="preview-img" />
+                                        ) : (
+                                            <div className="file-icon-box">
+                                                <span className="file-ext">{(file.name || 'FILE').split('.').pop().toUpperCase()}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button className="remove-file-btn" onClick={(e) => removeFile(e, idx)} title="Remove file">
+                                        <X size={12} />
+                                    </button>
+                                    <span className="file-name-tag">{file.name}</span>
                                 </div>
-                                <button className="remove-file-btn" onClick={(e) => removeFile(e, idx)} title="Remove file">
-                                    <X size={12} />
-                                </button>
-                                <span className="file-name-tag">{file.name}</span>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                            ))}
+                        </div>
+                    )}
 
-                <div className="input-main-row">
-                    <div className="toolbar-left" style={{ gap: '8px' }}>
-                        <button 
-                            type="button"
-                            className={`toolbar-btn ${isPlusOpen ? 'active' : ''}`} 
-                            onClick={() => {
-                                setIsPlusOpen(prev => {
+                    <div className="input-main-row">
+                        <div className="toolbar-left" style={{ gap: '8px' }}>
+                            <button 
+                                type="button"
+                                className={`toolbar-btn plus-btn ${isPlusOpen ? 'active' : ''}`} 
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setIsPlusOpen(prev => {
+                                        setIsToolsSubmenuOpen(false);
+                                        setIsConnectorsSubmenuOpen(false);
+                                        setIsUploadSubmenuOpen(false);
+                                        setIsLibrarySubmenuOpen(false);
+                                        return !prev;
+                                    });
+                                }} 
+                                title="Add attachment"
+                            >
+                                <Plus size={18} />
+                            </button>
+                            
+                            <input 
+                                type="file" 
+                                ref={fileInputRef} 
+                                style={{ display: 'none' }} 
+                                onChange={(e) => onFilesSelected(Array.from(e.target.files))}
+                                accept="*/*"
+                                multiple
+                            />
+                            <input 
+                                type="file" 
+                                ref={imageInputRef} 
+                                style={{ display: 'none' }} 
+                                onChange={(e) => onFilesSelected(Array.from(e.target.files))}
+                                accept="image/*"
+                                multiple
+                            />
+                            <input 
+                                type="file" 
+                                ref={docInputRef} 
+                                style={{ display: 'none' }} 
+                                onChange={(e) => onFilesSelected(Array.from(e.target.files))}
+                                accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.pptx,.ppt,.json,.md"
+                                multiple
+                            />
+                        </div>
+
+                        <textarea
+                            id="userInput"
+                            ref={textareaRef}
+                            placeholder="Ask Ceova..."
+                            rows={1}
+                            value={input}
+                            onChange={handleInputChange}
+                            onFocus={() => {
+                                if (isPlusOpen) {
+                                    setIsPlusOpen(false);
                                     setIsToolsSubmenuOpen(false);
                                     setIsConnectorsSubmenuOpen(false);
                                     setIsUploadSubmenuOpen(false);
                                     setIsLibrarySubmenuOpen(false);
-                                    return !prev;
-                                });
-                            }} 
-                            title="Add attachment"
-                        >
-                            <Plus size={18} />
-                        </button>
-                        
-                        <input 
-                            type="file" 
-                            ref={fileInputRef} 
-                            style={{ display: 'none' }} 
-                            onChange={(e) => onFilesSelected(Array.from(e.target.files))}
-                            accept="*/*"
-                            multiple
+                                }
+                            }}
+                            onKeyDown={onEnterPress}
                         />
-                        <input 
-                            type="file" 
-                            ref={imageInputRef} 
-                            style={{ display: 'none' }} 
-                            onChange={(e) => onFilesSelected(Array.from(e.target.files))}
-                            accept="image/*"
-                            multiple
-                        />
-                        <input 
-                            type="file" 
-                            ref={docInputRef} 
-                            style={{ display: 'none' }} 
-                            onChange={(e) => onFilesSelected(Array.from(e.target.files))}
-                            accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.pptx,.ppt,.json,.md"
-                            multiple
-                        />
-                    </div>
-
-                    <textarea
-                        id="userInput"
-                        ref={textareaRef}
-                        placeholder="Ask Ceova..."
-                        rows={1}
-                        value={input}
-                        onChange={handleInputChange}
-                        onKeyDown={onEnterPress}
-                    />
 
                     <div className="toolbar-right">
                         <button

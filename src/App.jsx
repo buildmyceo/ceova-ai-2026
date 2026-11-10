@@ -89,22 +89,29 @@ export default function App() {
 
             if (rawUrl.includes('auth/callback') || rawUrl.includes('access_token=') || rawUrl.includes('code=')) {
                 try {
-                    let params = null;
-                    const hashIdx = rawUrl.indexOf('#');
-                    const queryIdx = rawUrl.indexOf('?');
+                    // Parse both search query params (?code=...) and hash fragment (#access_token=...)
+                    let queryParams = new URLSearchParams();
+                    let hashParams = new URLSearchParams();
 
-                    if (hashIdx !== -1) {
-                        params = new URLSearchParams(rawUrl.substring(hashIdx + 1));
-                    } else if (queryIdx !== -1) {
-                        params = new URLSearchParams(rawUrl.substring(queryIdx + 1));
+                    const queryIdx = rawUrl.indexOf('?');
+                    const hashIdx = rawUrl.indexOf('#');
+
+                    if (queryIdx !== -1) {
+                        const queryStr = hashIdx > queryIdx 
+                            ? rawUrl.substring(queryIdx + 1, hashIdx) 
+                            : rawUrl.substring(queryIdx + 1);
+                        queryParams = new URLSearchParams(queryStr);
                     }
 
-                    if (!params) return;
+                    if (hashIdx !== -1) {
+                        hashParams = new URLSearchParams(rawUrl.substring(hashIdx + 1));
+                    }
 
-                    const access_token = params.get('access_token');
-                    const refresh_token = params.get('refresh_token');
-                    const provider_token = params.get('provider_token');
-                    const provider_refresh_token = params.get('provider_refresh_token');
+                    const access_token = hashParams.get('access_token') || queryParams.get('access_token');
+                    const refresh_token = hashParams.get('refresh_token') || queryParams.get('refresh_token');
+                    const provider_token = hashParams.get('provider_token') || queryParams.get('provider_token');
+                    const provider_refresh_token = hashParams.get('provider_refresh_token') || queryParams.get('provider_refresh_token');
+                    const code = queryParams.get('code') || hashParams.get('code');
 
                     if (provider_token) {
                         localStorage.setItem('google_provider_token', provider_token);
@@ -119,15 +126,14 @@ export default function App() {
                         if (error) throw error;
                         console.log('[Capacitor] Signed in! Navigating to /dashboard');
                         navigate('/dashboard', { replace: true });
+                    } else if (code) {
+                        console.log('[Capacitor] Exchanging auth code for session...');
+                        const { error } = await supabase.auth.exchangeCodeForSession(code);
+                        if (error) throw error;
+                        console.log('[Capacitor] Signed in! Navigating to /dashboard');
+                        navigate('/dashboard', { replace: true });
                     } else {
-                        const code = params.get('code');
-                        if (code) {
-                            console.log('[Capacitor] Exchanging auth code for session...');
-                            const { error } = await supabase.auth.exchangeCodeForSession(code);
-                            if (error) throw error;
-                            console.log('[Capacitor] Signed in! Navigating to /dashboard');
-                            navigate('/dashboard', { replace: true });
-                        }
+                        console.warn('[Capacitor] No valid tokens or code found in URL:', rawUrl);
                     }
                 } catch (err) {
                     console.error('[Capacitor] Deep link auth error:', err);

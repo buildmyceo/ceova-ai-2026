@@ -27,6 +27,7 @@ import {
 import { useDriveThumbnail, getDriveImageBlob, extractDriveId, getDriveThumbnailUrl } from '../services/driveThumbnailCache';
 import DriveFilePreviewModal from '../components/DriveFilePreviewModal';
 import { resolveSupabaseImage } from '../services/supabaseStorageHelper';
+import { downloadFile } from '../utils/downloader';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const MIME_ICON = (type = '', name = '') => {
@@ -194,14 +195,13 @@ function Lightbox({ item, src, caption, onClose }) {
 
           {/* Download button */}
           {downloadLink && (
-            <a
-              href={downloadLink}
-              download={caption || item?.name || 'download'}
+            <button
+              onClick={() => downloadFile(downloadLink, caption || item?.name || 'download')}
               className="lib-lightbox-link-btn"
               title="Download image"
             >
               <Download size={15} />
-            </a>
+            </button>
           )}
 
           {/* Close button */}
@@ -1724,7 +1724,7 @@ export default function Library({ session, onBack, switchChat }) {
                           setLightbox({ item: it, src: it.resolvedSrc || it.blobUrl || it.url, caption: it.name });
                         }
                       }}
-                      onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
+                      onDownload={it => downloadFile(it.web_download_link || it.url, it.name)}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                     />
                   ))}
@@ -1765,7 +1765,7 @@ export default function Library({ session, onBack, switchChat }) {
                       onDownload={async it => {
                         const targetUrl = it.web_download_link || it.url;
                         const resolved = await resolveSupabaseImage(targetUrl, it);
-                        window.open(resolved || targetUrl, '_blank', 'noopener,noreferrer');
+                        downloadFile(resolved || targetUrl, it.name);
                       }}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                       onSummarize={handleSummarize}
@@ -1804,7 +1804,7 @@ export default function Library({ session, onBack, switchChat }) {
                         }
                         window.open(it.web_view_link || it.url, '_blank');
                       }}
-                      onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
+                      onDownload={it => downloadFile(it.web_download_link || it.url, it.name)}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                       onSummarize={handleSummarize}
                       onOCR={handleOCR}
@@ -1842,7 +1842,7 @@ export default function Library({ session, onBack, switchChat }) {
                         }
                         window.open(it.web_view_link || it.url, '_blank');
                       }}
-                      onDownload={it => window.open(it.web_download_link || it.url, '_blank')}
+                      onDownload={it => downloadFile(it.web_download_link || it.url, it.name)}
                       onVisit={it => { if (it.chat_id) { switchChat(it.chat_id); onBack(); } }}
                       onSummarize={handleSummarize}
                       onOCR={handleOCR}

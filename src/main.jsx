@@ -6,6 +6,10 @@ import App from './App'
 import { AuthProvider } from './contexts/AuthProvider'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { initDownloadInterceptor } from './utils/downloader'
+
+// Enable native download interception for mobile app
+initDownloadInterceptor()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

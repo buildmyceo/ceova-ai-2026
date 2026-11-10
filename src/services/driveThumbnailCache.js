@@ -56,6 +56,13 @@ export function extractDriveId(item) {
       return String(item.id).split('?')[0].split('&')[0];
     }
   }
+  // Check common URL fields for Google Drive ID
+  for (const field of [item.thumbnail_url, item.thumbnailLink, item.url, item.web_view_link, item.web_download_link]) {
+    if (typeof field === 'string' && (field.includes('drive.google.com') || field.includes('googleusercontent.com'))) {
+      const match = field.match(/[-\w]{25,}/);
+      if (match) return match[0];
+    }
+  }
   return null;
 }
 
@@ -189,11 +196,13 @@ export function useDriveThumbnail(item, fallbackSrc = null) {
     }
 
     let isMounted = true;
+    setLoading(true);
 
     // Fetch authenticated blob in background for maximum fidelity
     getDriveImageBlob(driveId)
       .then(blobUrl => {
         if (!isMounted) return;
+        setLoading(false);
         if (blobUrl) {
           setSrc(blobUrl);
           setError(false);
@@ -209,6 +218,7 @@ export function useDriveThumbnail(item, fallbackSrc = null) {
       })
       .catch(() => {
         if (!isMounted) return;
+        setLoading(false);
         if (cdnThumb) {
           setSrc(cdnThumb);
         } else if (!src) {
@@ -219,7 +229,7 @@ export function useDriveThumbnail(item, fallbackSrc = null) {
     return () => {
       isMounted = false;
     };
-  }, [driveId, isDriveItem, item?.thumbnail_url, item?.url, nonDriveSrc]);
+  }, [driveId, isDriveItem, item?.thumbnail_url, item?.thumbnailLink, item?.url, nonDriveSrc]);
 
   return { src, loading, error, driveId };
 }

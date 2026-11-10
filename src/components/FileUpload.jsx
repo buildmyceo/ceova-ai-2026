@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthProvider';
+import { downloadFile } from '../utils/downloader';
 
 export default function FileUpload() {
     const { session } = useAuth();
@@ -104,16 +105,7 @@ export default function FileUpload() {
             }
 
             console.log("Download success:", data);
-            
-            const url = URL.createObjectURL(data);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            
+            await downloadFile(data, fileName);
         } catch (err) {
             console.error("Download exception:", err);
             setMessage(`Download failed: ${err.message}`);

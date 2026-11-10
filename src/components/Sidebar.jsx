@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LogOut, Plus, Search, Settings, HelpCircle, Archive, X, Clock, Pin, PinOff, SquareCheck, Glasses, Code2, PanelLeft, PanelLeftClose, Edit, BookOpen, MoreHorizontal, Trash2, Check, MessageCircle } from 'lucide-react';
+import { 
+    LogOut, Plus, Search, Settings, HelpCircle, Archive, X, Clock, Pin, PinOff, 
+    SquareCheck, Glasses, Code2, PanelLeft, PanelLeftClose, Edit, BookOpen, 
+    MoreHorizontal, Trash2, Check, MessageCircle, Image, Sparkles
+} from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
 export default function Sidebar({ 
@@ -9,25 +13,33 @@ export default function Sidebar({
 }) {
     const userName = userMetadata?.full_name || (userEmail ? userEmail.split('@')[0] : "User");
     const { resolvedTheme } = useTheme();
-    const themeMod = resolvedTheme;
     const [searchQuery, setSearchQuery] = useState('');
     const [isLogoHovered, setIsLogoHovered] = useState(false);
     const [activeMenuChatId, setActiveMenuChatId] = useState(null);
     const [menuPlacement, setMenuPlacement] = useState('bottom');
     const [renamingChatId, setRenamingChatId] = useState(null);
     const [renameValue, setRenameValue] = useState('');
+    const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const renameInputRef = useRef(null);
     const menuRef = useRef(null);
+    const userMenuRef = useRef(null);
 
     useEffect(() => {
         const handleClickOutside = (e) => {
             if (activeMenuChatId && !e.target.closest('.chat-item-menu-container')) {
                 setActiveMenuChatId(null);
             }
+            if (isUserMenuOpen && !e.target.closest('.dock-user-area')) {
+                setIsUserMenuOpen(false);
+            }
         };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [activeMenuChatId]);
+        document.addEventListener('touchstart', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
+    }, [activeMenuChatId, isUserMenuOpen]);
 
     const handleStartRename = (chatId, currentTitle) => {
         setRenamingChatId(chatId);
@@ -65,8 +77,7 @@ export default function Sidebar({
         }
     };
 
-    const fullLogoSrc = '/ceova-logo.png';
-    const logoSrc = fullLogoSrc;
+    const logoSrc = '/ceova-logo.png';
     const isLightMode = resolvedTheme === 'light';
 
     // Auto-close handler for mobile
@@ -84,7 +95,6 @@ export default function Sidebar({
     };
 
     const sortedChatIds = Object.keys(chats).filter(id => {
-        // Hide temporary chats from sidebar
         if (id.startsWith('temp_')) return false;
         return chats[id]?.length > 0;
     }).sort((a, b) => {
@@ -165,7 +175,7 @@ export default function Sidebar({
                 ) : (
                     <>
                         <div className="chat-item-content">
-                            {isPinned && <MessageCircle size={16} strokeWidth={1.75} className="chat-pinned-icon" />}
+                            <MessageCircle size={17} strokeWidth={1.8} className={`chat-item-bubble-icon ${isPinned ? 'pinned' : ''}`} />
                             <span className="chat-title" title={title}>{title}</span>
                         </div>
                         
@@ -176,7 +186,7 @@ export default function Sidebar({
                                 title="Chat options"
                                 onClick={(e) => toggleMenu(e, chatId)}
                             >
-                                <MoreHorizontal size={16} />
+                                <MoreHorizontal size={15} />
                             </button>
 
                             {isMenuActive && (
@@ -227,202 +237,125 @@ export default function Sidebar({
     };
 
     return (
-        <aside id="sidebar" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <div className="sidebar-brand" style={{ padding: isSidebarOpen ? '12px 20px' : '20px 0', justifyContent: isSidebarOpen ? 'space-between' : 'center', alignItems: 'center', display: 'flex', marginBottom: isSidebarOpen ? '32px' : '16px' }}>
+        <aside 
+            id="sidebar" 
+            className={`ceova-sidebar ${isLightMode ? 'theme-light' : 'theme-dark'} ${isSidebarOpen ? 'is-open' : 'is-collapsed'}`}
+        >
+            {/* 1. HEADER (BRAND TITLE + TOP SEARCH BUTTON) */}
+            <div className="sidebar-header">
                 {isSidebarOpen ? (
-                    <>
-                        <img 
-                            src={logoSrc} 
-                            alt="Ceova Logo" 
-                            className="brand-logo" 
-                            style={{ 
-                                maxHeight: '32px', 
-                                width: 'auto',
-                                objectFit: 'contain',
-                                borderRadius: '0',
-                                filter: 'var(--logo-filter)'
-                            }} 
-                        />
-                        <button 
-                            onClick={() => setSidebarOpen(false)} 
-                            title="Close sidebar"
-                            style={{ background: 'none', border: 'none', color: 'var(--text-color)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', transition: 'opacity 0.2s', opacity: 0.7 }}
-                        >
-                            <PanelLeft size={24} />
-                        </button>
-                    </>
+                    <div className="sidebar-header-open">
+                        <div className="sidebar-brand-group">
+                            <span className="brand-title">Ceova</span>
+                        </div>
+                        
+                        <div className="sidebar-header-actions">
+                            <button 
+                                type="button"
+                                className="header-icon-btn search-trigger-btn"
+                                onClick={() => handleAction(onOpenSearch)}
+                                title="Search chats"
+                                aria-label="Search chats"
+                            >
+                                <Search size={20} />
+                            </button>
+
+                            <button 
+                                type="button"
+                                className="header-icon-btn close-sidebar-btn"
+                                onClick={() => setSidebarOpen(false)} 
+                                title="Close sidebar"
+                                aria-label="Close sidebar"
+                            >
+                                <PanelLeft size={20} />
+                            </button>
+                        </div>
+                    </div>
                 ) : (
                     <div
-                        className="ceova-tooltip-container"
+                        className="ceova-tooltip-container collapsed-logo-btn"
                         onMouseEnter={() => setIsLogoHovered(true)}
                         onMouseLeave={() => setIsLogoHovered(false)}
                         onClick={() => setSidebarOpen(true)}
-                        style={{
-                            width: '40px',
-                            height: '40px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            position: 'relative'
-                        }}
                     >
-                        <img 
-                            src={logoSrc} 
-                            alt="Ceova Logo" 
-                            style={{ 
-                                maxHeight: '32px', 
-                                width: 'auto',
-                                maxWidth: '32px',
-                                objectFit: 'contain',
-                                borderRadius: '0',
-                                position: 'absolute',
-                                left: '50%',
-                                top: '50%',
-                                transform: 'translate(-50%, -50%)',
-                                opacity: isLogoHovered ? 0 : 1,
-                                transition: 'opacity 0.2s',
-                                filter: 'var(--logo-filter)'
-                            }} 
-                        />
-                        <div style={{
-                            position: 'absolute',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'opacity 0.15s ease',
-                            opacity: isLogoHovered ? 0.7 : 0,
-                            color: 'var(--text-color)'
-                        }}>
-                            <PanelLeft size={24} />
+                        <div className="collapsed-hover-icon" style={{ opacity: 1 }}>
+                            <PanelLeft size={22} />
                         </div>
                         <div className="ceova-tooltip">Open sidebar</div>
                     </div>
                 )}
             </div>
 
-            {/* Workspace Switcher Removed */}
+            {/* 2. TOP NAVIGATION ITEMS */}
+            {isSidebarOpen ? (
+                <div className="sidebar-nav-group">
+                    <button 
+                        type="button"
+                        className="nav-item-btn"
+                        onClick={() => handleAction(onOpenLibrary)}
+                    >
+                        <Image size={18} className="nav-item-icon" />
+                        <span>Images</span>
+                    </button>
 
-            <div className="sidebar-action-group" style={{ 
-                padding: isSidebarOpen ? '0 12px' : '0', 
-                alignItems: isSidebarOpen ? 'stretch' : 'center', 
-                gap: '8px', 
-                display: 'flex', 
-                flexDirection: 'column',
-                marginTop: isSidebarOpen ? '8px' : '0'
-            }}>
-                <button 
-                    className={`icon-nav-btn ${!isSidebarOpen ? 'ceova-tooltip-container' : ''} ${currentChatId === temporaryChatId ? 'dimmed' : ''}`} 
-                    onClick={() => handleAction(createNewChat)}
-                    title={isSidebarOpen ? "New Chat" : undefined}
-                    style={{ 
-                        padding: isSidebarOpen ? '10px 14px' : '12px', 
-                        width: isSidebarOpen ? '100%' : 'max-content', 
-                        display: 'flex', 
-                        justifyContent: isSidebarOpen ? 'flex-start' : 'center',
-                        alignItems: 'center',
-                        gap: '12px'
-                    }}
-                >
-                    {isSidebarOpen ? (
-                        <>
-                            <Edit size={18} />
-                            <span>New chat</span>
-                        </>
-                    ) : (
-                        <>
-                            <Edit size={20} />
-                            <div className="ceova-tooltip">New chat</div>
-                        </>
-                    )}
-                </button>
+                    <button 
+                        type="button"
+                        className="nav-item-btn"
+                        onClick={() => handleAction(onOpenLibrary)}
+                    >
+                        <BookOpen size={18} className="nav-item-icon" />
+                        <span>Library</span>
+                    </button>
 
-                <button 
-                    className={`icon-nav-btn ${!isSidebarOpen ? 'ceova-tooltip-container' : ''}`} 
-                    onClick={() => handleAction(onOpenSearch)}
-                    title={isSidebarOpen ? "Search chats" : undefined}
-                    style={{ 
-                        padding: isSidebarOpen ? '10px 14px' : '12px', 
-                        width: isSidebarOpen ? '100%' : 'max-content',
-                        display: 'flex',
-                        justifyContent: isSidebarOpen ? 'flex-start' : 'center',
-                        alignItems: 'center',
-                        gap: '12px'
-                    }}
-                >
-                    {isSidebarOpen ? (
-                        <>
-                            <Search size={18} />
-                            <span>Search</span>
-                        </>
-                    ) : (
-                        <>
-                            <Search size={20} />
-                            <div className="ceova-tooltip">Search</div>
-                        </>
-                    )}
-                </button>
+                    <button 
+                        type="button"
+                        className="nav-item-btn"
+                        onClick={() => handleAction(onTaskClick)}
+                    >
+                        <SquareCheck size={18} className="nav-item-icon" />
+                        <span>Tasks & Projects</span>
+                    </button>
+                </div>
+            ) : (
+                /* Collapsed action rail for Desktop */
+                <div className="collapsed-action-rail">
+                    <button 
+                        className={`icon-nav-btn ceova-tooltip-container ${currentChatId === temporaryChatId ? 'dimmed' : ''}`}
+                        onClick={() => handleAction(createNewChat)}
+                    >
+                        <Edit size={20} />
+                        <div className="ceova-tooltip">New chat</div>
+                    </button>
+                    <button 
+                        className="icon-nav-btn ceova-tooltip-container"
+                        onClick={() => handleAction(onOpenSearch)}
+                    >
+                        <Search size={20} />
+                        <div className="ceova-tooltip">Search</div>
+                    </button>
+                    <button 
+                        className="icon-nav-btn ceova-tooltip-container"
+                        onClick={() => handleAction(onOpenLibrary)}
+                    >
+                        <BookOpen size={20} />
+                        <div className="ceova-tooltip">Library</div>
+                    </button>
+                    <button 
+                        className="icon-nav-btn ceova-tooltip-container"
+                        onClick={() => handleAction(onTaskClick)}
+                    >
+                        <SquareCheck size={20} />
+                        <div className="ceova-tooltip">Tasks</div>
+                    </button>
+                </div>
+            )}
 
-                <button 
-                    className={`icon-nav-btn ${!isSidebarOpen ? 'ceova-tooltip-container' : ''}`} 
-                    onClick={() => handleAction(onOpenLibrary)}
-                    title={isSidebarOpen ? "Library" : undefined}
-                    style={{ 
-                        padding: isSidebarOpen ? '10px 14px' : '12px', 
-                        width: isSidebarOpen ? '100%' : 'max-content',
-                        display: 'flex',
-                        justifyContent: isSidebarOpen ? 'flex-start' : 'center',
-                        alignItems: 'center',
-                        gap: '12px'
-                    }}
-                >
-                    {isSidebarOpen ? (
-                        <>
-                            <BookOpen size={18} />
-                            <span>Library</span>
-                        </>
-                    ) : (
-                        <>
-                            <BookOpen size={20} />
-                            <div className="ceova-tooltip">Library</div>
-                        </>
-                    )}
-                </button>
-
-                <button 
-                    className={`icon-nav-btn ${!isSidebarOpen ? 'ceova-tooltip-container' : ''}`} 
-                    onClick={() => handleAction(onTaskClick)}
-                    title={isSidebarOpen ? "Task" : undefined}
-                    style={{ 
-                        padding: isSidebarOpen ? '10px 14px' : '12px', 
-                        width: isSidebarOpen ? '100%' : 'max-content',
-                        display: 'flex',
-                        justifyContent: isSidebarOpen ? 'flex-start' : 'center',
-                        alignItems: 'center',
-                        gap: '12px'
-                    }}
-                >
-                    {isSidebarOpen ? (
-                        <>
-                            <SquareCheck size={18} />
-                            <span>Task</span>
-                        </>
-                    ) : (
-                        <>
-                            <SquareCheck size={20} />
-                            <div className="ceova-tooltip">Task</div>
-                        </>
-                    )}
-                </button>
-            </div>
-
+            {/* 3. CHATS SECTION (PINNED & RECENTS) */}
             {isSidebarOpen && (
                 <div className="chats-section">
                     {pinnedChatIds.length > 0 && (
                         <div className="chat-group">
-                            <div className="section-title">
-                                Pinned
-                            </div>
+                            <div className="section-title">Pinned</div>
                             <div className="chat-list">
                                 {pinnedChatIds.map(chatId => renderChatItem(chatId, true))}
                             </div>
@@ -430,67 +363,121 @@ export default function Sidebar({
                     )}
 
                     <div className="chat-group">
-                        <div className="section-title">
-                            Recents
-                        </div>
+                        <div className="section-title">Recents</div>
                         <div className="chat-list">
-                            {recentChatIds.map(chatId => renderChatItem(chatId, false))}
+                            {recentChatIds.length > 0 ? (
+                                recentChatIds.map(chatId => renderChatItem(chatId, false))
+                            ) : (
+                                <div className="chat-empty-state">No recent chats</div>
+                            )}
                         </div>
                     </div>
+                </div>
+            )}
 
-                    {pinnedChatIds.length === 0 && recentChatIds.length === 0 && (
-                        <div className="chat-empty-state">
-                            {searchQuery ? 'No chats match search' : 'No chats yet'}
+            {!isSidebarOpen && <div style={{ flexGrow: 1 }} />}
+
+            {/* 4. BOTTOM FLOATING DOCK (CHATGPT-STYLE PILL + USER PROFILE) */}
+            {isSidebarOpen ? (
+                <div className="sidebar-bottom-dock">
+                    <button 
+                        type="button"
+                        className="dock-chat-btn"
+                        onClick={() => handleAction(createNewChat)}
+                        title="New Chat"
+                    >
+                        <Edit size={16} strokeWidth={2.4} />
+                        <span>Chat</span>
+                    </button>
+
+                    <div className="dock-user-area" ref={userMenuRef}>
+                        <button 
+                            type="button"
+                            className="dock-settings-btn"
+                            onClick={() => handleAction(onToggleSettings)}
+                            title="Settings"
+                        >
+                            <Settings size={18} />
+                        </button>
+
+                        {userEmail && (
+                            <button 
+                                type="button"
+                                className={`dock-avatar-btn ${isUserMenuOpen ? 'active' : ''}`}
+                                onClick={() => setIsUserMenuOpen(prev => !prev)}
+                                title={userName}
+                                aria-label="Account details"
+                            >
+                                {userMetadata?.avatar_url ? (
+                                    <img src={userMetadata.avatar_url} alt={userName} className="dock-avatar-img" />
+                                ) : (
+                                    <div className="dock-avatar-placeholder">
+                                        {userName.charAt(0).toUpperCase()}
+                                    </div>
+                                )}
+                            </button>
+                        )}
+
+                        {isUserMenuOpen && (
+                            <div className="user-dropdown-popover">
+                                <div className="user-dropdown-header">
+                                    <div className="user-dropdown-name">{userName}</div>
+                                    <div className="user-dropdown-email">{userEmail}</div>
+                                </div>
+                                <div className="user-dropdown-divider" />
+                                <button 
+                                    type="button"
+                                    className="user-dropdown-item"
+                                    onClick={() => {
+                                        setIsUserMenuOpen(false);
+                                        handleAction(onToggleSettings);
+                                    }}
+                                >
+                                    <Settings size={15} />
+                                    <span>Settings</span>
+                                </button>
+                                <button 
+                                    type="button"
+                                    className="user-dropdown-item danger"
+                                    onClick={() => {
+                                        setIsUserMenuOpen(false);
+                                        onLogout?.();
+                                    }}
+                                >
+                                    <LogOut size={15} />
+                                    <span>Log out</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                /* Collapsed bottom icons for Desktop */
+                <div className="collapsed-bottom-rail">
+                    <button 
+                        className="icon-nav-btn ceova-tooltip-container"
+                        onClick={() => handleAction(onToggleSettings)} 
+                    >
+                        <Settings size={20} />
+                        <div className="ceova-tooltip">Settings</div>
+                    </button>
+                    {userEmail && (
+                        <div 
+                            className="collapsed-avatar ceova-tooltip-container"
+                            onClick={() => handleAction(onToggleSettings)}
+                        >
+                            {userMetadata?.avatar_url ? (
+                                <img src={userMetadata.avatar_url} alt={userName} style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
+                            ) : (
+                                <div style={{ width: '32px', height: '32px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--input-bg)', color: 'var(--text-main)', borderRadius: '50%', border: '1px solid var(--border-color)', fontWeight: 600 }}>
+                                    {userName.charAt(0).toUpperCase()}
+                                </div>
+                            )}
+                            <div className="ceova-tooltip">{userName}</div>
                         </div>
                     )}
                 </div>
             )}
-
-            {/* When sidebar is closed, flexGrow to push bottom to bottom */}
-            {!isSidebarOpen && <div style={{ flexGrow: 1 }} />}
-
-            <div className="sidebar-bottom" style={{ padding: isSidebarOpen ? '12px' : '20px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isSidebarOpen ? '8px' : '16px' }}>
-                <div style={{ width: '100%', padding: isSidebarOpen ? '0 12px' : '0', display: 'flex', justifyContent: 'center' }}>
-                    <button 
-                        className={`icon-nav-btn ${!isSidebarOpen ? 'ceova-tooltip-container' : ''}`} 
-                        onClick={() => handleAction(onToggleSettings)} 
-                        title={isSidebarOpen ? "Settings" : undefined} 
-                        style={{ padding: isSidebarOpen ? '10px 14px' : '12px', width: isSidebarOpen ? '100%' : 'max-content' }}
-                    >
-                        {isSidebarOpen ? (
-                            <>
-                                <Settings size={20} />
-                                <span>Settings</span>
-                            </>
-                        ) : (
-                            <>
-                                <Settings size={20} />
-                                <div className="ceova-tooltip">Settings</div>
-                            </>
-                        )}
-                    </button>
-                </div>
-                
-                {userEmail && (
-                    <div className={`user-info ${!isSidebarOpen ? 'ceova-tooltip-container' : ''}`} style={{ justifyContent: isSidebarOpen ? 'flex-start' : 'center', width: '100%' }}>
-                        {userMetadata?.avatar_url ? (
-                            <img src={userMetadata.avatar_url} alt={userName} className="user-avatar" style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
-                        ) : (
-                            <div className="user-avatar" style={{ width: '32px', height: '32px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--input-bg)', color: 'var(--text-main)', borderRadius: '50%', border: '1px solid var(--border-color)' }}>
-                                {userName.charAt(0).toUpperCase()}
-                            </div>
-                        )}
-                        {isSidebarOpen ? (
-                            <div className="user-text">
-                                <span className="user-email" style={{ fontSize: '0.7rem' }}>{userName}</span>
-                                <button className="logout-link" onClick={onLogout}>Log out</button>
-                            </div>
-                        ) : (
-                            <div className="ceova-tooltip">{userName}</div>
-                        )}
-                    </div>
-                )}
-            </div>
         </aside>
     );
 }

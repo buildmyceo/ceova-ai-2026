@@ -11,6 +11,12 @@ dist/
 __pycache__/
 *.pyc
 
+# Android Builds & Keystores
+*.aab
+*.apk
+*.jks
+*.keystore
+
 # Tauri / Desktop Builds
 target/
 src-tauri/target/

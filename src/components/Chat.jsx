@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { Edit2, RotateCcw, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Download, Image as ImageIcon, ArrowRight, Loader, Sparkles, HardDrive, Folder, Code, Brain, Globe } from 'lucide-react';
+import { 
+  Edit2, RotateCcw, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Download, 
+  Image as ImageIcon, ArrowRight, Loader, Sparkles, HardDrive, Folder, Code, 
+  Brain, Globe, Volume2, Share2, Trash2, Edit3, MoreHorizontal 
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import imageCompression from 'browser-image-compression';
 import { PDFDocument } from 'pdf-lib';
 import { compress as compressPdf } from '@quicktoolsone/pdf-compress';
@@ -16,25 +21,11 @@ import WebsitePreviewModal from './WebsitePreviewModal';
 import DriveFilesCard from './DriveFilesCard';
 import DriveFilePreviewModal from './DriveFilePreviewModal';
 import CalendarEventCard from './CalendarEventCard';
+import GenerativePreviewCard from './GenerativePreviewCard';
+import { downloadFile } from '../utils/downloader';
+
 async function forceDownloadImage(url, filename = 'ceova-image.png') {
-  try {
-    const res = await fetch(url, { mode: 'cors' });
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-  } catch {
-    // CORS fallback
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-  }
+  await downloadFile(url, filename);
 }
 
 // ── Skeleton + fade-in image component ──────────────────────────────────────
@@ -44,11 +35,14 @@ function ChatImage({ src, alt, onZoom }) {
 
   return (
     <div className="chat-markdown-image">
-      {/* Square skeleton shown while image loads */}
+      {/* Generative dot matrix preview shown while image bytes load */}
       {!loaded && !failed && (
-        <div className="chat-img-skeleton">
-          <div className="skeleton-shimmer" />
-        </div>
+        <GenerativePreviewCard
+          type="image"
+          isFinishing={true}
+          statusText="Polishing the image"
+          style={{ width: '320px', height: '360px', margin: 0 }}
+        />
       )}
 
       {/* Actual image, hidden until loaded, fades in */}
@@ -177,8 +171,6 @@ function renderHtml(text) {
     .replace(/(<li[^>]*>.*<\/li>\n?)+/g, (match) => `<ul style="padding-left:20px;margin:8px 0;">${match}</ul>`)
     .replace(/^\d+\. (.+)$/gm, '<li style="margin:4px 0;padding-left:4px;">$1</li>')
     .replace(/^---$/gm, '<hr style="border:none;border-top:1px solid var(--border-color);margin:12px 0;">')
-    .replace(/\n\n/g, '</p><p style="margin:8px 0;">')
-    .replace(/\n/g, '<br />')
     // Sanitize link URLs to prevent javascript: and data: XSS, and normalize project URLs
     .replace(/(?!!)\[([^\]]+)\]\(([^)]+)\)/g, (_, linkText, rawUrl) => {
       const safeUrl = sanitizeUrl(rawUrl);
@@ -190,6 +182,26 @@ function renderHtml(text) {
       const fixedUrl = normalizeProjectUrl(match);
       return `<a href="${fixedUrl}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa;text-decoration:underline;">${fixedUrl}</a>`;
     });
+
+  // Split into paragraphs for clean typography & spacing
+  const paragraphs = processed.split(/\n{2,}/);
+  processed = paragraphs.map(p => {
+    const trimmed = p.trim();
+    if (!trimmed) return '';
+    if (
+      trimmed.startsWith('%%CODE_BLOCK_') ||
+      trimmed.startsWith('<div class="code-block-wrapper"') ||
+      trimmed.startsWith('<ul') ||
+      trimmed.startsWith('<ol') ||
+      trimmed.startsWith('<h1') ||
+      trimmed.startsWith('<h2') ||
+      trimmed.startsWith('<h3') ||
+      trimmed.startsWith('<hr')
+    ) {
+      return trimmed;
+    }
+    return `<p style="margin:0 0 10px 0;line-height:1.65;word-break:normal;overflow-wrap:break-word;">${trimmed.replace(/\n/g, '<br />')}</p>`;
+  }).filter(Boolean).join('');
 
   codeBlocks.forEach((block, i) => {
     processed = processed.replace(`%%CODE_BLOCK_cb_${i}%%`, block);
@@ -315,7 +327,7 @@ function TypewriterRenderer({ text, isTyping, onZoom }) {
       )}
       {(mainContent || (!hasThink && isTyping)) && (
         <MarkdownRenderer 
-          text={mainContent + (isTyping && !isThoughtStillOpen ? ' ▋' : '')} 
+          text={mainContent} 
           onZoom={onZoom} 
         />
       )}
@@ -464,12 +476,238 @@ function ClientCompressionWidget({ meta }) {
   return <CompressionResultCard meta={resultMeta} />;
 }
 
+// Reusable prompt matcher for image generation intents
+export const isImageRequestPrompt = (text) => {
+  if (!text || typeof text !== 'string') return false;
+  const t = text.trim();
+  // 1. Slash / command styles
+  if (/^\s*\/?(?:generate_image|genrate_image|image_gen|dalle|draw)\b/i.test(t)) return true;
+  // 2. Action verb + optional articles + visual noun
+  if (/\b(?:generate|genrate|create|make|draw|paint|sketch|render|design|produce|illustrate)\s+(?:a |an |me |the |this |some )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar|poster|flyer|creative|ad|visual)\b/i.test(t)) return true;
+  // 3. Casual requests: "want an image of", "give me a picture of", "show me a photo of", "need a picture of", "can you generate a picture", etc.
+  if (/\b(?:want|give|send|show|need|get|see)\s+(?:me\s+)?(?:a |an |the |some )?(?:image|picture|photo|illustration|artwork|drawing|sketch|portrait|wallpaper|avatar|poster|flyer)\b/i.test(t)) return true;
+  // 4. "image of ...", "picture of ...", "photo of ...", "drawing of ...", "sketch of ...", "portrait of ...", "wallpaper of ..."
+  if (/\b(?:image|picture|photo|illustration|artwork|drawing|sketch|portrait|wallpaper)\s+(?:of|for|depicting|showing|with)\b/i.test(t)) return true;
+  // 5. Short prompts like "genrate a picture", "picture of a dog", "image of dog", "photo of cat"
+  if (/^\s*(?:genrate|generate|draw|paint|sketch)\s+(?:a |an )?(?:image|picture|photo|artwork)/i.test(t)) return true;
+  // 6. Keywords
+  if (/\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(t)) return true;
+  return false;
+};
+
+export const isQRRequestPrompt = (text) => {
+  if (!text || typeof text !== 'string') return false;
+  return /^\s*(?:\/generate_qr|generate\s+(?:a\s+)?qr|genrate\s+(?:a\s+)?qr|create\s+(?:a\s+)?qr|make\s+(?:a\s+)?qr|qr\s*code|generate\s+(?:a\s+)?barcode)/i.test(text.trim());
+};
+
+// ── MessageSettingsModal (Bottom Sheet Action Modal) ──────────────────────────
+function MessageSettingsModal({ msg, isUser, isOpen, onClose, onCopy, onEdit, onRegenerate }) {
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCopied(false);
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !msg) return null;
+
+  const rawText = msg.text || '';
+  const cleanSnippet = rawText
+    .replace(/<!--\s*ACTION_META:.*?-->/gs, '')
+    .replace(/:::drive_files.*?:::/gs, '')
+    .replace(/:::calendar_event.*?:::/gs, '')
+    .replace(/The tool completed successfully\./gi, '')
+    .trim();
+
+  const handleCopyClick = () => {
+    onCopy(cleanSnippet, msg.id || msg.tempId);
+    setCopied(true);
+    try {
+      Haptics.impact({ style: ImpactStyle.Light });
+    } catch (e) {}
+    setTimeout(() => {
+      setCopied(false);
+      onClose();
+    }, 450);
+  };
+
+  const handleEditClick = () => {
+    try {
+      Haptics.impact({ style: ImpactStyle.Light });
+    } catch (e) {}
+    onClose();
+    if (onEdit) onEdit(msg);
+  };
+
+  const handleRegenerateClick = () => {
+    try {
+      Haptics.impact({ style: ImpactStyle.Light });
+    } catch (e) {}
+    onClose();
+    if (onRegenerate) onRegenerate(msg);
+  };
+
+  const handleSpeakClick = () => {
+    try {
+      Haptics.impact({ style: ImpactStyle.Light });
+    } catch (e) {}
+
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      return;
+    }
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    } else {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(cleanSnippet);
+      utterance.rate = 1.0;
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+      setIsSpeaking(true);
+    }
+  };
+
+  const handleShareClick = async () => {
+    try {
+      Haptics.impact({ style: ImpactStyle.Light });
+    } catch (e) {}
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Ceova Message',
+          text: cleanSnippet
+        });
+        onClose();
+        return;
+      } catch (err) {}
+    }
+    handleCopyClick();
+  };
+
+  return (
+    <div className="message-settings-overlay" onClick={onClose}>
+      <motion.div 
+        className="message-settings-sheet"
+        initial={{ y: "100%", opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: "100%", opacity: 0 }}
+        transition={{ type: "spring", damping: 28, stiffness: 350 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sheet-handle" />
+        
+        <div className="sheet-header-info">
+          <span className="sheet-badge">{isUser ? 'You' : 'Ceova AI'}</span>
+          <p className="sheet-preview-snippet">
+            {cleanSnippet.slice(0, 110)}{cleanSnippet.length > 110 ? '...' : ''}
+          </p>
+        </div>
+
+        <div className="sheet-actions-list">
+          <button type="button" className="sheet-action-item" onClick={handleCopyClick}>
+            {copied ? <Check size={18} className="sheet-action-icon success" /> : <Copy size={18} className="sheet-action-icon" />}
+            <span className="sheet-action-label">{copied ? 'Copied to Clipboard' : 'Copy Text'}</span>
+          </button>
+
+          {isUser && (
+            <button type="button" className="sheet-action-item" onClick={handleEditClick}>
+              <Edit3 size={18} className="sheet-action-icon" />
+              <span className="sheet-action-label">Edit Message</span>
+            </button>
+          )}
+
+          <button type="button" className="sheet-action-item" onClick={handleRegenerateClick}>
+            <RotateCcw size={18} className="sheet-action-icon" />
+            <span className="sheet-action-label">Regenerate Response</span>
+          </button>
+
+          {typeof window !== 'undefined' && 'speechSynthesis' in window && (
+            <button type="button" className="sheet-action-item" onClick={handleSpeakClick}>
+              <Volume2 size={18} className={`sheet-action-icon ${isSpeaking ? 'active' : ''}`} />
+              <span className="sheet-action-label">{isSpeaking ? 'Stop Speaking' : 'Read Aloud'}</span>
+            </button>
+          )}
+
+          <button type="button" className="sheet-action-item" onClick={handleShareClick}>
+            <Share2 size={18} className="sheet-action-icon" />
+            <span className="sheet-action-label">Share Message</span>
+          </button>
+        </div>
+
+        <button type="button" className="sheet-cancel-btn" onClick={onClose}>
+          Cancel
+        </button>
+      </motion.div>
+    </div>
+  );
+}
+
 // ── MessageItem component ────────────────────────────────────────────────────
-function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onPreviewWebsite, onPreviewDriveFile }) {
+function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onPreviewWebsite, onPreviewDriveFile, onOpenSettings }) {
   const [showActions, setShowActions] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [hasProceeded, setHasProceeded] = useState(false);
   const hideTimerRef = useRef(null);
+
+  // Long-press handling
+  const touchStartPos = useRef({ x: 0, y: 0 });
+  const longPressTimer = useRef(null);
+  const isLongPressTriggered = useRef(false);
+
+  const startPress = (e) => {
+    isLongPressTriggered.current = false;
+    const touch = e.touches ? e.touches[0] : e;
+    touchStartPos.current = { x: touch.clientX, y: touch.clientY };
+
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(async () => {
+      isLongPressTriggered.current = true;
+      try {
+        await Haptics.impact({ style: ImpactStyle.Medium });
+      } catch (err) {}
+      if (onOpenSettings) {
+        onOpenSettings(msg);
+      }
+    }, 450);
+  };
+
+  const movePress = (e) => {
+    if (!longPressTimer.current) return;
+    const touch = e.touches ? e.touches[0] : e;
+    const dx = Math.abs(touch.clientX - touchStartPos.current.x);
+    const dy = Math.abs(touch.clientY - touchStartPos.current.y);
+    if (dx > 10 || dy > 10) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const endPress = (e) => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    if (isLongPressTriggered.current) {
+      if (e && e.cancelable) e.preventDefault();
+      isLongPressTriggered.current = false;
+    }
+  };
+
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    if (onOpenSettings) {
+      try {
+        Haptics.impact({ style: ImpactStyle.Light });
+      } catch (err) {}
+      onOpenSettings(msg);
+    }
+  };
 
   let rawText = msg.text || '';
   let actionMeta = null;
@@ -686,12 +924,63 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
     );
   }, [messages, idx]);
 
-  const handleProceed = () => {
-    if (hasProceeded) return;
-    setHasProceeded(true);
-    if (onSuggestionClick) {
-      onSuggestionClick("Proceed");
+  const isGeneratingImage = useMemo(() => {
+    if (isUser) return false;
+    // Once the markdown image is present, the image itself takes over
+    if (rawText && rawText.includes('![')) return false;
+
+    // Must be actively live or typing
+    const isLiveOrTyping = Boolean(msg.isTyping || msg.isLive);
+    if (!isLiveOrTyping) return false;
+
+    // 1. Explicit message flag set by Home.jsx
+    if (msg.isGeneratingImage) return true;
+
+    // 2. Tool status matches ANY stage of image generation/editing/detail/polish
+    const toolStatusMatch = Boolean(
+      msg.toolStatus &&
+      /image|poster|photo|picture|sketch|drawing|inpaint|remove\s*object|background_remover|generate_image|genrate_image|draft|polish|details?|design|visual|artwork|first draft/i.test(msg.toolStatus)
+    );
+    if (toolStatusMatch) return true;
+
+    // 3. Look back at the user prompt using our comprehensive image intent matcher
+    if (messages && idx > 0) {
+      const prevUser = messages.slice(0, idx).reverse().find(m => m.sender === 'user');
+      if (prevUser && prevUser.text && isImageRequestPrompt(prevUser.text)) {
+        return true;
+      }
     }
+
+    return false;
+  }, [isUser, rawText, msg.isGeneratingImage, msg.toolStatus, msg.isTyping, msg.isLive, messages, idx]);
+
+  const isGeneratingQR = useMemo(() => {
+    if (isUser) return false;
+    if (actionMeta && actionMeta.type === 'client_qr_barcode_action') return false;
+
+    const isLiveOrTyping = Boolean(msg.isTyping || msg.isLive);
+    if (!isLiveOrTyping) return false;
+
+    if (msg.isGeneratingQR) return true;
+
+    const toolStatusMatch = Boolean(
+      msg.toolStatus &&
+      /qr|barcode|generate_qr|scan_barcode|encoding data/i.test(msg.toolStatus)
+    );
+    if (toolStatusMatch) return true;
+
+    if (messages && idx > 0) {
+      const prevUser = messages.slice(0, idx).reverse().find(m => m.sender === 'user');
+      if (prevUser && prevUser.text && isQRRequestPrompt(prevUser.text)) {
+        return true;
+      }
+    }
+
+    return false;
+  }, [isUser, actionMeta, msg.isGeneratingQR, msg.toolStatus, msg.isTyping, msg.isLive, messages, idx]);
+
+  const handleProceed = () => {
+    return;
   };
 
   const handleInteraction = () => {
@@ -708,6 +997,11 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
       className={`message-row ${isUser ? 'user-row' : 'ai-row'}`}
       onMouseEnter={handleInteraction}
       onClick={handleInteraction}
+      onTouchStart={startPress}
+      onTouchMove={movePress}
+      onTouchEnd={endPress}
+      onTouchCancel={endPress}
+      onContextMenu={handleContextMenu}
     >
       {/* Full-screen lightbox with force-download */}
       {previewUrl && (
@@ -772,20 +1066,37 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
             </div>
           )}
 
-          <div className="user-pill">{msg.text}</div>
+          <div 
+            className="user-pill"
+            style={{
+              width: 'fit-content',
+              minWidth: 'fit-content',
+              maxWidth: '100%',
+              wordBreak: 'normal',
+              overflowWrap: 'break-word',
+              whiteSpace: 'pre-wrap',
+              display: 'inline-block'
+            }}
+          >
+            {msg.text}
+          </div>
           <div className={`message-actions ${showActions ? 'visible' : ''}`}>
             <button onClick={(e) => { e.stopPropagation(); handleCopy(rawText, msg.id || msg.tempId); }} title="Copy message">
               {copiedId === (msg.id || msg.tempId) ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onOpenSettings && onOpenSettings(msg); }} title="Message settings">
+              <MoreHorizontal size={14} />
             </button>
           </div>
         </div>
       ) : (
         <>
-          <div className="ai-brand-avatar">
-            <img src="/ceova-logo.png" alt="Ceova" className="ai-avatar-img" />
-          </div>
           <div className="ai-content">
-            {msg.toolStatus ? (
+            {isGeneratingImage ? (
+              <GenerativePreviewCard type="image" statusText={msg.toolStatus} />
+            ) : isGeneratingQR ? (
+              <GenerativePreviewCard type="qr" statusText={msg.toolStatus} />
+            ) : msg.toolStatus ? (
               <CyclingStatus defaultStatus={msg.toolStatus} />
             ) : (msg.isTyping && !msg.text) ? (
               <CyclingStatus defaultStatus={null} />
@@ -793,7 +1104,7 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
               <CyclingStatus defaultStatus={displayText || "Processing..."} />
             ) : null}
 
-            {(displayText || (msg.isTyping && !parsedDriveFiles.length && !resolvedCalendarEvent)) ? (
+            {(!isGeneratingImage && !isGeneratingQR && (displayText || (msg.isTyping && !parsedDriveFiles.length && !resolvedCalendarEvent))) ? (
               <TypewriterRenderer text={(displayText || '').replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
             ) : null}
 
@@ -814,89 +1125,47 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
             )}
 
             {isPlanMessage && !resolvedCloudProject && (
-              hasProceeded ? (
-                <div style={{
-                  marginTop: '16px',
-                  padding: '10px 16px',
-                  background: 'rgba(16, 163, 127, 0.1)',
-                  border: '1px solid rgba(16, 163, 127, 0.25)',
-                  borderRadius: '10px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  color: '#10a37f',
-                  fontSize: '0.88rem',
-                  fontWeight: 600
-                }}>
-                  <Check size={16} />
-                  <span>Plan approved. Starting website generation...</span>
-                </div>
-              ) : !hasLaterResponse ? (
-                <div className="plan-approval-container" style={{
-                  marginTop: '18px',
-                  padding: '14px 18px',
-                  background: 'rgba(99, 102, 241, 0.08)',
-                  border: '1px solid rgba(99, 102, 241, 0.22)',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: '12px'
-                }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                    <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary, #ffffff)' }}>
-                      Ready to build this website?
-                    </div>
-                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary, rgba(255, 255, 255, 0.65))' }}>
-                      Review the plan above. Click <strong>Proceed</strong> to start building, or reply with edits to update the plan.
-                    </div>
+              <div className="plan-approval-container" style={{
+                marginTop: '18px',
+                padding: '14px 18px',
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px'
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div style={{ fontSize: '0.92rem', fontWeight: 600, color: '#f87171' }}>
+                    Website Development Tool Paused
                   </div>
-                  <button
-                    id="plan-proceed-action-btn"
-                    onClick={handleProceed}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '10px 22px',
-                      background: 'linear-gradient(135deg, #7c5cfc 0%, #6366f1 100%)',
-                      color: '#ffffff',
-                      borderRadius: '9px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      fontSize: '0.92rem',
-                      boxShadow: '0 4px 14px rgba(124, 92, 252, 0.35)',
-                      transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                      flexShrink: 0
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-1px)';
-                      e.currentTarget.style.boxShadow = '0 6px 20px rgba(124, 92, 252, 0.45)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 4px 14px rgba(124, 92, 252, 0.35)';
-                    }}
-                  >
-                    <span>Proceed</span>
-                    <ArrowRight size={16} />
-                  </button>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary, rgba(255, 255, 255, 0.65))' }}>
+                    The website development tool is currently paused and temporarily unavailable.
+                  </div>
                 </div>
-              ) : (
-                <div style={{
-                  marginTop: '12px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontSize: '0.82rem',
-                  color: 'rgba(255, 255, 255, 0.45)'
-                }}>
-                  <Check size={14} color="#10a37f" />
-                  <span>Plan reviewed</span>
-                </div>
-              )
+                <button
+                  id="plan-proceed-action-btn"
+                  disabled
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 16px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    cursor: 'not-allowed',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    flexShrink: 0
+                  }}
+                >
+                  <span>Tool Paused</span>
+                </button>
+              </div>
             )}
 
 
@@ -983,6 +1252,9 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
                   <button onClick={(e) => { e.stopPropagation(); handleCopy(rawText, msg.id || msg.tempId); }} title="Copy message">
                     {copiedId === (msg.id || msg.tempId) ? <Check size={14} /> : <Copy size={14} />}
                   </button>
+                  <button onClick={(e) => { e.stopPropagation(); onOpenSettings && onOpenSettings(msg); }} title="Message settings">
+                    <MoreHorizontal size={14} />
+                  </button>
                 </div>
           </div>
         </>
@@ -991,64 +1263,31 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
   );
 }
 
-const IMAGE_STATUSES = [
-  "Generating image...",
-  "Adding design...",
-  "Just completed...",
-  "Last edit..."
-];
-
 const GENERAL_STATUSES = ["Thinking...", "Writing...", "Searching..."];
 
 const CyclingStatus = ({ defaultStatus }) => {
-  const [imageStatusIdx, setImageStatusIdx] = useState(0);
   const [generalStatusIdx, setGeneralStatusIdx] = useState(0);
-  const startTimeRef = useRef(Date.now());
 
+  // If this is an image generation stage, do NOT render raw text - show GenerativePreviewCard
   const isImageStatus = Boolean(
     defaultStatus && (
-      /image|design|completed|edit|detail|almost done/i.test(defaultStatus)
+      /image|design|completed|edit|detail|almost done|sketch|draft|polish|inpaint/i.test(defaultStatus)
     ) && !/extracting visual|writing local/i.test(defaultStatus)
   );
 
   useEffect(() => {
-    startTimeRef.current = Date.now();
-  }, [isImageStatus]);
+    if (defaultStatus) return;
+    const interval = setInterval(() => {
+      setGeneralStatusIdx(prev => (prev + 1) % GENERAL_STATUSES.length);
+    }, 2200);
+    return () => clearInterval(interval);
+  }, [defaultStatus]);
 
-  useEffect(() => {
-    const updateProgress = () => {
-      if (isImageStatus) {
-        const elapsed = Date.now() - startTimeRef.current;
-        // Advance every 2.6 seconds through the 4 requested stages, holding at the last stage
-        const idx = Math.min(Math.floor(elapsed / 2600), IMAGE_STATUSES.length - 1);
-        setImageStatusIdx(idx);
-      } else if (!defaultStatus) {
-        setGeneralStatusIdx(prev => (prev + 1) % GENERAL_STATUSES.length);
-      }
-    };
+  if (isImageStatus) {
+    return <GenerativePreviewCard type="image" statusText={defaultStatus} />;
+  }
 
-    // Fast interval ensures smooth updates
-    const interval = setInterval(updateProgress, 400);
-
-    // Instant update whenever user switches back to this tab
-    const handleSync = () => {
-      if (document.visibilityState === 'visible') {
-        updateProgress();
-      }
-    };
-    document.addEventListener('visibilitychange', handleSync);
-    window.addEventListener('focus', handleSync);
-
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleSync);
-      window.removeEventListener('focus', handleSync);
-    };
-  }, [defaultStatus, isImageStatus]);
-
-  const currentText = isImageStatus 
-    ? IMAGE_STATUSES[imageStatusIdx] 
-    : (defaultStatus || GENERAL_STATUSES[generalStatusIdx]);
+  const currentText = defaultStatus || GENERAL_STATUSES[generalStatusIdx];
 
   const lcText = (currentText || '').toLowerCase();
   let iconSrc = null;
@@ -1081,6 +1320,7 @@ export default function Chat({ messages, onSuggestionClick, userEmail, onRegener
   const [copiedId, setCopiedId] = React.useState(null);
   const [previewProject, setPreviewProject] = React.useState(null);
   const [drivePreviewFile, setDrivePreviewFile] = React.useState(null);
+  const [selectedMsgForSettings, setSelectedMsgForSettings] = React.useState(null);
 
   const handleCopy = (text, id) => {
     navigator.clipboard.writeText(text);
@@ -1127,6 +1367,7 @@ export default function Chat({ messages, onSuggestionClick, userEmail, onRegener
                 onFolderConnected={onFolderConnected}
                 onPreviewWebsite={setPreviewProject}
                 onPreviewDriveFile={setDrivePreviewFile}
+                onOpenSettings={(m) => setSelectedMsgForSettings(m)}
               />
             );
           })}
@@ -1146,6 +1387,18 @@ export default function Chat({ messages, onSuggestionClick, userEmail, onRegener
           file={drivePreviewFile}
           isOpen={!!drivePreviewFile}
           onClose={() => setDrivePreviewFile(null)}
+        />
+      )}
+
+      {selectedMsgForSettings && (
+        <MessageSettingsModal
+          msg={selectedMsgForSettings}
+          isUser={selectedMsgForSettings.sender === 'user'}
+          isOpen={!!selectedMsgForSettings}
+          onClose={() => setSelectedMsgForSettings(null)}
+          onCopy={handleCopy}
+          onEdit={handleEditInit}
+          onRegenerate={onRegenerate}
         />
       )}
     </div>

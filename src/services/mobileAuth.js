@@ -90,14 +90,35 @@ export const initiateGoogleSignIn = async () => {
     } catch (nativeErr) {
       console.warn('[MobileAuth] Native Google login error:', nativeErr);
 
-      // Check if user cancelled the account selection bottom sheet
-      const errStr = (nativeErr?.message || nativeErr?.code || '').toString().toLowerCase();
-      if (errStr.includes('user_cancelled') || errStr.includes('cancel') || errStr.includes('16') || nativeErr?.code === 'USER_CANCELLED') {
+      const rawMsg = (nativeErr?.message || '').toString();
+      const rawCode = (nativeErr?.code || '').toString();
+      const combined = `${rawMsg} ${rawCode}`.toLowerCase();
+
+      // Differentiate genuine user cancellation from authentication/reauth/configuration failures.
+      // E.g., "[16] Account reauth failed" contains "16", but is an auth failure, NOT a user cancellation.
+      const isAuthFailure = combined.includes('reauth') || 
+                            combined.includes('fail') || 
+                            combined.includes('developer console') || 
+                            combined.includes('misconfiguration') || 
+                            combined.includes('error');
+
+      const isExplicitCancel = !isAuthFailure && (
+        combined.includes('user_cancelled') ||
+        combined.includes('user canceled') ||
+        combined.includes('user cancelled') ||
+        combined.includes('canceled by user') ||
+        combined.includes('cancelled by user') ||
+        combined.includes('the user canceled') ||
+        combined.includes('the user cancelled') ||
+        rawCode === 'USER_CANCELLED'
+      );
+
+      if (isExplicitCancel) {
         console.log('[MobileAuth] User cancelled Google account selection.');
         return { type: 'cancelled' };
       }
 
-      console.log('[MobileAuth] Falling back to In-App Chrome Custom Tab OAuth...');
+      console.log('[MobileAuth] Native login failed; falling back to In-App Chrome Custom Tab OAuth...');
     }
 
     // Fallback: In-App Chrome Custom Tab OAuth with deep link return

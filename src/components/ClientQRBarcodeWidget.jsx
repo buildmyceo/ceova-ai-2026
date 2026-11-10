@@ -3,6 +3,7 @@ import { Loader, Download, CheckCircle, AlertTriangle, Scan, Copy, Check } from 
 import QRCode from 'qrcode';
 import { BrowserMultiFormatReader } from '@zxing/library';
 import { PDFDocument } from 'pdf-lib';
+import GenerativePreviewCard from './GenerativePreviewCard';
 
 // Map ZXing BarcodeFormat enum values to readable names if needed, though they are usually numeric.
 const formatNames = {
@@ -134,11 +135,11 @@ export default function ClientQRBarcodeWidget({ meta }) {
 
   if (isProcessing) {
     return (
-      <div className="compression-card" style={{ justifyContent: 'center', opacity: 0.8 }}>
-         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#9ca3af', fontSize: '0.9rem' }}>
-            <Loader size={16} className="animate-spin" /> {meta.operation === 'scan_barcode' ? 'Scanning image...' : 'Generating code...'}
-         </div>
-      </div>
+      <GenerativePreviewCard 
+        type={meta?.operation === 'scan_barcode' ? 'barcode' : 'qr'} 
+        statusText={meta?.operation === 'scan_barcode' ? 'Scanning barcode...' : 'Generating QR code...'}
+        style={{ margin: '6px 0', maxWidth: '320px', height: '360px' }}
+      />
     );
   }
 

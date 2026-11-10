@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase, SUPABASE_KEY, SUPABASE_URL } from '../services/supabase';
 import Sidebar from '../components/Sidebar';
-import Chat from '../components/Chat';
+import Chat, { isImageRequestPrompt, isQRRequestPrompt } from '../components/Chat';
 import InputBox from '../components/InputBox';
 import SettingsModal from '../components/SettingsModalV2';
 import SearchModal from '../components/SearchModal';
@@ -16,6 +16,7 @@ import { buildSystemPrompt } from '../lib/systemPromptBuilder';
 import { generateChatTitle, renameLegacyChats } from '../services/titleGenerator';
 import { getGreetingName, getGreetingHeadline, getTimePeriod, getGreetingSubtitle } from '../constants/greetings';
 import PhoneLinkModal from '../components/PhoneLinkModal';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 const CURRENT_CHAT_KEY = "chat_id";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -134,6 +135,233 @@ export default function Home({ session }) {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    // --- Mobile Touch Gestures for Drawer Slide Open / Close ---
+    const sidebarWrapperRef = useRef(null);
+    const overlayRef = useRef(null);
+    const isSidebarOpenRef = useRef(isSidebarOpen);
+    const modalsOpenRef = useRef(false);
+    const cleanupTimeoutRef = useRef(null);
+
+    const touchStartX = useRef(0);
+    const touchStartY = useRef(0);
+    const touchStartTime = useRef(0);
+    const touchCurrentX = useRef(0);
+    const initialSidebarOpen = useRef(false);
+    const gestureState = useRef('idle'); // 'idle' | 'pending' | 'dragging' | 'scrolling' | 'ignored'
+    const activeDrag = useRef(false);
+
+    useEffect(() => {
+        isSidebarOpenRef.current = isSidebarOpen;
+    }, [isSidebarOpen]);
+
+    useEffect(() => {
+        modalsOpenRef.current = Boolean(
+            isSettingsOpen ||
+            isSearchModalOpen ||
+            isTaskModalOpen ||
+            isLibraryOpen ||
+            isPhoneModalOpen
+        );
+    }, [isSettingsOpen, isSearchModalOpen, isTaskModalOpen, isLibraryOpen, isPhoneModalOpen]);
+
+    useEffect(() => {
+        const handleTouchStart = (e) => {
+            if (window.innerWidth > 768) return;
+            if (!e.touches || e.touches.length !== 1) return;
+            if (modalsOpenRef.current) return;
+            if (document.querySelector('.message-settings-overlay, .modal-backdrop, .dialog-overlay, .preview-modal-overlay')) return;
+
+            const target = e.target;
+            if (target && target.closest('input, textarea, [contenteditable="true"], select, pre, code, .code-block, .cm-editor, .message-settings-sheet, .sheet-content')) {
+                return;
+            }
+
+            if (cleanupTimeoutRef.current) {
+                clearTimeout(cleanupTimeoutRef.current);
+                cleanupTimeoutRef.current = null;
+            }
+
+            const touch = e.touches[0];
+            touchStartX.current = touch.clientX;
+            touchStartY.current = touch.clientY;
+            touchCurrentX.current = touch.clientX;
+            touchStartTime.current = Date.now();
+            initialSidebarOpen.current = isSidebarOpenRef.current;
+            gestureState.current = 'pending';
+            activeDrag.current = true;
+        };
+
+        const handleTouchMove = (e) => {
+            if (!activeDrag.current) return;
+            if (!e.touches || e.touches.length !== 1) return;
+
+            const touch = e.touches[0];
+            const clientX = touch.clientX;
+            const clientY = touch.clientY;
+            const dx = clientX - touchStartX.current;
+            const dy = clientY - touchStartY.current;
+            touchCurrentX.current = clientX;
+
+            if (gestureState.current === 'pending') {
+                const dist = Math.hypot(dx, dy);
+                if (dist < 8) return; // wait for clear gesture direction
+
+                // If vertical movement dominates, lock into scrolling and don't intercept
+                if (Math.abs(dy) >= Math.abs(dx)) {
+                    gestureState.current = 'scrolling';
+                    activeDrag.current = false;
+                    return;
+                }
+
+                // Horizontal movement detected
+                const isEdgeSwipe = touchStartX.current <= 75;
+                if (!initialSidebarOpen.current) {
+                    // Closed: only valid if swiping right (dx > 0)
+                    const isValidRightSwipe = isEdgeSwipe ? (dx > 0) : (dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.3);
+                    if (isValidRightSwipe) {
+                        gestureState.current = 'dragging';
+                    } else {
+                        gestureState.current = 'ignored';
+                        activeDrag.current = false;
+                        return;
+                    }
+                } else {
+                    // Open: only valid if swiping left (dx < 0)
+                    if (dx < 0 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+                        gestureState.current = 'dragging';
+                    } else {
+                        gestureState.current = 'ignored';
+                        activeDrag.current = false;
+                        return;
+                    }
+                }
+            }
+
+            if (gestureState.current === 'dragging') {
+                if (e.cancelable) e.preventDefault();
+
+                const drawerWidth = Math.min(320, window.innerWidth * 0.82);
+                if (sidebarWrapperRef.current) {
+                    sidebarWrapperRef.current.classList.add('is-dragging');
+                }
+                if (overlayRef.current) {
+                    overlayRef.current.classList.add('is-dragging');
+                }
+
+                if (!initialSidebarOpen.current) {
+                    // Opening drawer (dragging right from closed)
+                    const clampedDx = Math.max(0, Math.min(drawerWidth, dx));
+                    const translateX = -drawerWidth + clampedDx;
+                    const progress = clampedDx / drawerWidth;
+
+                    if (sidebarWrapperRef.current) {
+                        sidebarWrapperRef.current.style.transform = `translateX(${translateX}px)`;
+                    }
+                    if (overlayRef.current) {
+                        overlayRef.current.style.opacity = (progress * 0.6).toFixed(3);
+                        overlayRef.current.style.pointerEvents = 'auto';
+                    }
+                } else {
+                    // Closing drawer (dragging left from open)
+                    const clampedDx = Math.min(0, Math.max(-drawerWidth, dx));
+                    const translateX = clampedDx;
+                    const progress = 1 + (clampedDx / drawerWidth);
+
+                    if (sidebarWrapperRef.current) {
+                        sidebarWrapperRef.current.style.transform = `translateX(${translateX}px)`;
+                    }
+                    if (overlayRef.current) {
+                        overlayRef.current.style.opacity = (progress * 0.6).toFixed(3);
+                    }
+                }
+            }
+        };
+
+        const handleTouchEnd = () => {
+            if (!activeDrag.current) return;
+            activeDrag.current = false;
+
+            if (gestureState.current !== 'dragging') {
+                gestureState.current = 'idle';
+                return;
+            }
+            gestureState.current = 'idle';
+
+            const dx = touchCurrentX.current - touchStartX.current;
+            const dt = Math.max(1, Date.now() - touchStartTime.current);
+            const velocity = dx / dt;
+            const drawerWidth = Math.min(320, window.innerWidth * 0.82);
+
+            if (sidebarWrapperRef.current) {
+                sidebarWrapperRef.current.classList.remove('is-dragging');
+            }
+            if (overlayRef.current) {
+                overlayRef.current.classList.remove('is-dragging');
+            }
+
+            if (!initialSidebarOpen.current) {
+                // Opening drawer
+                const shouldOpen = dx > (drawerWidth * 0.25) || (velocity > 0.22 && dx > 25);
+                if (shouldOpen) {
+                    if (sidebarWrapperRef.current) sidebarWrapperRef.current.style.transform = 'translateX(0px)';
+                    if (overlayRef.current) {
+                        overlayRef.current.style.opacity = '1';
+                        overlayRef.current.style.pointerEvents = 'auto';
+                    }
+                    setIsSidebarOpen(true);
+                    try { Haptics.impact({ style: ImpactStyle.Light }); } catch (e) {}
+                } else {
+                    if (sidebarWrapperRef.current) sidebarWrapperRef.current.style.transform = 'translateX(-100%)';
+                    if (overlayRef.current) {
+                        overlayRef.current.style.opacity = '0';
+                        overlayRef.current.style.pointerEvents = 'none';
+                    }
+                }
+            } else {
+                // Closing drawer
+                const shouldClose = dx < (-drawerWidth * 0.25) || (velocity < -0.22 && dx < -25);
+                if (shouldClose) {
+                    if (sidebarWrapperRef.current) sidebarWrapperRef.current.style.transform = 'translateX(-100%)';
+                    if (overlayRef.current) {
+                        overlayRef.current.style.opacity = '0';
+                        overlayRef.current.style.pointerEvents = 'none';
+                    }
+                    setIsSidebarOpen(false);
+                    try { Haptics.impact({ style: ImpactStyle.Light }); } catch (e) {}
+                } else {
+                    if (sidebarWrapperRef.current) sidebarWrapperRef.current.style.transform = 'translateX(0px)';
+                    if (overlayRef.current) {
+                        overlayRef.current.style.opacity = '1';
+                        overlayRef.current.style.pointerEvents = 'auto';
+                    }
+                }
+            }
+
+            cleanupTimeoutRef.current = setTimeout(() => {
+                if (sidebarWrapperRef.current) {
+                    sidebarWrapperRef.current.style.transform = '';
+                }
+                if (overlayRef.current) {
+                    overlayRef.current.style.opacity = '';
+                    overlayRef.current.style.pointerEvents = '';
+                }
+            }, 300);
+        };
+
+        window.addEventListener('touchstart', handleTouchStart, { passive: true });
+        window.addEventListener('touchmove', handleTouchMove, { passive: false });
+        window.addEventListener('touchend', handleTouchEnd, { passive: true });
+        window.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+
+        return () => {
+            window.removeEventListener('touchstart', handleTouchStart);
+            window.removeEventListener('touchmove', handleTouchMove);
+            window.removeEventListener('touchend', handleTouchEnd);
+            window.removeEventListener('touchcancel', handleTouchEnd);
+            if (cleanupTimeoutRef.current) clearTimeout(cleanupTimeoutRef.current);
+        };
+    }, []);
+
     const showToast = (message, type = 'success') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3000);
@@ -189,6 +417,11 @@ export default function Home({ session }) {
     useEffect(() => {
         if (!session) return;
 
+        // Clear any old message cache from IndexedDB so state is 100% direct and fresh from Supabase
+        try {
+            cacheManager.clearChats().catch(() => {});
+        } catch (e) {}
+
         // Fetch user memories to personalize greeting and AI context
         supabase
             .from('user_memory_longterm')
@@ -211,7 +444,6 @@ export default function Home({ session }) {
                 
                 const metaMap = {};
                 if (mData) {
-                    await cacheManager.setChats(mData);
                     mData.forEach(m => {
                         metaMap[m.id] = {
                             is_pinned: m.is_pinned,
@@ -223,11 +455,11 @@ export default function Home({ session }) {
                     setChatMetadata(metaMap);
                 }
 
-                // Fast Sync: Fetch messages just for the current active chat if one is set (e.g. on page reload)
+                // Direct Sync: Fetch messages directly from Supabase for the current active chat
                 let activeChatId = currentChatId;
 
                 if (activeChatId) {
-                    const { data: currentChatMessages, error: activeErr } = await supabase
+                    const { data: currentChatMessages } = await supabase
                         .from('messages')
                         .select('*')
                         .eq('chat_id', activeChatId)
@@ -239,9 +471,9 @@ export default function Home({ session }) {
                             const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
                             return {
                                 id: msg.id,
-                                sender: msg.role === 'user' ? 'user' : 'ai',
-                                text: msg.content,
-                                time: msg.created_at,
+                                sender: (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'ai',
+                                text: msg.content ?? msg.text ?? '',
+                                time: msg.created_at || msg.time,
                                 mode: msg.mode,
                                 attachments: msg.attachments || [],
                                 cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null
@@ -257,12 +489,10 @@ export default function Home({ session }) {
                             const uniquePending = pending.filter(m => !m.id || !dbIds.has(m.id));
                             return { ...prev, [activeChatId]: [...formattedMessages, ...uniquePending] };
                         });
-                        // We do NOT await this so the UI doesn't block
-                        cacheManager.setMessages(sortedCurrent).catch(console.error);
                     }
                 }
 
-                // Async Background Sync: Fetch everything else without blocking the main render
+                // Async Background Sync: Fetch all messages directly from Supabase without caching
                 supabase
                     .from('messages')
                     .select('*')
@@ -272,16 +502,15 @@ export default function Home({ session }) {
                         if (error || !data) return;
                         
                         const sortedData = sortMessagesChronologically(data);
-                        await cacheManager.setMessages(sortedData);
                         
                         const grouped = sortedData.reduce((acc, msg) => {
                             if (!acc[msg.chat_id]) acc[msg.chat_id] = [];
                             const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
                             acc[msg.chat_id].push({
                                 id: msg.id,
-                                sender: msg.role === 'user' ? 'user' : 'ai',
-                                text: msg.content,
-                                time: msg.created_at,
+                                sender: (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'ai',
+                                text: msg.content ?? msg.text ?? '',
+                                time: msg.created_at || msg.time,
                                 mode: msg.mode,
                                 attachments: msg.attachments || [],
                                 cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null
@@ -372,15 +601,28 @@ export default function Home({ session }) {
             size: file.size || 0
         }));
 
+        const isImageRequest = isImageRequestPrompt(text);
+        const isQRRequest = isQRRequestPrompt(text);
+
         const tempId = crypto.randomUUID();
         const optimisticUserMsg = { sender: "user", text, time: new Date().toISOString(), attachments: localAttachments, isHidden };
+        const initialToolStatus = files.length > 0 
+            ? "Uploading files..." 
+            : (isImageRequest 
+                ? "Sketching it out..." 
+                : (isQRRequest 
+                    ? "Generating code..." 
+                    : (isWebSearch ? "Searching the web..." : (isThinking ? "Thinking deeply..." : "Thinking..."))));
+
         const aiPlaceholder = { 
             sender: "ai", 
             text: "", 
             tempId, 
             isTyping: true, 
             isLive: true, 
-            toolStatus: files.length > 0 ? "Uploading files..." : "Thinking..." 
+            toolStatus: initialToolStatus,
+            isGeneratingImage: isImageRequest,
+            isGeneratingQR: isQRRequest
         };
 
         setChats(prev => {
@@ -696,13 +938,8 @@ export default function Home({ session }) {
         const activeProjectId = activeCloudProject?.cloudProject?.projectId || 
             activeCloudProject?.attachments?.find(a => a.type === 'cloud_project')?.data?.projectId;
 
-        // Check if user is approving a new website implementation plan
-        const lastAssistantMsg = currentMessages.slice().reverse().find(m => m.sender === 'assistant');
-        const isApprovingNewSitePlan = lastAssistantMsg && 
-            typeof lastAssistantMsg.text === 'string' &&
-            /Website Implementation Plan/i.test(lastAssistantMsg.text) &&
-            !/Revised Website Implementation Plan/i.test(lastAssistantMsg.text) &&
-            /^(?:proceed|yes|build it|go ahead|approved|approve|sure|ok|start|do it|let's do it|lets do it)\b/i.test(text.trim());
+        // Website development tool is paused
+        const isApprovingNewSitePlan = false;
 
         // Check if user explicitly requests or describes creating a brand-new website
         const isNewWebsiteRequest = /^\s*(?:please\s+)?(?:creat|create|build|make|start|generate|design)\s+(?:a\s+)?(?:completely\s+)?(?:new\s+)?(?:website|web\s*app|site|landing|portfolio|restaurant|resturent|store|bakery|project|page)/i.test(text)
@@ -719,6 +956,64 @@ export default function Home({ session }) {
             let activeToolStatus = files.length > 0 
                 ? "Uploading files..." 
                 : (isWebSearch ? "Searching the web..." : (isThinking ? "Thinking deeply..." : "Thinking..."));
+
+            let aiSaved = false;
+            let isImageGenerationActive = isImageRequest;
+
+            const persistAiResponse = async (finalContent) => {
+                if (aiSaved || isTemporary || !session?.user?.id || !idToUse) return;
+                const textToPersist = (finalContent || '').trim();
+                if (!textToPersist && !currentCloudProject) return;
+
+                aiSaved = true;
+                const aiPermanentId = crypto.randomUUID();
+                const aiAttachments = [
+                    ...(currentCloudProject ? [{ type: 'cloud_project', data: currentCloudProject }] : []),
+                    ...(currentMemoryEvents.length > 0 ? [{ type: 'memory_events', data: currentMemoryEvents }] : [])
+                ];
+
+                const aiMsgObj = {
+                    id: aiPermanentId,
+                    chat_id: idToUse,
+                    user_id: session.user.id,
+                    role: 'assistant',
+                    content: textToPersist || (currentCloudProject ? "" : "Task completed."),
+                    mode: 'ceova',
+                    attachments: aiAttachments.length > 0 ? aiAttachments : null,
+                    created_at: new Date().toISOString()
+                };
+
+                try {
+                    const { error: aiInsertErr } = await supabase.from('messages').insert(aiMsgObj);
+                    if (aiInsertErr) {
+                        console.error("Supabase primary AI insert failed, retrying minimal fields:", aiInsertErr);
+                        const sanitizedObj = {
+                            id: aiPermanentId,
+                            chat_id: idToUse,
+                            user_id: session.user.id,
+                            role: 'assistant',
+                            content: aiMsgObj.content,
+                            created_at: aiMsgObj.created_at
+                        };
+                        const { error: fallbackErr } = await supabase.from('messages').insert(sanitizedObj);
+                        if (fallbackErr) {
+                            console.error("Fallback AI message insert failed:", fallbackErr);
+                        }
+                    }
+
+                    // Update in-memory message to reflect the permanent DB id
+                    setChats(prev => {
+                        const messages = [...(prev[idToUse] || [])];
+                        const aiIdx = messages.findIndex(m => m.tempId === tempId);
+                        if (aiIdx !== -1) {
+                            messages[aiIdx] = { ...messages[aiIdx], id: aiPermanentId, isLive: false, isTyping: false };
+                        }
+                        return { ...prev, [idToUse]: messages };
+                    });
+                } catch (dbErr) {
+                    console.error("Error persisting AI message to Supabase:", dbErr);
+                }
+            };
 
             // Retrieve cached or session Google OAuth token so super-endpoint can sync/use it
             const cachedGoogleToken = typeof window !== 'undefined' ? (localStorage.getItem('google_provider_token') || sessionStorage.getItem('google_provider_token')) : null;
@@ -781,6 +1076,7 @@ export default function Home({ session }) {
                     const reader = res.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = "";
+                    let currentMemoryEvents = [];
                     
                     while (true) {
                         const { done, value } = await reader.read();
@@ -801,7 +1097,20 @@ export default function Home({ session }) {
                                 try {
                                     const parsed = JSON.parse(chunk.slice(6));
                                     
-                                    if (parsed.type === 'project_progress' || parsed.type === 'cloud_project_ready') {
+                                    if (parsed.type === 'memory_event') {
+                                        currentMemoryEvents.push(parsed);
+                                        setChats(prev => {
+                                            const messages = [...(prev[idToUse] || [])];
+                                            const aiIdx = messages.findIndex(m => m.tempId === tempId);
+                                            if (aiIdx !== -1) {
+                                                messages[aiIdx] = { 
+                                                    ...messages[aiIdx], 
+                                                    memoryEvents: [...currentMemoryEvents] 
+                                                };
+                                            }
+                                            return { ...prev, [idToUse]: messages };
+                                        });
+                                    } else if (parsed.type === 'project_progress' || parsed.type === 'cloud_project_ready') {
                                         currentCloudProject = {
                                             stage: parsed.stage || (parsed.type === 'cloud_project_ready' ? 'READY' : 'BUILDING'),
                                             projectId: parsed.projectId,
@@ -821,10 +1130,13 @@ export default function Home({ session }) {
                                         }
                                     } else if (parsed.type === 'status') {
                                         activeToolStatus = parsed.stage;
+                                        if (/image|sketch|draft|detail|polish|design|visual|poster|inpaint|remove\s*object|background_remover|generate_image/i.test(parsed.stage)) {
+                                            isImageGenerationActive = true;
+                                        }
                                     } else if (parsed.type === 'text') {
                                         aiRawText += parsed.content;
                                         if (activeToolStatus) {
-                                            if (aiRawText.includes('![') || !/image|design|completed|edit|detail|almost done/i.test(activeToolStatus)) {
+                                            if (aiRawText.includes('![') || !/image|design|completed|edit|detail|almost done|sketch|draft|polish|qr|barcode/i.test(activeToolStatus)) {
                                                 activeToolStatus = null;
                                             }
                                         }
@@ -1106,6 +1418,8 @@ export default function Home({ session }) {
                                                 text: aiRawText, 
                                                 isTyping: true, 
                                                 isLive: true, 
+                                                isGeneratingImage: isImageGenerationActive && !aiRawText.includes('!['),
+                                                isGeneratingQR: isQRRequest && !aiRawText.includes(':::qr_code'),
                                                 toolStatus: activeToolStatus,
                                                 cloudProject: currentCloudProject
                                             };
@@ -1128,8 +1442,11 @@ export default function Home({ session }) {
                                 text: finalAiText, 
                                 isTyping: false, 
                                 isLive: true, 
+                                isGeneratingImage: false,
+                                isGeneratingQR: false,
                                 toolStatus: null,
-                                cloudProject: currentCloudProject
+                                cloudProject: currentCloudProject,
+                                memoryEvents: currentMemoryEvents.length > 0 ? currentMemoryEvents : (messages[aiIdx]?.memoryEvents || undefined)
                             };
                         }
                         return { ...prev, [idToUse]: messages };
@@ -1158,25 +1475,10 @@ export default function Home({ session }) {
                     }
                 }
 
-            if (!isTemporary) {
-                try {
-                    const aiMsgObj = {
-                        id: crypto.randomUUID(),
-                        chat_id: idToUse,
-                        user_id: session.user.id,
-                        role: 'assistant',
-                        content: aiRawText,
-                        mode: 'ceova',
-                        attachments: currentCloudProject ? [{ type: 'cloud_project', data: currentCloudProject }] : [],
-                        created_at: new Date().toISOString()
-                    };
-                    
-                    await cacheManager.setMessage(aiMsgObj);
-                    await supabase.from('messages').insert(aiMsgObj);
-                } catch (dbErr) {
-                    console.error("Local Persistence Error (AI Msg):", dbErr);
-                }
+            // Guaranteed Direct Supabase Persistence
+            await persistAiResponse(aiRawText);
 
+            if (!isTemporary) {
                 // Dynamic AI Title Generation using gpt-4o-mini (Turn 1 & Turn 2)
                 const currentMetaTitle = (chatMetadata[idToUse]?.title || '').trim();
                 const isGenericTitle = !currentMetaTitle || currentMetaTitle === 'New Chat' || currentMetaTitle === 'Telegram Chat' || currentMetaTitle.startsWith('Topic ');
@@ -1307,14 +1609,21 @@ export default function Home({ session }) {
                             }, 1500);
                             
                         } else if (messages[aiIdx].isTyping) {
-                            // Do not delete the message; preserve it and show an error state so nothing disappears
+                            const fallbackText = (aiRawText || '').trim() || displayError || "Connection interrupted. Please try again.";
+                            // Do not delete the message; preserve it and show text/image state so nothing disappears
                             messages[aiIdx] = {
                                 ...messages[aiIdx],
                                 isTyping: false,
                                 isLive: false,
+                                isGeneratingImage: false,
+                                isGeneratingQR: false,
                                 toolStatus: null,
-                                text: messages[aiIdx].text || displayError || "Connection interrupted. Please try again."
+                                text: messages[aiIdx].text || fallbackText
                             };
+
+                            if (fallbackText) {
+                                persistAiResponse(fallbackText).catch(console.error);
+                            }
                         }
                     }
                     return { ...prev, [idToUse]: messages };
@@ -1644,8 +1953,17 @@ export default function Home({ session }) {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Mobile backdrop overlay - tap to dismiss */}
+            <div 
+                ref={overlayRef}
+                className="sidebar-overlay"
+                onClick={() => setIsSidebarOpen(false)}
+                aria-label="Close sidebar"
+            />
             
             <motion.div
+                ref={sidebarWrapperRef}
                 initial={false}
                 animate={{ width: isSidebarOpen ? 320 : 68 }}
                 transition={{ type: "spring", bounce: 0, duration: 0.4 }}
@@ -1752,6 +2070,24 @@ export default function Home({ session }) {
                                 chatId: currentChatId,
                                 index: msgIndex
                             });
+                        }
+                    }}
+                    onRegenerate={(msg) => {
+                        const currentMessages = chats[currentChatId] || [];
+                        const idx = currentMessages.findIndex(m => (m.id && m.id === msg.id) || (m.tempId && m.tempId === msg.tempId));
+                        let promptToResend = '';
+                        if (msg.sender === 'user') {
+                            promptToResend = msg.text;
+                        } else if (idx !== -1) {
+                            for (let i = idx - 1; i >= 0; i--) {
+                                if (currentMessages[i].sender === 'user') {
+                                    promptToResend = currentMessages[i].text;
+                                    break;
+                                }
+                            }
+                        }
+                        if (promptToResend) {
+                            handleSend([], promptToResend);
                         }
                     }}
                     onFolderConnected={async (folderHandle) => {
@@ -1888,6 +2224,13 @@ export default function Home({ session }) {
                 <TaskModal 
                     isOpen={isTaskModalOpen}
                     onClose={() => setIsTaskModalOpen(false)}
+                    userId={session?.user?.id}
+                    onAutomateTask={(task) => {
+                        setIsTaskModalOpen(false);
+                        const scheduleDetails = task.dueDate ? `Scheduled for: ${task.dueDate} ${task.dueTime || ''}` : '';
+                        const prompt = `Please automate and execute this scheduled task now:\n**Task**: ${task.title}\n${task.notes ? `**Instructions/Notes**: ${task.notes}\n` : ''}${scheduleDetails ? `**Timeline**: ${scheduleDetails}\n` : ''}\nPlease perform the necessary actions or prepare the deliverables.`;
+                        handleSend([], prompt);
+                    }}
                 />
             </main>
 

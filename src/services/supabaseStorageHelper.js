@@ -32,6 +32,24 @@ export function parseSupabaseStorageInfo(url, item = null) {
         path: decodeURIComponent(match[2])
       };
     }
+
+    // Relative storage path or raw path e.g. "attachments/abc/xyz.png" or "user_files/abc/xyz.png"
+    const trimmed = url.replace(/^\/+/, '').split('?')[0];
+    const parts = trimmed.split('/');
+    if (parts.length >= 2 && ['attachments', 'user_files', 'user-files'].includes(parts[0])) {
+      return {
+        bucket: parts[0],
+        path: parts.slice(1).join('/')
+      };
+    }
+
+    // UUID or folder prefix path e.g. "06122d10-388a-.../AI_Image_...png"
+    if (parts.length >= 2 && /^[0-9a-fA-F-]{20,}/.test(parts[0])) {
+      return {
+        bucket: 'attachments',
+        path: trimmed
+      };
+    }
   }
 
   return null;
@@ -70,11 +88,19 @@ export async function resolveSupabaseImage(url, item = null) {
   }
 
   const promise = (async () => {
-    try {
-      // Step A: Generate fresh signed URL with 24-hour expiration
+    // Candidate buckets: prioritize parsed bucket, then fall back to alternate buckets
+    const candidateBuckets = [bucket];
+    if (bucket === 'attachments') {
+      candidateBuckets.push('user_files', 'user-files');
+    } else if (bucket === 'user_files' || bucket === 'user-files') {
+      candidateBuckets.push('attachments');
+    }
+
+    for (const b of candidateBuckets) {
       try {
+        // Step A: Generate fresh signed URL with 24-hour expiration
         const { data: signData, error: signErr } = await supabase.storage
-          .from(bucket)
+          .from(b)
           .createSignedUrl(path, 86400);
 
         if (!signErr && signData?.signedUrl) {
@@ -82,13 +108,13 @@ export async function resolveSupabaseImage(url, item = null) {
           return signData.signedUrl;
         }
       } catch (e) {
-        console.warn('[supabaseStorageHelper] Signed URL generation error:', e);
+        // Continue to download fallback
       }
 
       // Step B: Authenticated Blob download via Supabase Client (works on private buckets & bypasses CORS)
       try {
         const { data: blob, error: blobErr } = await supabase.storage
-          .from(bucket)
+          .from(b)
           .download(path);
 
         if (!blobErr && blob) {
@@ -97,13 +123,13 @@ export async function resolveSupabaseImage(url, item = null) {
           return blobUrl;
         }
       } catch (e) {
-        console.warn('[supabaseStorageHelper] Download blob error:', e);
+        // Continue
       }
 
       // Step C: Try public URL
       try {
         const { data: pubData } = supabase.storage
-          .from(bucket)
+          .from(b)
           .getPublicUrl(path);
 
         if (pubData?.publicUrl) {
@@ -111,15 +137,12 @@ export async function resolveSupabaseImage(url, item = null) {
           return pubData.publicUrl;
         }
       } catch (e) {}
-
-      return url;
-    } catch (err) {
-      console.warn('[supabaseStorageHelper] Failed to resolve storage image:', cacheKey, err);
-      return url;
-    } finally {
-      supabaseInFlight.delete(cacheKey);
     }
-  })();
+
+    return url;
+  })().finally(() => {
+    supabaseInFlight.delete(cacheKey);
+  });
 
   supabaseInFlight.set(cacheKey, promise);
   return await promise;
