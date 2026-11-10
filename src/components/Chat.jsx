@@ -16,6 +16,7 @@ import WebsitePreviewModal from './WebsitePreviewModal';
 import DriveFilesCard from './DriveFilesCard';
 import DriveFilePreviewModal from './DriveFilePreviewModal';
 import CalendarEventCard from './CalendarEventCard';
+import GenerativePreviewCard from './GenerativePreviewCard';
 async function forceDownloadImage(url, filename = 'ceova-image.png') {
   try {
     const res = await fetch(url, { mode: 'cors' });
@@ -44,11 +45,14 @@ function ChatImage({ src, alt, onZoom }) {
 
   return (
     <div className="chat-markdown-image">
-      {/* Square skeleton shown while image loads */}
+      {/* Generative dot matrix preview shown while image bytes load */}
       {!loaded && !failed && (
-        <div className="chat-img-skeleton">
-          <div className="skeleton-shimmer" />
-        </div>
+        <GenerativePreviewCard
+          type="image"
+          isFinishing={true}
+          statusText="Polishing the image"
+          style={{ width: '320px', height: '360px', margin: 0 }}
+        />
       )}
 
       {/* Actual image, hidden until loaded, fades in */}
@@ -464,12 +468,56 @@ function ClientCompressionWidget({ meta }) {
   return <CompressionResultCard meta={resultMeta} />;
 }
 
+// Reusable prompt matcher for image generation intents
+export const isImageRequestPrompt = (text) => {
+  if (!text || typeof text !== 'string') return false;
+  const t = text.trim();
+  // 1. Slash / command styles
+  if (/^\s*\/?(?:generate_image|genrate_image|image_gen|dalle|draw)\b/i.test(t)) return true;
+  // 2. Action verb + optional articles + visual noun
+  if (/\b(?:generate|genrate|create|make|draw|paint|sketch|render|design|produce|illustrate)\s+(?:a |an |me |the |this |some )?(?:image|picture|photo|illustration|artwork|graphic|logo|wallpaper|portrait|banner|avatar|poster|flyer|creative|ad|visual)\b/i.test(t)) return true;
+  // 3. Casual requests: "want an image of", "give me a picture of", "show me a photo of", "need a picture of", "can you generate a picture", etc.
+  if (/\b(?:want|give|send|show|need|get|see)\s+(?:me\s+)?(?:a |an |the |some )?(?:image|picture|photo|illustration|artwork|drawing|sketch|portrait|wallpaper|avatar|poster|flyer)\b/i.test(t)) return true;
+  // 4. "image of ...", "picture of ...", "photo of ...", "drawing of ...", "sketch of ...", "portrait of ...", "wallpaper of ..."
+  if (/\b(?:image|picture|photo|illustration|artwork|drawing|sketch|portrait|wallpaper)\s+(?:of|for|depicting|showing|with)\b/i.test(t)) return true;
+  // 5. Short prompts like "genrate a picture", "picture of a dog", "image of dog", "photo of cat"
+  if (/^\s*(?:genrate|generate|draw|paint|sketch)\s+(?:a |an )?(?:image|picture|photo|artwork)/i.test(t)) return true;
+  // 6. Keywords
+  if (/\b(?:ai\s+image|ai\s+generated\s+image|generate\s+image|genrate\s+image)\b/i.test(t)) return true;
+  return false;
+};
+
+export const isQRRequestPrompt = (text) => {
+  if (!text || typeof text !== 'string') return false;
+  return /^\s*(?:\/generate_qr|generate\s+(?:a\s+)?qr|genrate\s+(?:a\s+)?qr|create\s+(?:a\s+)?qr|make\s+(?:a\s+)?qr|qr\s*code|generate\s+(?:a\s+)?barcode)/i.test(text.trim());
+};
+
 // ── MessageItem component ────────────────────────────────────────────────────
-function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onPreviewWebsite, onPreviewDriveFile }) {
+function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg, editText, setEditText, handleSaveEdit, handleEditInit, handleCopy, copiedId, onRegenerate, onFeedback, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onPreviewWebsite, onPreviewDriveFile, onOpenSettings }) {
   const [showActions, setShowActions] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [hasProceeded, setHasProceeded] = useState(false);
+  const [showMemoryPopover, setShowMemoryPopover] = useState(false);
   const hideTimerRef = useRef(null);
+
+  const memorySavedFacts = useMemo(() => {
+    if (isUser) return [];
+    const events = msg.memoryEvents || msg.attachments?.find?.(a => a.type === 'memory_events')?.data || [];
+    const saved = events.filter(e => e.action === 'saved' && Array.isArray(e.memories));
+    const allFacts = [];
+    saved.forEach(s => {
+      s.memories.forEach(m => {
+        if (m && m.value) allFacts.push(m);
+      });
+    });
+    return allFacts;
+  }, [isUser, msg.memoryEvents, msg.attachments]);
+
+  const hasMemoryUsed = useMemo(() => {
+    if (isUser) return false;
+    const events = msg.memoryEvents || msg.attachments?.find?.(a => a.type === 'memory_events')?.data || [];
+    return events.some(e => e.action === 'used');
+  }, [isUser, msg.memoryEvents, msg.attachments]);
 
   let rawText = msg.text || '';
   let actionMeta = null;
@@ -633,7 +681,7 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
     if (!rawText) return '';
     let text = rawText
       .replace(/The tool completed successfully\./gi, '')
-      .replace(/GPT-5\.6\s*Luna/gi, 'Ceova')
+      .replace(/GPT-(?:5\.6|6)\s*Luna/gi, 'Ceova')
       .replace(/-\s*\*\*Tech Stack\*\*:[^\n]+/gi, '')
       .replace(/Tech Stack:[^\n]+/gi, '')
       .trim();
@@ -685,6 +733,61 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
       (m.text && (m.text.includes('ceova.online') || m.text.includes('Website Implementation Plan') || m.text.includes('Implementation Plan')))
     );
   }, [messages, idx]);
+
+  const isGeneratingImage = useMemo(() => {
+    if (isUser) return false;
+    // Once the markdown image is present, the image itself takes over
+    if (rawText && rawText.includes('![')) return false;
+
+    // Must be actively live or typing
+    const isLiveOrTyping = Boolean(msg.isTyping || msg.isLive);
+    if (!isLiveOrTyping) return false;
+
+    // 1. Explicit message flag set by Home.jsx
+    if (msg.isGeneratingImage) return true;
+
+    // 2. Tool status matches ANY stage of image generation/editing/detail/polish
+    const toolStatusMatch = Boolean(
+      msg.toolStatus &&
+      /image|poster|photo|picture|sketch|drawing|inpaint|remove\s*object|background_remover|generate_image|genrate_image|draft|polish|details?|design|visual|artwork|first draft/i.test(msg.toolStatus)
+    );
+    if (toolStatusMatch) return true;
+
+    // 3. Look back at the user prompt using our comprehensive image intent matcher
+    if (messages && idx > 0) {
+      const prevUser = messages.slice(0, idx).reverse().find(m => m.sender === 'user');
+      if (prevUser && prevUser.text && isImageRequestPrompt(prevUser.text)) {
+        return true;
+      }
+    }
+
+    return false;
+  }, [isUser, rawText, msg.isGeneratingImage, msg.toolStatus, msg.isTyping, msg.isLive, messages, idx]);
+
+  const isGeneratingQR = useMemo(() => {
+    if (isUser) return false;
+    if (actionMeta && actionMeta.type === 'client_qr_barcode_action') return false;
+
+    const isLiveOrTyping = Boolean(msg.isTyping || msg.isLive);
+    if (!isLiveOrTyping) return false;
+
+    if (msg.isGeneratingQR) return true;
+
+    const toolStatusMatch = Boolean(
+      msg.toolStatus &&
+      /qr|barcode|generate_qr|scan_barcode|encoding data/i.test(msg.toolStatus)
+    );
+    if (toolStatusMatch) return true;
+
+    if (messages && idx > 0) {
+      const prevUser = messages.slice(0, idx).reverse().find(m => m.sender === 'user');
+      if (prevUser && prevUser.text && isQRRequestPrompt(prevUser.text)) {
+        return true;
+      }
+    }
+
+    return false;
+  }, [isUser, actionMeta, msg.isGeneratingQR, msg.toolStatus, msg.isTyping, msg.isLive, messages, idx]);
 
   const handleProceed = () => {
     return;
@@ -781,7 +884,11 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
             <img src="/ceova logo dark.png" alt="Ceova" className="ai-avatar-img" />
           </div>
           <div className="ai-content">
-            {msg.toolStatus ? (
+            {isGeneratingImage ? (
+              <GenerativePreviewCard type="image" statusText={msg.toolStatus} />
+            ) : isGeneratingQR ? (
+              <GenerativePreviewCard type="qr" statusText={msg.toolStatus} />
+            ) : msg.toolStatus ? (
               <CyclingStatus defaultStatus={msg.toolStatus} />
             ) : (msg.isTyping && !msg.text) ? (
               <CyclingStatus defaultStatus={null} />
@@ -789,7 +896,7 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
               <CyclingStatus defaultStatus={displayText || "Processing..."} />
             ) : null}
 
-            {(displayText || (msg.isTyping && !parsedDriveFiles.length && !resolvedCalendarEvent)) ? (
+            {(!isGeneratingImage && !isGeneratingQR && (displayText || (msg.isTyping && !parsedDriveFiles.length && !resolvedCalendarEvent))) ? (
               <TypewriterRenderer text={(displayText || '').replace('[CONNECT_FOLDER_BUTTON]', '')} isTyping={msg.isTyping || msg.isLive} onZoom={setPreviewUrl} />
             ) : null}
 
@@ -933,6 +1040,66 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
                 {actionMeta && actionMeta.type === 'client_media_converter' && (
                   <ClientMediaConverterWidget meta={actionMeta} />
                 )}
+                {/* ── Google Gemini-style Memory Badges ── */}
+                {!isUser && (memorySavedFacts.length > 0 || hasMemoryUsed) && (
+                  <div className="gemini-memory-bar">
+                    {memorySavedFacts.length > 0 && (
+                      <div style={{ position: 'relative' }}>
+                        <div 
+                          className="gemini-memory-chip saved"
+                          onClick={(e) => { e.stopPropagation(); setShowMemoryPopover(prev => !prev); }}
+                          title="Click to view what was remembered"
+                        >
+                          <Sparkles size={13} className="chip-sparkle" />
+                          <span>Memory updated</span>
+                          {memorySavedFacts.length === 1 && (
+                            <span style={{ opacity: 0.75, maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              • {memorySavedFacts[0].value}
+                            </span>
+                          )}
+                        </div>
+
+                        {showMemoryPopover && (
+                          <div className="gemini-memory-popover" onClick={(e) => e.stopPropagation()}>
+                            <div className="popover-header">
+                              <div className="popover-title">
+                                <Sparkles size={14} style={{ color: '#c084fc' }} />
+                                <span>Saved to your info</span>
+                              </div>
+                              <button 
+                                className="popover-close" 
+                                onClick={() => setShowMemoryPopover(false)}
+                                title="Close"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                            <ul className="popover-facts">
+                              {memorySavedFacts.map((fact, fIdx) => (
+                                <li key={fIdx} className="popover-fact-item">
+                                  <strong>{fact.title || fact.category || 'Fact'}:</strong>
+                                  <span>{fact.value}</span>
+                                </li>
+                              ))}
+                            </ul>
+                            <button 
+                              className="popover-manage-btn"
+                              onClick={() => {
+                                setShowMemoryPopover(false);
+                                if (onOpenSettings) onOpenSettings('memories');
+                              }}
+                            >
+                              Manage saved info →
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+
+                  </div>
+                )}
+
                 <div className={`message-actions ${showActions ? 'visible' : ''}`}>
                   <button onClick={(e) => { e.stopPropagation(); handleCopy(rawText, msg.id || msg.tempId); }} title="Copy message">
                     {copiedId === (msg.id || msg.tempId) ? <Check size={14} /> : <Copy size={14} />}
@@ -945,64 +1112,31 @@ function MessageItem({ msg, idx, isUser, messages, onSuggestionClick, editingMsg
   );
 }
 
-const IMAGE_STATUSES = [
-  "Generating image...",
-  "Adding design...",
-  "Just completed...",
-  "Last edit..."
-];
-
 const GENERAL_STATUSES = ["Thinking...", "Writing...", "Searching..."];
 
 const CyclingStatus = ({ defaultStatus }) => {
-  const [imageStatusIdx, setImageStatusIdx] = useState(0);
   const [generalStatusIdx, setGeneralStatusIdx] = useState(0);
-  const startTimeRef = useRef(Date.now());
 
+  // If this is an image generation stage, do NOT render raw text - show GenerativePreviewCard
   const isImageStatus = Boolean(
     defaultStatus && (
-      /image|design|completed|edit|detail|almost done/i.test(defaultStatus)
+      /image|design|completed|edit|detail|almost done|sketch|draft|polish|inpaint/i.test(defaultStatus)
     ) && !/extracting visual|writing local/i.test(defaultStatus)
   );
 
   useEffect(() => {
-    startTimeRef.current = Date.now();
-  }, [isImageStatus]);
+    if (defaultStatus) return;
+    const interval = setInterval(() => {
+      setGeneralStatusIdx(prev => (prev + 1) % GENERAL_STATUSES.length);
+    }, 2200);
+    return () => clearInterval(interval);
+  }, [defaultStatus]);
 
-  useEffect(() => {
-    const updateProgress = () => {
-      if (isImageStatus) {
-        const elapsed = Date.now() - startTimeRef.current;
-        // Advance every 2.6 seconds through the 4 requested stages, holding at the last stage
-        const idx = Math.min(Math.floor(elapsed / 2600), IMAGE_STATUSES.length - 1);
-        setImageStatusIdx(idx);
-      } else if (!defaultStatus) {
-        setGeneralStatusIdx(prev => (prev + 1) % GENERAL_STATUSES.length);
-      }
-    };
+  if (isImageStatus) {
+    return <GenerativePreviewCard type="image" statusText={defaultStatus} />;
+  }
 
-    // Fast interval ensures smooth updates
-    const interval = setInterval(updateProgress, 400);
-
-    // Instant update whenever user switches back to this tab
-    const handleSync = () => {
-      if (document.visibilityState === 'visible') {
-        updateProgress();
-      }
-    };
-    document.addEventListener('visibilitychange', handleSync);
-    window.addEventListener('focus', handleSync);
-
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleSync);
-      window.removeEventListener('focus', handleSync);
-    };
-  }, [defaultStatus, isImageStatus]);
-
-  const currentText = isImageStatus 
-    ? IMAGE_STATUSES[imageStatusIdx] 
-    : (defaultStatus || GENERAL_STATUSES[generalStatusIdx]);
+  const currentText = defaultStatus || GENERAL_STATUSES[generalStatusIdx];
 
   const lcText = (currentText || '').toLowerCase();
   let iconSrc = null;
@@ -1030,7 +1164,7 @@ const CyclingStatus = ({ defaultStatus }) => {
   );
 };
 
-export default function Chat({ messages, onSuggestionClick, userEmail, onRegenerate, onEditRequest, onFeedback, isTemporary, actionCard, progressMessages, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected }) {
+export default function Chat({ messages, onSuggestionClick, userEmail, onRegenerate, onEditRequest, onFeedback, isTemporary, actionCard, progressMessages, localDirectoryHandle, setLocalDirectoryHandle, onFolderConnected, onOpenSettings }) {
   const messagesEndRef = useRef(null);
   const [copiedId, setCopiedId] = React.useState(null);
   const [previewProject, setPreviewProject] = React.useState(null);
@@ -1081,6 +1215,7 @@ export default function Chat({ messages, onSuggestionClick, userEmail, onRegener
                 onFolderConnected={onFolderConnected}
                 onPreviewWebsite={setPreviewProject}
                 onPreviewDriveFile={setDrivePreviewFile}
+                onOpenSettings={onOpenSettings}
               />
             );
           })}

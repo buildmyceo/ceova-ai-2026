@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase, SUPABASE_KEY, SUPABASE_URL } from '../services/supabase';
 import Sidebar from '../components/Sidebar';
-import Chat from '../components/Chat';
+import Chat, { isImageRequestPrompt, isQRRequestPrompt } from '../components/Chat';
 import InputBox from '../components/InputBox';
 import SettingsModal from '../components/SettingsModalV2';
 import SearchModal from '../components/SearchModal';
@@ -194,6 +194,11 @@ export default function Home({ session }) {
     useEffect(() => {
         if (!session) return;
 
+        // Clear any old message cache from IndexedDB so state is 100% direct and fresh from Supabase
+        try {
+            cacheManager.clearChats().catch(() => {});
+        } catch (e) {}
+
         // Fetch user memories to personalize greeting and AI context
         supabase
             .from('user_memory_longterm')
@@ -216,7 +221,6 @@ export default function Home({ session }) {
                 
                 const metaMap = {};
                 if (mData) {
-                    await cacheManager.setChats(mData);
                     mData.forEach(m => {
                         metaMap[m.id] = {
                             is_pinned: m.is_pinned,
@@ -228,11 +232,11 @@ export default function Home({ session }) {
                     setChatMetadata(metaMap);
                 }
 
-                // Fast Sync: Fetch messages just for the current active chat if one is set (e.g. on page reload)
+                // Direct Sync: Fetch messages directly from Supabase for the current active chat
                 let activeChatId = currentChatId;
 
                 if (activeChatId) {
-                    const { data: currentChatMessages, error: activeErr } = await supabase
+                    const { data: currentChatMessages } = await supabase
                         .from('messages')
                         .select('*')
                         .eq('chat_id', activeChatId)
@@ -244,9 +248,9 @@ export default function Home({ session }) {
                             const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
                             return {
                                 id: msg.id,
-                                sender: msg.role === 'user' ? 'user' : 'ai',
-                                text: msg.content,
-                                time: msg.created_at,
+                                sender: (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'ai',
+                                text: msg.content ?? msg.text ?? '',
+                                time: msg.created_at || msg.time,
                                 mode: msg.mode,
                                 attachments: msg.attachments || [],
                                 cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null
@@ -262,12 +266,10 @@ export default function Home({ session }) {
                             const uniquePending = pending.filter(m => !m.id || !dbIds.has(m.id));
                             return { ...prev, [activeChatId]: [...formattedMessages, ...uniquePending] };
                         });
-                        // We do NOT await this so the UI doesn't block
-                        cacheManager.setMessages(sortedCurrent).catch(console.error);
                     }
                 }
 
-                // Async Background Sync: Fetch everything else without blocking the main render
+                // Async Background Sync: Fetch all messages directly from Supabase without caching
                 supabase
                     .from('messages')
                     .select('*')
@@ -277,16 +279,15 @@ export default function Home({ session }) {
                         if (error || !data) return;
                         
                         const sortedData = sortMessagesChronologically(data);
-                        await cacheManager.setMessages(sortedData);
                         
                         const grouped = sortedData.reduce((acc, msg) => {
                             if (!acc[msg.chat_id]) acc[msg.chat_id] = [];
                             const cloudProjectAttachment = msg.attachments?.find?.((a) => a.type === 'cloud_project');
                             acc[msg.chat_id].push({
                                 id: msg.id,
-                                sender: msg.role === 'user' ? 'user' : 'ai',
-                                text: msg.content,
-                                time: msg.created_at,
+                                sender: (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'ai',
+                                text: msg.content ?? msg.text ?? '',
+                                time: msg.created_at || msg.time,
                                 mode: msg.mode,
                                 attachments: msg.attachments || [],
                                 cloudProject: cloudProjectAttachment ? cloudProjectAttachment.data : null
@@ -377,15 +378,28 @@ export default function Home({ session }) {
             size: file.size || 0
         }));
 
+        const isImageRequest = isImageRequestPrompt(text);
+        const isQRRequest = isQRRequestPrompt(text);
+
         const tempId = crypto.randomUUID();
         const optimisticUserMsg = { sender: "user", text, time: new Date().toISOString(), attachments: localAttachments, isHidden };
+        const initialToolStatus = files.length > 0 
+            ? "Uploading files..." 
+            : (isImageRequest 
+                ? "Sketching it out..." 
+                : (isQRRequest 
+                    ? "Generating code..." 
+                    : (isWebSearch ? "Searching the web..." : (isThinking ? "Thinking deeply..." : "Thinking..."))));
+
         const aiPlaceholder = { 
             sender: "ai", 
             text: "", 
             tempId, 
             isTyping: true, 
             isLive: true, 
-            toolStatus: files.length > 0 ? "Uploading files..." : "Thinking..." 
+            toolStatus: initialToolStatus,
+            isGeneratingImage: isImageRequest,
+            isGeneratingQR: isQRRequest
         };
 
         setChats(prev => {
@@ -720,6 +734,64 @@ export default function Home({ session }) {
                 ? "Uploading files..." 
                 : (isWebSearch ? "Searching the web..." : (isThinking ? "Thinking deeply..." : "Thinking..."));
 
+            let aiSaved = false;
+            let isImageGenerationActive = isImageRequest;
+
+            const persistAiResponse = async (finalContent) => {
+                if (aiSaved || isTemporary || !session?.user?.id || !idToUse) return;
+                const textToPersist = (finalContent || '').trim();
+                if (!textToPersist && !currentCloudProject) return;
+
+                aiSaved = true;
+                const aiPermanentId = crypto.randomUUID();
+                const aiAttachments = [
+                    ...(currentCloudProject ? [{ type: 'cloud_project', data: currentCloudProject }] : []),
+                    ...(currentMemoryEvents.length > 0 ? [{ type: 'memory_events', data: currentMemoryEvents }] : [])
+                ];
+
+                const aiMsgObj = {
+                    id: aiPermanentId,
+                    chat_id: idToUse,
+                    user_id: session.user.id,
+                    role: 'assistant',
+                    content: textToPersist || (currentCloudProject ? "" : "Task completed."),
+                    mode: 'ceova',
+                    attachments: aiAttachments.length > 0 ? aiAttachments : null,
+                    created_at: new Date().toISOString()
+                };
+
+                try {
+                    const { error: aiInsertErr } = await supabase.from('messages').insert(aiMsgObj);
+                    if (aiInsertErr) {
+                        console.error("Supabase primary AI insert failed, retrying minimal fields:", aiInsertErr);
+                        const sanitizedObj = {
+                            id: aiPermanentId,
+                            chat_id: idToUse,
+                            user_id: session.user.id,
+                            role: 'assistant',
+                            content: aiMsgObj.content,
+                            created_at: aiMsgObj.created_at
+                        };
+                        const { error: fallbackErr } = await supabase.from('messages').insert(sanitizedObj);
+                        if (fallbackErr) {
+                            console.error("Fallback AI message insert failed:", fallbackErr);
+                        }
+                    }
+
+                    // Update in-memory message to reflect the permanent DB id
+                    setChats(prev => {
+                        const messages = [...(prev[idToUse] || [])];
+                        const aiIdx = messages.findIndex(m => m.tempId === tempId);
+                        if (aiIdx !== -1) {
+                            messages[aiIdx] = { ...messages[aiIdx], id: aiPermanentId, isLive: false, isTyping: false };
+                        }
+                        return { ...prev, [idToUse]: messages };
+                    });
+                } catch (dbErr) {
+                    console.error("Error persisting AI message to Supabase:", dbErr);
+                }
+            };
+
             // Retrieve cached or session Google OAuth token so super-endpoint can sync/use it
             const cachedGoogleToken = typeof window !== 'undefined' ? (localStorage.getItem('google_provider_token') || sessionStorage.getItem('google_provider_token')) : null;
             const effectiveGoogleToken = cachedGoogleToken || session?.provider_token || null;
@@ -843,6 +915,7 @@ ${camList}
                     const reader = res.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = "";
+                    let currentMemoryEvents = [];
                     
                     while (true) {
                         const { done, value } = await reader.read();
@@ -863,7 +936,20 @@ ${camList}
                                 try {
                                     const parsed = JSON.parse(chunk.slice(6));
                                     
-                                    if (parsed.type === 'project_progress' || parsed.type === 'cloud_project_ready') {
+                                    if (parsed.type === 'memory_event') {
+                                        currentMemoryEvents.push(parsed);
+                                        setChats(prev => {
+                                            const messages = [...(prev[idToUse] || [])];
+                                            const aiIdx = messages.findIndex(m => m.tempId === tempId);
+                                            if (aiIdx !== -1) {
+                                                messages[aiIdx] = { 
+                                                    ...messages[aiIdx], 
+                                                    memoryEvents: [...currentMemoryEvents] 
+                                                };
+                                            }
+                                            return { ...prev, [idToUse]: messages };
+                                        });
+                                    } else if (parsed.type === 'project_progress' || parsed.type === 'cloud_project_ready') {
                                         currentCloudProject = {
                                             stage: parsed.stage || (parsed.type === 'cloud_project_ready' ? 'READY' : 'BUILDING'),
                                             projectId: parsed.projectId,
@@ -883,10 +969,13 @@ ${camList}
                                         }
                                     } else if (parsed.type === 'status') {
                                         activeToolStatus = parsed.stage;
+                                        if (/image|sketch|draft|detail|polish|design|visual|poster|inpaint|remove\s*object|background_remover|generate_image/i.test(parsed.stage)) {
+                                            isImageGenerationActive = true;
+                                        }
                                     } else if (parsed.type === 'text') {
                                         aiRawText += parsed.content;
                                         if (activeToolStatus) {
-                                            if (aiRawText.includes('![') || !/image|design|completed|edit|detail|almost done/i.test(activeToolStatus)) {
+                                            if (aiRawText.includes('![') || !/image|design|completed|edit|detail|almost done|sketch|draft|polish|qr|barcode/i.test(activeToolStatus)) {
                                                 activeToolStatus = null;
                                             }
                                         }
@@ -1168,6 +1257,8 @@ ${camList}
                                                 text: aiRawText, 
                                                 isTyping: true, 
                                                 isLive: true, 
+                                                isGeneratingImage: isImageGenerationActive && !aiRawText.includes('!['),
+                                                isGeneratingQR: isQRRequest && !aiRawText.includes(':::qr_code'),
                                                 toolStatus: activeToolStatus,
                                                 cloudProject: currentCloudProject
                                             };
@@ -1190,8 +1281,11 @@ ${camList}
                                 text: finalAiText, 
                                 isTyping: false, 
                                 isLive: true, 
+                                isGeneratingImage: false,
+                                isGeneratingQR: false,
                                 toolStatus: null,
-                                cloudProject: currentCloudProject
+                                cloudProject: currentCloudProject,
+                                memoryEvents: currentMemoryEvents.length > 0 ? currentMemoryEvents : (messages[aiIdx]?.memoryEvents || undefined)
                             };
                         }
                         return { ...prev, [idToUse]: messages };
@@ -1220,25 +1314,10 @@ ${camList}
                     }
                 }
 
-            if (!isTemporary) {
-                try {
-                    const aiMsgObj = {
-                        id: crypto.randomUUID(),
-                        chat_id: idToUse,
-                        user_id: session.user.id,
-                        role: 'assistant',
-                        content: aiRawText,
-                        mode: 'ceova',
-                        attachments: currentCloudProject ? [{ type: 'cloud_project', data: currentCloudProject }] : [],
-                        created_at: new Date().toISOString()
-                    };
-                    
-                    await cacheManager.setMessage(aiMsgObj);
-                    await supabase.from('messages').insert(aiMsgObj);
-                } catch (dbErr) {
-                    console.error("Local Persistence Error (AI Msg):", dbErr);
-                }
+            // Guaranteed Direct Supabase Persistence
+            await persistAiResponse(aiRawText);
 
+            if (!isTemporary) {
                 // Dynamic AI Title Generation using gpt-4o-mini (Turn 1 & Turn 2)
                 const currentMetaTitle = (chatMetadata[idToUse]?.title || '').trim();
                 const isGenericTitle = !currentMetaTitle || currentMetaTitle === 'New Chat' || currentMetaTitle === 'Telegram Chat' || currentMetaTitle.startsWith('Topic ');
@@ -1369,14 +1448,21 @@ ${camList}
                             }, 1500);
                             
                         } else if (messages[aiIdx].isTyping) {
-                            // Do not delete the message; preserve it and show an error state so nothing disappears
+                            const fallbackText = (aiRawText || '').trim() || displayError || "Connection interrupted. Please try again.";
+                            // Do not delete the message; preserve it and show text/image state so nothing disappears
                             messages[aiIdx] = {
                                 ...messages[aiIdx],
                                 isTyping: false,
                                 isLive: false,
+                                isGeneratingImage: false,
+                                isGeneratingQR: false,
                                 toolStatus: null,
-                                text: messages[aiIdx].text || displayError || "Connection interrupted. Please try again."
+                                text: messages[aiIdx].text || fallbackText
                             };
+
+                            if (fallbackText) {
+                                persistAiResponse(fallbackText).catch(console.error);
+                            }
                         }
                     }
                     return { ...prev, [idToUse]: messages };
